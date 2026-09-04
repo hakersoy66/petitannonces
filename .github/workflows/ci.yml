@@ -42,4 +42,6 @@ jobs:
         run: |
           test -d apps/web/.next
           test -d apps/admin/.next
-          test -f apps/api/dist/apps/api/src/index.js
+          test -f apps/api/dist/index.js
+          test -f packages/database/dist/src/index.js
+          test -f packages/database/dist/generated/prisma/client.js
