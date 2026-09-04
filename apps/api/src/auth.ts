@@ -3,6 +3,7 @@ import { hash, verify } from "@node-rs/argon2";
 import { prisma } from "@pa/database";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
+import { grantWelcomeCredits, WELCOME_PA_CREDITS } from "./welcome-credit.js";
 
 const SESSION_COOKIE = "pa_session";
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30;
@@ -128,6 +129,7 @@ export async function registerAuthRoutes(app: FastifyInstance) {
     return reply.code(201).send({
       user,
       verificationRequired: true,
+      welcomeCreditsAfterVerification: WELCOME_PA_CREDITS,
       ...(process.env.NODE_ENV !== "production" ? { devVerificationToken: verificationToken } : {}),
     });
   });
@@ -151,7 +153,8 @@ export async function registerAuthRoutes(app: FastifyInstance) {
       }),
     ]);
 
-    return reply.send({ verified: true });
+    const welcomeCredit = await grantWelcomeCredits(record.userId);
+    return reply.send({ verified: true, welcomeCredits: WELCOME_PA_CREDITS, walletBalance: welcomeCredit.balance });
   });
 
   app.post("/auth/login", async (request, reply) => {
