@@ -2,6 +2,7 @@ import cookie from "@fastify/cookie";
 import Fastify from "fastify";
 import { registerAccountRoutes } from "./account.js";
 import { registerAuthRoutes } from "./auth.js";
+import { registerListingRoutes } from "./listings.js";
 import { requireAdminRoles } from "./rbac.js";
 import { registerSecurityRoutes } from "./security.js";
 
@@ -22,6 +23,7 @@ app.get("/health", async () => ({
 await registerAuthRoutes(app);
 await registerAccountRoutes(app);
 await registerSecurityRoutes(app);
+await registerListingRoutes(app);
 
 app.get(
   "/admin/session-check",
