@@ -104,4 +104,22 @@ export async function registerShippingRoutes(app: FastifyInstance) {
     await prisma.$executeRawUnsafe(`UPDATE "MarketplacePayout" SET "availableAt"=CURRENT_TIMESTAMP,"status"=CASE WHEN "status"='BLOCKED' THEN 'PENDING'::"PayoutStatus" ELSE "status" END,"updatedAt"=CURRENT_TIMESTAMP WHERE "orderId"=$1`, order.id);
     return reply.send({ confirmed: true, orderStatus: "COMPLETED" });
   });
+
+  app.post("/internal/buyer-protection/sweep", async (request, reply) => {
+    const secret = String(request.headers["x-internal-secret"] ?? "");
+    if (!process.env.INTERNAL_CRON_SECRET || secret !== process.env.INTERNAL_CRON_SECRET) return reply.code(401).send({ error: "unauthorized" });
+    const expired = await prisma.$queryRawUnsafe<Array<{ orderId: string }>>(
+      `SELECT bp."orderId" FROM "BuyerProtectionWindow" bp
+       JOIN "MarketplaceOrder" o ON o."id"=bp."orderId"
+       WHERE bp."confirmationStatus"='WAITING' AND bp."endsAt" <= CURRENT_TIMESTAMP AND o."status"='DELIVERED'
+       AND NOT EXISTS (SELECT 1 FROM "MarketplaceDispute" d WHERE d."orderId"=bp."orderId" AND d."status" NOT IN ('RESOLVED_BUYER','RESOLVED_SELLER','CLOSED'))
+       LIMIT 200`,
+    );
+    for (const item of expired) {
+      await prisma.$executeRawUnsafe(`UPDATE "BuyerProtectionWindow" SET "confirmationStatus"='AUTO_CONFIRMED',"confirmedAt"=CURRENT_TIMESTAMP,"payoutEligibleAt"=CURRENT_TIMESTAMP,"updatedAt"=CURRENT_TIMESTAMP WHERE "orderId"=$1`, item.orderId);
+      await prisma.$executeRawUnsafe(`UPDATE "MarketplaceOrder" SET "status"='COMPLETED',"completedAt"=CURRENT_TIMESTAMP,"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$1`, item.orderId);
+      await prisma.$executeRawUnsafe(`UPDATE "MarketplacePayout" SET "availableAt"=CURRENT_TIMESTAMP,"status"=CASE WHEN "status"='BLOCKED' THEN 'PENDING'::"PayoutStatus" ELSE "status" END,"updatedAt"=CURRENT_TIMESTAMP WHERE "orderId"=$1`, item.orderId);
+    }
+    return reply.send({ processed: expired.length });
+  });
 }
