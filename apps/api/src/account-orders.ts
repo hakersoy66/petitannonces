@@ -6,6 +6,8 @@ const SESSION_COOKIE = "pa_session";
 function sha256(value:string){return createHash("sha256").update(value).digest("hex")}
 async function requireUser(request:FastifyRequest, reply:FastifyReply){const token=request.cookies[SESSION_COOKIE];if(!token){reply.code(401).send({error:"unauthorized"});return null}const session=await prisma.session.findUnique({where:{tokenHash:sha256(token)},include:{user:true}});if(!session||session.revokedAt||session.expiresAt<=new Date()||session.user.status!=="ACTIVE"){reply.code(401).send({error:"unauthorized"});return null}return session.user}
 
+type AccountOrderRow = Record<string, any> & { role: "BUYER" | "SELLER"; status?: string; disputeId?: string | null; disputeStatus?: string | null };
+
 export async function registerAccountOrderRoutes(app:FastifyInstance){
   app.get("/account/orders",async(request,reply)=>{const user=await requireUser(request,reply);if(!user)return;
     const orders=await prisma.$queryRawUnsafe<Array<Record<string,any>>>(`
@@ -24,7 +26,7 @@ export async function registerAccountOrderRoutes(app:FastifyInstance){
       LEFT JOIN "MarketplacePayout" po ON po."orderId"=o."id"
       WHERE o."buyerId"=$1 OR o."sellerId"=$1
       ORDER BY o."updatedAt" DESC LIMIT 100`,user.id);
-    const mapped=orders.map(o=>({...o,role:o.buyerId===user.id?"BUYER":"SELLER"}));
+    const mapped:AccountOrderRow[]=orders.map(o=>({...o,role:o.buyerId===user.id?"BUYER":"SELLER"}));
     return reply.send({orders:mapped,summary:{purchases:mapped.filter(o=>o.role==="BUYER").length,sales:mapped.filter(o=>o.role==="SELLER").length,active:mapped.filter(o=>!["COMPLETED","CANCELED","REFUNDED"].includes(String(o.status))).length,disputes:mapped.filter(o=>o.disputeId&&!["RESOLVED_BUYER","RESOLVED_SELLER","CLOSED"].includes(String(o.disputeStatus))).length}})
   })
 }
