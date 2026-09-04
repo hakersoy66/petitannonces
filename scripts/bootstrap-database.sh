@@ -18,7 +18,7 @@ if [[ "$existing_tables" != "0" ]]; then
   exit 3
 fi
 
-pnpm --filter @pa/database exec prisma db push --skip-generate
+pnpm --filter @pa/database exec prisma db push
 bash scripts/apply-sql-migrations.sh
 
 echo "Database bootstrap completed."
