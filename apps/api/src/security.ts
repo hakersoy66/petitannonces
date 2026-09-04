@@ -110,16 +110,4 @@ export async function registerSecurityRoutes(app: FastifyInstance) {
 
     return reply.code(204).send();
   });
-
-  app.post("/account/sessions/revoke-others", async (request, reply) => {
-    const session = await currentSession(request, reply);
-    if (!session) return;
-
-    await prisma.session.updateMany({
-      where: { userId: session.userId, id: { not: session.id }, revokedAt: null },
-      data: { revokedAt: new Date() },
-    });
-
-    return reply.send({ revoked: true });
-  });
 }
