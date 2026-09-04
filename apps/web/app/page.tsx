@@ -19,12 +19,12 @@ const listings = [
   { title: "MacBook Air M4 · 15 pouces", price: "1 199 €", city: "Nantes", meta: "Sous garantie", tone: "blue" },
   { title: "Vélo électrique Moustache", price: "1 690 €", city: "Annecy", meta: "1 200 km", tone: "mint" },
   { title: "Sony PlayStation 5 Slim", price: "399 €", city: "Lille", meta: "Excellent état", tone: "rose" },
-];
+] as const;
 
 const categoryRows = [
   { title: "High-tech à la une", slug: "high-tech", items: listings.slice(0, 3) },
-  { title: "Auto & mobilité", slug: "vehicules", items: [listings[1], listings[4], listings[0]] },
-  { title: "Maison & quotidien", slug: "maison-jardin", items: [listings[2], listings[5], listings[3]] },
+  { title: "Auto & mobilité", slug: "vehicules", items: [listings[1]!, listings[4]!, listings[0]!] },
+  { title: "Maison & quotidien", slug: "maison-jardin", items: [listings[2]!, listings[5]!, listings[3]!] },
 ];
 
 const trustItems = [
