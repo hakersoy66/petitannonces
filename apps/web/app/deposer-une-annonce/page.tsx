@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { CatalogBrowser } from "../../components/catalog-browser";
+import { ListingPhotoUploader } from "../../components/listing-photo-uploader";
 import { SiteHeader } from "../../components/site-header";
 import styles from "./page.module.css";
 
@@ -10,7 +11,10 @@ export const metadata: Metadata = {
 
 const steps = ["Catégorie", "Détails", "Photos", "Prix & livraison", "Vérification"];
 
-export default function CreateListingPage() {
+type Props = { searchParams: Promise<{ listingId?: string }> };
+
+export default async function CreateListingPage({ searchParams }: Props) {
+  const { listingId } = await searchParams;
   return (
     <div className={styles.page}>
       <SiteHeader />
@@ -19,12 +23,12 @@ export default function CreateListingPage() {
           <div className={styles.heading}>
             <p className={styles.eyebrow}>Nouvelle annonce</p>
             <h1>Choisissez la bonne catégorie, le formulaire fait le reste.</h1>
-            <p>Petit Annonces adapte automatiquement les champs, contrôles et filtres à la sous-catégorie choisie.</p>
+            <p>Petit Annonces adapte automatiquement les champs, contrôles, photos et filtres à la sous-catégorie choisie.</p>
           </div>
 
           <ol className={styles.steps} aria-label="Étapes de création de l'annonce">
             {steps.map((step, index) => (
-              <li key={step} className={index === 0 ? styles.activeStep : undefined}>
+              <li key={step} className={index <= 2 ? styles.activeStep : undefined}>
                 <span>{index + 1}</span>
                 {step}
               </li>
@@ -34,12 +38,24 @@ export default function CreateListingPage() {
           <section className={styles.card}>
             <div className={styles.cardHeader}>
               <div>
-                <p className={styles.stepLabel}>Étape 1 sur 5</p>
+                <p className={styles.stepLabel}>Étape 1 · Catégorie & détails</p>
                 <h2>Que souhaitez-vous vendre ou proposer ?</h2>
               </div>
               <span className={styles.saved}>Brouillon enregistré</span>
             </div>
             <CatalogBrowser />
+          </section>
+
+          <section className={`${styles.card} ${styles.photoSection}`}>
+            <div className={styles.cardHeader}>
+              <div>
+                <p className={styles.stepLabel}>Étape 3 · Photos</p>
+                <h2>Des photos nettes donnent plus de confiance.</h2>
+                <p className={styles.cardIntro}>Ajoutez, réordonnez et choisissez la photo de couverture. Sur mobile, vous pouvez prendre une photo directement avec l’appareil photo.</p>
+              </div>
+              <span className={styles.photoTip}>20 photos max</span>
+            </div>
+            <ListingPhotoUploader listingId={listingId} />
           </section>
 
           <div className={styles.specialGrid}>
@@ -75,7 +91,7 @@ export default function CreateListingPage() {
 
           <div className={styles.actions}>
             <a href="/" className={styles.secondaryButton}>Annuler</a>
-            <button type="button" className={styles.primaryButton}>Continuer</button>
+            <button type="button" className={styles.primaryButton}>Continuer vers prix & livraison</button>
           </div>
         </div>
       </main>
