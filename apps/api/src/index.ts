@@ -37,6 +37,7 @@ import { requireAdminRoles } from "./rbac.js";
 import { registerSearchRoutes } from "./search.js";
 import { registerSecurityRoutes } from "./security.js";
 import { registerShippingRoutes } from "./shipping.js";
+import { registerTwoFactorRoutes } from "./two-factor.js";
 
 const app = Fastify({ logger: true, trustProxy: true, bodyLimit: 1024 * 1024 });
 await app.register(cookie);
@@ -53,6 +54,7 @@ await registerAccountOrderRoutes(app);
 await registerAccountReviewRoutes(app);
 await registerAccountSettingsRoutes(app);
 await registerPhoneVerificationRoutes(app);
+await registerTwoFactorRoutes(app);
 await registerSecurityRoutes(app);
 await registerListingRoutes(app);
 await registerListingCommerceRoutes(app);
