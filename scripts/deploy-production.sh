@@ -35,7 +35,12 @@ ln -sfn "$SHARED/.env" "$RELEASE/.env"
 
 cd "$RELEASE"
 corepack enable >/dev/null 2>&1 || true
-pnpm install --frozen-lockfile
+if [[ -f pnpm-lock.yaml ]]; then
+  pnpm install --frozen-lockfile
+else
+  echo "WARNING: pnpm-lock.yaml missing; installing with --no-frozen-lockfile." >&2
+  pnpm install --no-frozen-lockfile
+fi
 pnpm build
 
 test -d apps/web/.next
