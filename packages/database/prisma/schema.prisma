@@ -7,7 +7,7 @@ datasource db {
   provider = "postgresql"
 }
 
-enum UserKind {
+enum UserKind { 
   PARTICULIER
   PROFESSIONNEL
 }
@@ -48,7 +48,7 @@ enum ListingStatus {
 enum CategoryDomain {
   GENERAL
   VEHICLE
-  PROPERTY
+  REAL_ESTATE
   JOB
   SERVICE
   ANIMAL
@@ -65,7 +65,7 @@ enum AttributeType {
 
 enum PropertyTransactionType {
   SALE
-  RENT
+  RENTAL
 }
 
 enum EnergyClass {
