@@ -3,6 +3,7 @@ import Fastify from "fastify";
 import { registerAccountRoutes } from "./account.js";
 import { registerAuthRoutes } from "./auth.js";
 import { requireAdminRoles } from "./rbac.js";
+import { registerSecurityRoutes } from "./security.js";
 
 const app = Fastify({
   logger: true,
@@ -20,6 +21,7 @@ app.get("/health", async () => ({
 
 await registerAuthRoutes(app);
 await registerAccountRoutes(app);
+await registerSecurityRoutes(app);
 
 app.get(
   "/admin/session-check",
