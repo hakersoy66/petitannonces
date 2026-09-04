@@ -3,7 +3,7 @@
   "globalEnv": ["DATABASE_URL"],
   "tasks": {
     "dev": { "cache": false, "persistent": true },
-    "build": { "dependsOn": ["^build"], "outputs": [".next/**", "dist/**"] },
-    "typecheck": { "dependsOn": ["^typecheck"], "outputs": [] }
+    "build": { "dependsOn": ["^build"], "outputs": [".next/**", "dist/**", "generated/**"] },
+    "typecheck": { "dependsOn": ["^build", "^typecheck"], "outputs": [] }
   }
 }
