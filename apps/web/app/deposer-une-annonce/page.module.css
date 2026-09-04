@@ -2,7 +2,7 @@
 .main { padding: 48px 0 80px; }
 .shell { width: min(1120px, calc(100% - 32px)); margin: 0 auto; }
 .heading { max-width: 780px; }
-.heading h1 { margin: 10px 0 16px; font-size: clamp(2.3rem, 5vw, 4.4rem); line-height: .98; letter-spacing: -.055em; }
+.heading h1 { margin: 10px 0 16px; font-size: clamp(2.3rem, 5vw, 4.4rem); line-height: .98; letter-spacing: -.055em; text-wrap: balance; }
 .heading > p:last-child { color: #6b6b7b; font-size: 1.05rem; line-height: 1.7; }
 .eyebrow, .stepLabel { margin: 0; color: #5b4cf0; font-size: .75rem; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
 .steps { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; list-style: none; padding: 0; margin: 34px 0; }
@@ -11,9 +11,9 @@
 .steps .activeStep { color: #28283a; }
 .steps .activeStep span { background: #5b4cf0; color: #fff; }
 .card, .specialCard { background: white; border: 1px solid #e6e6ed; border-radius: 26px; box-shadow: 0 18px 50px rgba(32, 29, 73, .06); }
-.card { padding: 28px; }
+.card { padding: 28px; scroll-margin-top: 96px; }
 .cardHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; }
-.cardHeader h2, .specialCard h2 { margin: 7px 0 0; font-size: clamp(1.35rem, 2.5vw, 2rem); letter-spacing: -.035em; }
+.cardHeader h2, .specialCard h2 { margin: 7px 0 0; font-size: clamp(1.35rem, 2.5vw, 2rem); letter-spacing: -.035em; text-wrap: balance; }
 .cardIntro { margin: 10px 0 0; max-width: 700px; color: #707080; line-height: 1.6; }
 .saved, .photoTip { color: #15765b; background: #eaf8f2; border-radius: 999px; padding: 8px 11px; font-size: .75rem; font-weight: 800; white-space: nowrap; }
 .photoTip { color: #4b3fd1; background: #f0eeff; }
@@ -34,7 +34,8 @@
 .vehicleCard { background: linear-gradient(135deg, #fff 65%, #f1eeff); }
 .energyCard { background: linear-gradient(135deg, #fff 65%, #edf9f1); }
 .inlineForm { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-top: 18px; }
-.inlineForm input { min-width: 0; border: 1px solid #dcdce5; border-radius: 14px; padding: 13px 14px; text-transform: uppercase; letter-spacing: .08em; }
+.inlineForm input { min-width: 0; min-height: 48px; border: 1px solid #dcdce5; border-radius: 14px; padding: 13px 14px; text-transform: uppercase; letter-spacing: .08em; outline: none; }
+.inlineForm input:focus { border-color: #7567f4; box-shadow: 0 0 0 4px rgba(91,76,240,.1); }
 .inlineForm button, .primaryButton { border: 0; border-radius: 14px; background: #5b4cf0; color: white; padding: 13px 16px; font-weight: 800; cursor: pointer; }
 .privacy { display: block; margin-top: 10px; color: #858594; }
 .energyRows { display: grid; gap: 8px; margin-top: 18px; }
@@ -42,7 +43,9 @@
 .energyRows i { color: #6c6c7c; font-style: normal; }
 .actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px; }
 .primaryButton, .secondaryButton { display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: 0 22px; border-radius: 999px; font-weight: 800; }
+.primaryButton { box-shadow: 0 10px 24px rgba(91,76,240,.22); }
 .secondaryButton { background: white; border: 1px solid #dedee7; }
+.disabledButton { opacity: .52; cursor: not-allowed; box-shadow: none; user-select: none; }
 @media (max-width: 900px) {
   .categoryGrid { grid-template-columns: repeat(2, 1fr); }
   .specialGrid { grid-template-columns: 1fr; }
@@ -50,15 +53,25 @@
   .steps li { font-size: 0; justify-content: center; }
 }
 @media (max-width: 600px) {
-  .main { padding-top: 30px; }
+  .main { padding: 26px 0 64px; }
   .shell { width: min(100% - 20px, 1120px); }
-  .card { padding: 20px; }
+  .heading h1 { font-size: clamp(2.15rem, 11vw, 3.2rem); }
+  .heading > p:last-child { font-size: .95rem; }
+  .steps { margin: 24px 0; gap: 6px; }
+  .steps li span { width: 30px; height: 30px; }
+  .card { padding: 20px; border-radius: 20px; }
   .cardHeader { display: block; }
   .saved, .photoTip { display: inline-block; margin-top: 12px; }
   .categoryGrid { grid-template-columns: 1fr 1fr; gap: 10px; }
-  .category { padding: 17px 14px; min-height: 135px; }
-  .specialCard { grid-template-columns: 1fr; padding: 21px; }
+  .category { padding: 17px 14px; min-height: 135px; border-radius: 16px; }
+  .specialCard { grid-template-columns: 1fr; padding: 21px; border-radius: 20px; }
   .inlineForm { grid-template-columns: 1fr; }
+  .inlineForm button { min-height: 48px; }
   .energyRows span { display: grid; gap: 4px; }
-  .actions { display: grid; grid-template-columns: 1fr 1fr; }
+  .actions { position: sticky; bottom: 0; z-index: 20; display: grid; grid-template-columns: 1fr 1.35fr; margin: 24px -10px -12px; padding: 12px 10px calc(12px + env(safe-area-inset-bottom)); background: rgba(247,247,251,.94); backdrop-filter: blur(14px); border-top: 1px solid rgba(222,222,231,.9); }
+  .primaryButton, .secondaryButton { min-height: 50px; padding-inline: 14px; text-align: center; font-size: 13px; }
+}
+@media (max-width: 380px) {
+  .categoryGrid { grid-template-columns: 1fr; }
+  .actions { grid-template-columns: 1fr; }
 }
