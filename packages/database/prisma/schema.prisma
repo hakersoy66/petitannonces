@@ -1,0 +1,62 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserKind {
+  PARTICULIER
+  PROFESSIONNEL
+}
+
+enum ListingStatus {
+  DRAFT
+  PENDING
+  PUBLISHED
+  SUSPENDED
+  SOLD
+  EXPIRED
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  kind      UserKind @default(PARTICULIER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  listings  Listing[]
+}
+
+model Category {
+  id        String     @id @default(cuid())
+  name      String
+  slug      String     @unique
+  parentId  String?
+  parent    Category?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children  Category[] @relation("CategoryTree")
+  listings  Listing[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+}
+
+model Listing {
+  id          String        @id @default(cuid())
+  title       String
+  slug        String        @unique
+  description String
+  priceMinor  Int?
+  currency    String        @default("EUR")
+  status      ListingStatus @default(DRAFT)
+  sellerId    String
+  categoryId  String
+  seller      User          @relation(fields: [sellerId], references: [id])
+  category    Category      @relation(fields: [categoryId], references: [id])
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([status, categoryId])
+  @@index([sellerId, createdAt])
+}
