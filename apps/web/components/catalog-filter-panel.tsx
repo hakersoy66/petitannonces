@@ -1,13 +1,13 @@
 "use client";
 
-import { flattenCatalog } from "@pa/types";
+import { flattenDeepCatalog } from "@pa/types";
 import { useMemo, useState } from "react";
 import styles from "./catalog-filter-panel.module.css";
 
-const categories = flattenCatalog().filter((category) => !category.children?.length);
+const categories = flattenDeepCatalog().filter((category) => !category.children?.length);
 
 export function CatalogFilterPanel() {
-  const [slug, setSlug] = useState("voitures");
+  const [slug, setSlug] = useState("voitures-suv");
   const category = useMemo(() => categories.find((item) => item.slug === slug) ?? categories[0], [slug]);
 
   return (
@@ -46,7 +46,7 @@ export function CatalogFilterPanel() {
       </div>
 
       {(category?.filters ?? []).map((filter) => (
-        <label className={styles.field} key={filter.key}>
+        <label className={styles.field} key={`${category?.slug}-${filter.key}`}>
           <span>{filter.label}{filter.unit ? ` (${filter.unit})` : ""}</span>
           {filter.type === "SELECT" || filter.type === "MULTISELECT" ? (
             <select defaultValue="">
