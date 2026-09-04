@@ -14,7 +14,7 @@ RELEASE="$RELEASES/$SHA"
 CURRENT="$BASE/current"
 PREVIOUS=""
 
-for cmd in git pnpm pm2 curl pg_dump psql sha256sum; do command -v "$cmd" >/dev/null || { echo "Missing command: $cmd" >&2; exit 3; }; done
+for cmd in git pnpm pm2 curl pg_dump psql sha256sum python3; do command -v "$cmd" >/dev/null || { echo "Missing command: $cmd" >&2; exit 3; }; done
 mkdir -p "$RELEASES" "$SHARED" "$BACKUPS"
 [[ -f "$SHARED/.env" ]] || { echo "Missing $SHARED/.env" >&2; exit 4; }
 
@@ -52,9 +52,12 @@ set -a
 source "$SHARED/.env"
 set +a
 : "${DATABASE_URL:?DATABASE_URL must exist in shared .env}"
+# shellcheck disable=SC1091
+source scripts/lib/database-url.sh
+PG_DATABASE_URL="$(pg_url_from_prisma "$DATABASE_URL")"
 
 backup="$BACKUPS/pre-${SHA}-$(date -u +%Y%m%dT%H%M%SZ).dump"
-pg_dump "$DATABASE_URL" --format=custom --no-owner --no-acl --file="$backup"
+pg_dump "$PG_DATABASE_URL" --format=custom --no-owner --no-acl --file="$backup"
 
 bash scripts/apply-sql-migrations.sh
 
