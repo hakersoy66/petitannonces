@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { hash, Algorithm } from "@node-rs/argon2";
+import { hash } from "@node-rs/argon2";
 import { prisma } from "@pa/database";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
@@ -68,7 +68,7 @@ export async function registerSecurityRoutes(app: FastifyInstance) {
     }
 
     const passwordHash = await hash(parsed.data.password, {
-      algorithm: Algorithm.Argon2id,
+      algorithm: 2,
       memoryCost: 19456,
       timeCost: 2,
       parallelism: 1,
