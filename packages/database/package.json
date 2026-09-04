@@ -10,6 +10,7 @@
     "typecheck": "prisma validate",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
+    "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio"
   },
   "dependencies": {
@@ -19,6 +20,7 @@
   },
   "devDependencies": {
     "@types/pg": "^8.15.5",
-    "prisma": "7.10.0"
+    "prisma": "7.10.0",
+    "tsx": "^4.20.0"
   }
 }
