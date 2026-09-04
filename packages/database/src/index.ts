@@ -1,5 +1,5 @@
 import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient } from "../generated/prisma/client";
+import { PrismaClient } from "../generated/prisma/client.js";
 
 const connectionString = process.env.DATABASE_URL;
 
@@ -10,7 +10,6 @@ if (!connectionString) {
 const adapter = new PrismaPg({ connectionString });
 
 declare global {
-  // eslint-disable-next-line no-var
   var __petitannoncesPrisma: PrismaClient | undefined;
 }
 
@@ -20,4 +19,4 @@ if (process.env.NODE_ENV !== "production") {
   globalThis.__petitannoncesPrisma = prisma;
 }
 
-export * from "../generated/prisma/client";
+export * from "../generated/prisma/client.js";
