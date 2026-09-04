@@ -3,6 +3,7 @@ import { prisma } from "@pa/database";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { requireListingUser } from "./listing-auth.js";
+import { calculateTrustScore } from "./trust-score.js";
 
 type OrderRow={id:string;buyerId:string;sellerId:string;status:string};
 
@@ -41,9 +42,15 @@ export async function registerAccountReviewRoutes(app:FastifyInstance){
     LEFT JOIN LATERAL (SELECT "name","slug","logoUrl","isVerified" FROM "Store" WHERE "ownerId"=u."id" AND "status"='ACTIVE' ORDER BY "createdAt" ASC LIMIT 1) s ON TRUE
     WHERE u."id"=$1 AND u."status"='ACTIVE' LIMIT 1`,p.data.id);
   const profile=profiles[0];if(!profile)return reply.code(404).send({error:"user_not_found"});
-  const summary=await prisma.$queryRawUnsafe<Array<{count:bigint;average:number|null}>>(`SELECT COUNT(*)::bigint AS "count", AVG("rating")::float AS "average" FROM "MarketplaceReview" WHERE "revieweeId"=$1`,p.data.id);
-  const rows=await prisma.$queryRawUnsafe<Array<Record<string,unknown>>>(`SELECT r."id",r."rating",r."comment",r."direction",r."createdAt",COALESCE(p."displayName",p."firstName",'Membre Petit Annonces') AS "reviewerName" FROM "MarketplaceReview" r LEFT JOIN "UserProfile" p ON p."userId"=r."reviewerId" WHERE r."revieweeId"=$1 ORDER BY r."createdAt" DESC LIMIT 20`,p.data.id);
+  const [summary,completedRows,rows]=await Promise.all([
+    prisma.$queryRawUnsafe<Array<{count:bigint;average:number|null}>>(`SELECT COUNT(*)::bigint AS "count", AVG("rating")::float AS "average" FROM "MarketplaceReview" WHERE "revieweeId"=$1`,p.data.id),
+    prisma.$queryRawUnsafe<Array<{count:bigint}>>(`SELECT COUNT(*)::bigint AS "count" FROM "MarketplaceOrder" WHERE "sellerId"=$1 AND "status"='COMPLETED'`,p.data.id),
+    prisma.$queryRawUnsafe<Array<Record<string,unknown>>>(`SELECT r."id",r."rating",r."comment",r."direction",r."createdAt",COALESCE(p."displayName",p."firstName",'Membre Petit Annonces') AS "reviewerName" FROM "MarketplaceReview" r LEFT JOIN "UserProfile" p ON p."userId"=r."reviewerId" WHERE r."revieweeId"=$1 ORDER BY r."createdAt" DESC LIMIT 20`,p.data.id)
+  ]);
+  const verified=profile.verificationStatus==="VERIFIED"||profile.storeVerified===true;
+  const reviewCount=Number(summary[0]?.count??0n);const reviewAverage=summary[0]?.average??null;const completedSales=Number(completedRows[0]?.count??0n);
+  const trust=calculateTrustScore({verified,reviewCount,reviewAverage,completedSales,memberSince:profile.createdAt});
   const name=profile.storeName??profile.tradeName??profile.displayName??profile.firstName??"Membre Petit Annonces";
-  return reply.send({profile:{id:profile.id,kind:profile.kind,name,avatarUrl:profile.avatarUrl??profile.storeLogoUrl??null,memberSince:profile.createdAt,verified:profile.verificationStatus==="VERIFIED"||profile.storeVerified===true,store:profile.storeName?{name:profile.storeName,slug:profile.storeSlug}:null,activeListings:Number(profile.activeListings)},summary:{count:Number(summary[0]?.count??0n),average:summary[0]?.average??null},reviews:rows});
+  return reply.send({profile:{id:profile.id,kind:profile.kind,name,avatarUrl:profile.avatarUrl??profile.storeLogoUrl??null,memberSince:profile.createdAt,verified,store:profile.storeName?{name:profile.storeName,slug:profile.storeSlug}:null,activeListings:Number(profile.activeListings),completedSales,trust},summary:{count:reviewCount,average:reviewAverage},reviews:rows});
  });
 }
