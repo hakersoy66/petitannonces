@@ -3,58 +3,24 @@ import { hash, verify } from "@node-rs/argon2";
 import { prisma } from "@pa/database";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
+import { clearAuthRateLimit, enforceAuthRateLimit } from "./auth-rate-limit.js";
 import { queueTransactionalEmail, verificationActionUrl } from "./transactional-email.js";
 import { grantWelcomeCredits, WELCOME_PA_CREDITS } from "./welcome-credit.js";
 
-const SESSION_COOKIE = "pa_session";
-const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30;
-const EMAIL_TOKEN_TTL_MS = 1000 * 60 * 60 * 24;
-const registerSchema = z.object({ email: z.string().trim().toLowerCase().email(), password: z.string().min(10).max(128), displayName: z.string().trim().min(2).max(80).optional(), kind: z.enum(["PARTICULIER", "PROFESSIONNEL"]).default("PARTICULIER") });
-const loginSchema = z.object({ email: z.string().trim().toLowerCase().email(), password: z.string().min(1).max(128) });
-function sha256(value: string) { return createHash("sha256").update(value).digest("hex"); }
-function newOpaqueToken(bytes = 32) { return randomBytes(bytes).toString("base64url"); }
-async function hashPassword(password: string) { return hash(password,{algorithm:2,memoryCost:19456,timeCost:2,parallelism:1}); }
-async function issueSession(userId:string,request:FastifyRequest,reply:FastifyReply){const token=newOpaqueToken();const expiresAt=new Date(Date.now()+SESSION_TTL_MS);await prisma.session.create({data:{userId,tokenHash:sha256(token),userAgent:request.headers["user-agent"]?.slice(0,500),expiresAt}});reply.setCookie(SESSION_COOKIE,token,{httpOnly:true,secure:process.env.NODE_ENV==="production",sameSite:"lax",path:"/",expires:expiresAt});}
-async function getCurrentUser(request:FastifyRequest){const token=request.cookies[SESSION_COOKIE];if(!token)return null;const session=await prisma.session.findUnique({where:{tokenHash:sha256(token)},include:{user:{include:{profile:true,roles:true}}}});if(!session||session.revokedAt||session.expiresAt<=new Date()||session.user.status!=="ACTIVE")return null;return{session,user:session.user};}
+const SESSION_COOKIE="pa_session";const SESSION_TTL_MS=1000*60*60*24*30;const EMAIL_TOKEN_TTL_MS=1000*60*60*24;
+const registerSchema=z.object({email:z.string().trim().toLowerCase().email(),password:z.string().min(10).max(128),displayName:z.string().trim().min(2).max(80).optional(),kind:z.enum(["PARTICULIER","PROFESSIONNEL"]).default("PARTICULIER")});
+const loginSchema=z.object({email:z.string().trim().toLowerCase().email(),password:z.string().min(1).max(128)});
+function sha256(v:string){return createHash("sha256").update(v).digest("hex")}function newOpaqueToken(bytes=32){return randomBytes(bytes).toString("base64url")}
+async function hashPassword(password:string){return hash(password,{algorithm:2,memoryCost:19456,timeCost:2,parallelism:1})}
+async function issueSession(userId:string,request:FastifyRequest,reply:FastifyReply){const token=newOpaqueToken();const expiresAt=new Date(Date.now()+SESSION_TTL_MS);await prisma.session.create({data:{userId,tokenHash:sha256(token),userAgent:request.headers["user-agent"]?.slice(0,500),expiresAt}});reply.setCookie(SESSION_COOKIE,token,{httpOnly:true,secure:process.env.NODE_ENV==="production",sameSite:"lax",path:"/",expires:expiresAt})}
+async function getCurrentUser(request:FastifyRequest){const token=request.cookies[SESSION_COOKIE];if(!token)return null;const session=await prisma.session.findUnique({where:{tokenHash:sha256(token)},include:{user:{include:{profile:true,roles:true}}}});if(!session||session.revokedAt||session.expiresAt<=new Date()||session.user.status!=="ACTIVE")return null;return{session,user:session.user}}
+async function issueVerificationEmail(userId:string,email:string){const verificationToken=newOpaqueToken();await prisma.emailVerificationToken.updateMany({where:{userId,usedAt:null},data:{usedAt:new Date()}});await prisma.emailVerificationToken.create({data:{userId,tokenHash:sha256(verificationToken),expiresAt:new Date(Date.now()+EMAIL_TOKEN_TTL_MS)}});await queueTransactionalEmail({userId,eventKind:"AUTH_VERIFY_EMAIL",title:"Confirmez votre adresse e-mail",body:`Confirmez l’adresse ${email} pour activer votre compte Petit Annonces. Ce lien est valable 24 heures.`,actionUrl:verificationActionUrl(verificationToken),metadata:{purpose:"EMAIL_VERIFICATION"}});return verificationToken}
 
-async function issueVerificationEmail(userId:string,email:string){
-  const verificationToken=newOpaqueToken();
-  await prisma.emailVerificationToken.updateMany({where:{userId,usedAt:null},data:{usedAt:new Date()}});
-  await prisma.emailVerificationToken.create({data:{userId,tokenHash:sha256(verificationToken),expiresAt:new Date(Date.now()+EMAIL_TOKEN_TTL_MS)}});
-  await queueTransactionalEmail({userId,eventKind:"AUTH_VERIFY_EMAIL",title:"Confirmez votre adresse e-mail",body:`Confirmez l’adresse ${email} pour activer votre compte Petit Annonces. Ce lien est valable 24 heures.`,actionUrl:verificationActionUrl(verificationToken),metadata:{purpose:"EMAIL_VERIFICATION"}});
-  return verificationToken;
-}
-
-export async function registerAuthRoutes(app: FastifyInstance) {
-  app.post("/auth/register", async (request, reply) => {
-    const parsed=registerSchema.safeParse(request.body);if(!parsed.success)return reply.code(400).send({error:"invalid_request",details:parsed.error.flatten()});
-    const {email,password,displayName,kind}=parsed.data;const existing=await prisma.user.findUnique({where:{email}});if(existing)return reply.code(409).send({error:"email_already_registered"});
-    const passwordHash=await hashPassword(password);
-    const user=await prisma.user.create({data:{email,passwordHash,kind,profile:{create:{displayName,locale:"fr-FR",countryCode:"FR"}}},select:{id:true,email:true,kind:true,status:true}});
-    const verificationToken=await issueVerificationEmail(user.id,user.email);
-    return reply.code(201).send({user,verificationRequired:true,welcomeCreditsAfterVerification:WELCOME_PA_CREDITS,...(process.env.NODE_ENV!=="production"?{devVerificationToken:verificationToken}:{})});
-  });
-
-  app.post("/auth/resend-verification", async (request, reply) => {
-    const body=z.object({email:z.string().trim().toLowerCase().email()}).safeParse(request.body);if(!body.success)return reply.code(400).send({error:"invalid_request"});
-    const user=await prisma.user.findUnique({where:{email:body.data.email},select:{id:true,email:true,status:true,emailVerifiedAt:true}});
-    if(user&&user.status==="PENDING_VERIFICATION"&&!user.emailVerifiedAt)await issueVerificationEmail(user.id,user.email);
-    return reply.send({requested:true});
-  });
-
-  app.post("/auth/verify-email", async (request, reply) => {
-    const body=z.object({token:z.string().min(20)}).safeParse(request.body);if(!body.success)return reply.code(400).send({error:"invalid_token"});
-    const record=await prisma.emailVerificationToken.findUnique({where:{tokenHash:sha256(body.data.token)}});if(!record||record.usedAt||record.expiresAt<=new Date())return reply.code(400).send({error:"invalid_or_expired_token"});
-    await prisma.$transaction([prisma.emailVerificationToken.update({where:{id:record.id},data:{usedAt:new Date()}}),prisma.user.update({where:{id:record.userId},data:{status:"ACTIVE",emailVerifiedAt:new Date()}})]);
-    const welcomeCredit=await grantWelcomeCredits(record.userId);
-    await prisma.$executeRawUnsafe(`INSERT INTO "UserNotification" ("id","userId","kind","title","body","actionUrl","metadata") VALUES ($1,$2,'WALLET',$3,$4,$5,$6::jsonb)`,randomUUID(),record.userId,"Bienvenue sur Petit Annonces 🎉",`Votre compte est activé et ${WELCOME_PA_CREDITS} PA crédits ont été ajoutés à votre portefeuille.`,`/mon-compte/portefeuille`,JSON.stringify({credits:WELCOME_PA_CREDITS,source:"WELCOME_BONUS"}));
-    return reply.send({verified:true,welcomeCredits:WELCOME_PA_CREDITS,walletBalance:welcomeCredit.balance});
-  });
-
-  app.post("/auth/login", async (request, reply) => {
-    const parsed=loginSchema.safeParse(request.body);if(!parsed.success)return reply.code(400).send({error:"invalid_request"});const user=await prisma.user.findUnique({where:{email:parsed.data.email}});if(!user)return reply.code(401).send({error:"invalid_credentials"});if(user.lockedUntil&&user.lockedUntil>new Date())return reply.code(423).send({error:"account_temporarily_locked"});const valid=await verify(user.passwordHash,parsed.data.password);if(!valid){const attempts=user.failedLoginAttempts+1;await prisma.user.update({where:{id:user.id},data:{failedLoginAttempts:attempts>=5?0:attempts,lockedUntil:attempts>=5?new Date(Date.now()+15*60*1000):null}});return reply.code(401).send({error:"invalid_credentials"});}if(user.status!=="ACTIVE")return reply.code(403).send({error:user.status==="PENDING_VERIFICATION"?"email_verification_required":"account_unavailable"});await prisma.user.update({where:{id:user.id},data:{failedLoginAttempts:0,lockedUntil:null,lastLoginAt:new Date()}});await issueSession(user.id,request,reply);return reply.send({authenticated:true});
-  });
-
-  app.post("/auth/logout",async(request,reply)=>{const token=request.cookies[SESSION_COOKIE];if(token)await prisma.session.updateMany({where:{tokenHash:sha256(token),revokedAt:null},data:{revokedAt:new Date()}});reply.clearCookie(SESSION_COOKIE,{path:"/"});return reply.code(204).send();});
-  app.get("/auth/me",async(request,reply)=>{const auth=await getCurrentUser(request);if(!auth)return reply.code(401).send({error:"unauthenticated"});return reply.send({user:{id:auth.user.id,email:auth.user.email,kind:auth.user.kind,profile:auth.user.profile,roles:auth.user.roles.map((entry:{role:string})=>entry.role)}});});
+export async function registerAuthRoutes(app:FastifyInstance){
+ app.post("/auth/register",async(request,reply)=>{const parsed=registerSchema.safeParse(request.body);if(!parsed.success)return reply.code(400).send({error:"invalid_request",details:parsed.error.flatten()});const{email,password,displayName,kind}=parsed.data;if(!await enforceAuthRateLimit({request,reply,action:"REGISTER",identity:email,limit:5,windowMs:60*60*1000}))return;const existing=await prisma.user.findUnique({where:{email}});if(existing)return reply.code(409).send({error:"email_already_registered"});const passwordHash=await hashPassword(password);const user=await prisma.user.create({data:{email,passwordHash,kind,profile:{create:{displayName,locale:"fr-FR",countryCode:"FR"}}},select:{id:true,email:true,kind:true,status:true}});const verificationToken=await issueVerificationEmail(user.id,user.email);return reply.code(201).send({user,verificationRequired:true,welcomeCreditsAfterVerification:WELCOME_PA_CREDITS,...(process.env.NODE_ENV!=="production"?{devVerificationToken:verificationToken}:{})})});
+ app.post("/auth/resend-verification",async(request,reply)=>{const body=z.object({email:z.string().trim().toLowerCase().email()}).safeParse(request.body);if(!body.success)return reply.code(400).send({error:"invalid_request"});if(!await enforceAuthRateLimit({request,reply,action:"RESEND_VERIFICATION",identity:body.data.email,limit:3,windowMs:15*60*1000,blockMs:15*60*1000}))return;const user=await prisma.user.findUnique({where:{email:body.data.email},select:{id:true,email:true,status:true,emailVerifiedAt:true}});if(user&&user.status==="PENDING_VERIFICATION"&&!user.emailVerifiedAt)await issueVerificationEmail(user.id,user.email);return reply.send({requested:true,cooldownSeconds:300})});
+ app.post("/auth/verify-email",async(request,reply)=>{const body=z.object({token:z.string().min(20)}).safeParse(request.body);if(!body.success)return reply.code(400).send({error:"invalid_token"});if(!await enforceAuthRateLimit({request,reply,action:"VERIFY_EMAIL",limit:20,windowMs:15*60*1000}))return;const record=await prisma.emailVerificationToken.findUnique({where:{tokenHash:sha256(body.data.token)}});if(!record||record.usedAt||record.expiresAt<=new Date())return reply.code(400).send({error:"invalid_or_expired_token"});await prisma.$transaction([prisma.emailVerificationToken.update({where:{id:record.id},data:{usedAt:new Date()}}),prisma.user.update({where:{id:record.userId},data:{status:"ACTIVE",emailVerifiedAt:new Date()}})]);const welcomeCredit=await grantWelcomeCredits(record.userId);await prisma.$executeRawUnsafe(`INSERT INTO "UserNotification" ("id","userId","kind","title","body","actionUrl","metadata") VALUES ($1,$2,'WALLET',$3,$4,$5,$6::jsonb)`,randomUUID(),record.userId,"Bienvenue sur Petit Annonces 🎉",`Votre compte est activé et ${WELCOME_PA_CREDITS} PA crédits ont été ajoutés à votre portefeuille.`,`/mon-compte/portefeuille`,JSON.stringify({credits:WELCOME_PA_CREDITS,source:"WELCOME_BONUS"}));return reply.send({verified:true,welcomeCredits:WELCOME_PA_CREDITS,walletBalance:welcomeCredit.balance})});
+ app.post("/auth/login",async(request,reply)=>{const parsed=loginSchema.safeParse(request.body);if(!parsed.success)return reply.code(400).send({error:"invalid_request"});if(!await enforceAuthRateLimit({request,reply,action:"LOGIN",identity:parsed.data.email,limit:20,windowMs:15*60*1000,blockMs:15*60*1000}))return;const user=await prisma.user.findUnique({where:{email:parsed.data.email}});if(!user)return reply.code(401).send({error:"invalid_credentials"});if(user.lockedUntil&&user.lockedUntil>new Date())return reply.code(423).send({error:"account_temporarily_locked"});const valid=await verify(user.passwordHash,parsed.data.password);if(!valid){const attempts=user.failedLoginAttempts+1;await prisma.user.update({where:{id:user.id},data:{failedLoginAttempts:attempts>=5?0:attempts,lockedUntil:attempts>=5?new Date(Date.now()+15*60*1000):null}});return reply.code(401).send({error:"invalid_credentials"})}if(user.status!=="ACTIVE")return reply.code(403).send({error:user.status==="PENDING_VERIFICATION"?"email_verification_required":"account_unavailable"});await prisma.user.update({where:{id:user.id},data:{failedLoginAttempts:0,lockedUntil:null,lastLoginAt:new Date()}});await clearAuthRateLimit("LOGIN",request,parsed.data.email);await issueSession(user.id,request,reply);return reply.send({authenticated:true})});
+ app.post("/auth/logout",async(request,reply)=>{const token=request.cookies[SESSION_COOKIE];if(token)await prisma.session.updateMany({where:{tokenHash:sha256(token),revokedAt:null},data:{revokedAt:new Date()}});reply.clearCookie(SESSION_COOKIE,{path:"/"});return reply.code(204).send()});
+ app.get("/auth/me",async(request,reply)=>{const auth=await getCurrentUser(request);if(!auth)return reply.code(401).send({error:"unauthenticated"});return reply.send({user:{id:auth.user.id,email:auth.user.email,kind:auth.user.kind,profile:auth.user.profile,roles:auth.user.roles.map((entry:{role:string})=>entry.role)}})})
 }
