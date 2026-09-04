@@ -14,7 +14,10 @@
 .card { padding: 28px; }
 .cardHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; }
 .cardHeader h2, .specialCard h2 { margin: 7px 0 0; font-size: clamp(1.35rem, 2.5vw, 2rem); letter-spacing: -.035em; }
-.saved { color: #15765b; background: #eaf8f2; border-radius: 999px; padding: 8px 11px; font-size: .75rem; font-weight: 800; white-space: nowrap; }
+.cardIntro { margin: 10px 0 0; max-width: 700px; color: #707080; line-height: 1.6; }
+.saved, .photoTip { color: #15765b; background: #eaf8f2; border-radius: 999px; padding: 8px 11px; font-size: .75rem; font-weight: 800; white-space: nowrap; }
+.photoTip { color: #4b3fd1; background: #f0eeff; }
+.photoSection { margin-top: 20px; display: grid; gap: 22px; }
 .categoryGrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-top: 26px; }
 .category { appearance: none; border: 1px solid #e6e6ed; background: #fff; border-radius: 20px; padding: 22px 18px; min-height: 150px; text-align: left; cursor: pointer; display: flex; flex-direction: column; gap: 7px; transition: .18s ease; color: inherit; }
 .category:hover { transform: translateY(-2px); border-color: #cac6ff; box-shadow: 0 12px 30px rgba(91, 76, 240, .09); }
@@ -51,7 +54,7 @@
   .shell { width: min(100% - 20px, 1120px); }
   .card { padding: 20px; }
   .cardHeader { display: block; }
-  .saved { display: inline-block; margin-top: 12px; }
+  .saved, .photoTip { display: inline-block; margin-top: 12px; }
   .categoryGrid { grid-template-columns: 1fr 1fr; gap: 10px; }
   .category { padding: 17px 14px; min-height: 135px; }
   .specialCard { grid-template-columns: 1fr; padding: 21px; }
