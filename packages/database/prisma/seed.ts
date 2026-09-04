@@ -1,4 +1,4 @@
-import { catalog, type CatalogCategory, type CatalogFilter } from "@pa/types";
+import { deepCatalog, type CatalogCategory, type CatalogFilter } from "@pa/types";
 import { prisma } from "../src/index.js";
 
 async function upsertCategory(category: CatalogCategory, parentId?: string) {
@@ -61,7 +61,7 @@ async function seedNode(category: CatalogCategory, parentId?: string) {
 }
 
 async function main() {
-  for (const category of catalog) await seedNode(category);
+  for (const category of deepCatalog) await seedNode(category);
 }
 
 main()
