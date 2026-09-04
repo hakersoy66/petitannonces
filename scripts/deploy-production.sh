@@ -33,6 +33,13 @@ fi
 git -C "$SOURCE" worktree add --detach "$RELEASE" "$SHA"
 ln -sfn "$SHARED/.env" "$RELEASE/.env"
 
+# Production build-time configuration (Prisma config requires DATABASE_URL).
+set -a
+# shellcheck disable=SC1090
+source "$SHARED/.env"
+set +a
+: "${DATABASE_URL:?DATABASE_URL must exist in shared .env}"
+
 cd "$RELEASE"
 corepack enable >/dev/null 2>&1 || true
 if [[ -f pnpm-lock.yaml ]]; then
@@ -45,13 +52,9 @@ pnpm build
 
 test -d apps/web/.next
 test -d apps/admin/.next
-test -f apps/api/dist/apps/api/src/index.js
+test -f apps/api/dist/index.js
+test -f packages/database/dist/src/index.js
 
-set -a
-# shellcheck disable=SC1090
-source "$SHARED/.env"
-set +a
-: "${DATABASE_URL:?DATABASE_URL must exist in shared .env}"
 # shellcheck disable=SC1091
 source scripts/lib/database-url.sh
 PG_DATABASE_URL="$(pg_url_from_prisma "$DATABASE_URL")"
