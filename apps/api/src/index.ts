@@ -83,8 +83,9 @@ await registerMobilePushRoutes(app);
 await registerNotificationWorkerRoutes(app);
 app.get("/admin/session-check", { preHandler: requireAdminRoles(["SUPER_ADMIN", "ADMIN", "MODERATOR", "SUPPORT", "FINANCE", "COMPLIANCE", "MARKETING"]) }, async () => ({ authorized: true }));
 const port = Number(process.env.API_PORT ?? 4000);
+const host = process.env.API_HOST ?? "127.0.0.1";
 try {
-  await app.listen({ port, host: "0.0.0.0" });
+  await app.listen({ port, host });
   startNotificationWorker(app.log);
 } catch (error) {
   app.log.error(error);
