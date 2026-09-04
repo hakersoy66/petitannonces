@@ -1,18 +1,26 @@
 import type { Metadata } from "next";
-import { catalog, flattenCatalog } from "@pa/types";
+import { deepCatalog, findDeepCategory, type CatalogCategory } from "@pa/types";
 import { notFound } from "next/navigation";
 import { SiteHeader } from "../../../components/site-header";
 import styles from "./page.module.css";
 
 type Props = { params: Promise<{ slug: string }> };
 
-function findCategory(slug: string) {
-  return flattenCatalog().find((item) => item.slug === slug);
+type TrailItem = { name: string; slug: string };
+
+function findTrail(slug: string, nodes: CatalogCategory[] = deepCatalog, trail: TrailItem[] = []): TrailItem[] | null {
+  for (const node of nodes) {
+    const next = [...trail, { name: node.name, slug: node.slug }];
+    if (node.slug === slug) return next;
+    const nested = findTrail(slug, node.children ?? [], next);
+    if (nested) return nested;
+  }
+  return null;
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
-  const category = findCategory(slug);
+  const category = findDeepCategory(slug);
   if (!category) return { title: "Catégorie | Petit Annonces" };
   return {
     title: `${category.name} - Petites annonces en France | Petit Annonces`,
@@ -23,10 +31,11 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function CategoryLandingPage({ params }: Props) {
   const { slug } = await params;
-  const category = findCategory(slug);
+  const category = findDeepCategory(slug);
   if (!category) notFound();
 
-  const root = catalog.find((item) => item.slug === slug) ?? catalog.find((item) => item.children?.some((child) => child.slug === slug));
+  const trail = findTrail(slug) ?? [{ name: category.name, slug: category.slug }];
+  const root = deepCatalog.find((item) => item.slug === trail[0]?.slug);
   const children = category.children ?? [];
   const filters = category.filters ?? [];
 
@@ -34,11 +43,14 @@ export default async function CategoryLandingPage({ params }: Props) {
     <div className={styles.page}>
       <SiteHeader />
       <main className={styles.shell}>
-        <nav className={styles.breadcrumb}>Accueil › {root && root.slug !== category.slug ? `${root.name} › ` : ""}{category.name}</nav>
+        <nav className={styles.breadcrumb} aria-label="Fil d’Ariane">
+          <a href="/">Accueil</a>
+          {trail.map((item, index) => <span key={item.slug}> › {index === trail.length - 1 ? item.name : <a href={`/categorie/${item.slug}`}>{item.name}</a>}</span>)}
+        </nav>
 
         <section className={styles.hero}>
           <div>
-            <p className={styles.eyebrow}>{category.icon ?? root?.icon ?? "•"} Catégorie</p>
+            <p className={styles.eyebrow}>{root?.icon ?? "•"} Catégorie</p>
             <h1>{category.name}</h1>
             <p>{category.description ?? `Achetez et vendez dans la catégorie ${category.name} partout en France.`}</p>
           </div>
@@ -57,7 +69,7 @@ export default async function CategoryLandingPage({ params }: Props) {
               {children.map((child) => (
                 <a key={child.slug} href={`/categorie/${child.slug}`}>
                   <strong>{child.name}</strong>
-                  <span>{child.filters?.slice(0, 3).map((filter) => filter.label).join(" · ") || "Voir les annonces"}</span>
+                  <span>{child.filters?.slice(-3).map((filter) => filter.label).join(" · ") || "Voir les annonces"}</span>
                   <b>›</b>
                 </a>
               ))}
@@ -69,14 +81,14 @@ export default async function CategoryLandingPage({ params }: Props) {
           <section className={styles.section}>
             <div className={styles.sectionHead}><div><span>Affiner</span><h2>Filtres disponibles</h2></div><small>{filters.length} filtres</small></div>
             <div className={styles.filtergrid}>
-              {filters.map((filter) => <span key={filter.key}>{filter.label}{filter.unit ? ` · ${filter.unit}` : ""}</span>)}
+              {filters.map((filter, index) => <span key={`${filter.key}-${index}`}>{filter.label}{filter.unit ? ` · ${filter.unit}` : ""}</span>)}
             </div>
           </section>
         )}
 
         <section className={styles.trust}>
           <div><b>Recherche locale</b><span>Ville, code postal et distance.</span></div>
-          <div><b>Filtres adaptés</b><span>Chaque catégorie affiche uniquement les critères utiles.</span></div>
+          <div><b>Filtres adaptés</b><span>Chaque niveau de catégorie affiche uniquement les critères utiles.</span></div>
           <div><b>Transaction sécurisée</b><span>Paiement, livraison et suivi lorsque disponibles.</span></div>
         </section>
       </main>
