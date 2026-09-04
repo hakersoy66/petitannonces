@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
+import { CatalogBrowser } from "../../components/catalog-browser";
 import { SiteHeader } from "../../components/site-header";
 import styles from "./page.module.css";
 
 export const metadata: Metadata = {
   title: "Déposer une annonce | Petit Annonces",
-  description: "Créez une annonce sur Petit Annonces avec des formulaires adaptés aux véhicules, à l'immobilier et aux autres catégories.",
+  description: "Créez une annonce sur Petit Annonces avec des formulaires adaptés à chaque catégorie en France.",
 };
 
 const steps = ["Catégorie", "Détails", "Photos", "Prix & livraison", "Vérification"];
@@ -17,8 +18,8 @@ export default function CreateListingPage() {
         <div className={styles.shell}>
           <div className={styles.heading}>
             <p className={styles.eyebrow}>Nouvelle annonce</p>
-            <h1>Vendez simplement, avec les bons détails dès le départ.</h1>
-            <p>Le formulaire s’adapte automatiquement à la catégorie choisie et vérifie les informations nécessaires avant publication.</p>
+            <h1>Choisissez la bonne catégorie, le formulaire fait le reste.</h1>
+            <p>Petit Annonces adapte automatiquement les champs, contrôles et filtres à la sous-catégorie choisie.</p>
           </div>
 
           <ol className={styles.steps} aria-label="Étapes de création de l'annonce">
@@ -38,21 +39,7 @@ export default function CreateListingPage() {
               </div>
               <span className={styles.saved}>Brouillon enregistré</span>
             </div>
-
-            <div className={styles.categoryGrid}>
-              <button type="button" className={`${styles.category} ${styles.selected}`}>
-                <span>🚗</span><strong>Véhicules</strong><small>Voitures, motos, utilitaires</small>
-              </button>
-              <button type="button" className={styles.category}>
-                <span>🏠</span><strong>Immobilier</strong><small>Vente et location</small>
-              </button>
-              <button type="button" className={styles.category}>
-                <span>💻</span><strong>High-tech</strong><small>Téléphones, informatique</small>
-              </button>
-              <button type="button" className={styles.category}>
-                <span>🛋️</span><strong>Maison & Jardin</strong><small>Meubles et équipement</small>
-              </button>
-            </div>
+            <CatalogBrowser />
           </section>
 
           <div className={styles.specialGrid}>
@@ -61,7 +48,7 @@ export default function CreateListingPage() {
               <div>
                 <p className={styles.stepLabel}>Véhicules</p>
                 <h2>Ajoutez votre plaque, on pré-remplit le véhicule.</h2>
-                <p>Marque, modèle, date de première immatriculation, énergie, puissance, CO₂ et autres données techniques peuvent être récupérés auprès du fournisseur agréé configuré.</p>
+                <p>Marque, modèle, mise en circulation, énergie, puissance et informations techniques peuvent être récupérés via le fournisseur agréé configuré.</p>
                 <div className={styles.inlineForm}>
                   <input aria-label="Plaque d'immatriculation" placeholder="AB-123-CD" />
                   <button type="button">Identifier le véhicule</button>
@@ -75,12 +62,12 @@ export default function CreateListingPage() {
               <div>
                 <p className={styles.stepLabel}>Immobilier en France</p>
                 <h2>DPE et GES intégrés au formulaire.</h2>
-                <p>Les annonces immobilières demandent les informations énergétiques nécessaires avant envoi en modération.</p>
+                <p>Les informations énergétiques et les attributs du bien sont demandés dans le même parcours.</p>
                 <div className={styles.energyRows}>
                   <span><b>Classe énergie</b><i>A → G</i></span>
                   <span><b>Classe climat / GES</b><i>A → G</i></span>
                   <span><b>Dépenses annuelles estimées</b><i>Min / Max €</i></span>
-                  <span><b>Année(s) de référence</b><i>Obligatoire</i></span>
+                  <span><b>Année(s) de référence</b><i>Contrôlé</i></span>
                 </div>
               </div>
             </section>
