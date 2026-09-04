@@ -23,6 +23,8 @@ import { registerMediaRoutes } from "./media.js";
 import { registerMessagingRoutes } from "./messaging.js";
 import { registerMobilePushRoutes } from "./mobile-push.js";
 import { registerModerationRoutes } from "./moderation.js";
+import { registerNotificationWorkerRoutes } from "./notification-worker-routes.js";
+import { startNotificationWorker } from "./notification-worker.js";
 import { registerOperationsRoutes } from "./operations.js";
 import { registerOrderFulfillmentRoutes } from "./order-fulfillment.js";
 import { registerPaymentRoutes } from "./payments.js";
@@ -70,6 +72,13 @@ await registerOperationsRoutes(app);
 await registerGrowthRoutes(app);
 await registerGrowthAdminRoutes(app);
 await registerMobilePushRoutes(app);
+await registerNotificationWorkerRoutes(app);
 app.get("/admin/session-check", { preHandler: requireAdminRoles(["SUPER_ADMIN", "ADMIN", "MODERATOR", "SUPPORT", "FINANCE", "COMPLIANCE", "MARKETING"]) }, async () => ({ authorized: true }));
 const port = Number(process.env.API_PORT ?? 4000);
-try { await app.listen({ port, host: "0.0.0.0" }); } catch (error) { app.log.error(error); process.exit(1); }
+try {
+  await app.listen({ port, host: "0.0.0.0" });
+  startNotificationWorker(app.log);
+} catch (error) {
+  app.log.error(error);
+  process.exit(1);
+}
