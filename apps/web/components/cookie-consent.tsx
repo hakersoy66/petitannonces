@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 
 const STORAGE_KEY = "pa_cookie_consent_v1";
 const POLICY_VERSION = "2026-09";
-
 type Choices = { analytics: boolean; personalization: boolean; advertising: boolean };
 
 function anonymousId() {
@@ -16,45 +15,35 @@ function anonymousId() {
   return value;
 }
 
+const secondary = { border: "1px solid #d9d7e5", background: "#fff", color: "#222236", borderRadius: 999, padding: "12px 18px", fontWeight: 800, cursor: "pointer" } as const;
+const primary = { ...secondary, border: 0, background: "#5b4cf0", color: "#fff" } as const;
+
 export function CookieConsent() {
   const [open, setOpen] = useState(false);
   const [settings, setSettings] = useState(false);
   const [choices, setChoices] = useState<Choices>({ analytics: false, personalization: false, advertising: false });
-
   useEffect(() => { setOpen(!localStorage.getItem(STORAGE_KEY)); }, []);
 
   async function save(next: Choices) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...next, policyVersion: POLICY_VERSION, savedAt: new Date().toISOString() }));
-    setChoices(next);
-    setOpen(false);
+    setChoices(next); setOpen(false);
     try {
-      await fetch(`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"}/privacy/cookies`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ anonymousId: anonymousId(), policyVersion: POLICY_VERSION, source: "WEB", choices: next }),
-      });
-    } catch { /* local preference remains authoritative for front-end loading */ }
+      await fetch(`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"}/privacy/cookies`, { method: "POST", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify({ anonymousId: anonymousId(), policyVersion: POLICY_VERSION, source: "WEB", choices: next }) });
+    } catch { /* the local choice still prevents front-end non-essential loading */ }
   }
 
-  if (!open) return <button type="button" onClick={() => setOpen(true)} className="cookie-manage-button">Gérer mes cookies</button>;
+  if (!open) return <button type="button" onClick={() => setOpen(true)} style={{ position: "fixed", right: 18, bottom: 18, zIndex: 70, ...secondary, padding: "9px 13px", fontSize: 12 }}>Gérer mes cookies</button>;
 
   return (
-    <div className="cookie-layer" role="dialog" aria-modal="true" aria-labelledby="cookie-title">
-      <div className="cookie-card">
-        <h2 id="cookie-title">Vos choix de confidentialité</h2>
-        <p>Les cookies strictement nécessaires fonctionnent toujours. Les cookies de mesure d’audience, personnalisation et publicité ne sont activés qu’avec votre accord.</p>
-        {settings && (
-          <div className="cookie-settings">
-            <label><input type="checkbox" checked={choices.analytics} onChange={(e) => setChoices({ ...choices, analytics: e.target.checked })} /> Mesure d’audience</label>
-            <label><input type="checkbox" checked={choices.personalization} onChange={(e) => setChoices({ ...choices, personalization: e.target.checked })} /> Personnalisation</label>
-            <label><input type="checkbox" checked={choices.advertising} onChange={(e) => setChoices({ ...choices, advertising: e.target.checked })} /> Publicité</label>
-          </div>
-        )}
-        <div className="cookie-actions">
-          <button type="button" className="secondary-button" onClick={() => save({ analytics: false, personalization: false, advertising: false })}>Tout refuser</button>
-          <button type="button" className="secondary-button" onClick={() => setSettings(!settings)}>Personnaliser</button>
-          {settings ? <button type="button" className="primary-button" onClick={() => save(choices)}>Enregistrer mes choix</button> : <button type="button" className="primary-button" onClick={() => save({ analytics: true, personalization: true, advertising: true })}>Tout accepter</button>}
+    <div role="dialog" aria-modal="true" aria-labelledby="cookie-title" style={{ position: "fixed", inset: 0, zIndex: 100, display: "grid", alignItems: "end", background: "rgba(18,18,35,.34)", padding: 18 }}>
+      <div style={{ width: "min(760px,100%)", margin: "0 auto", background: "#fff", borderRadius: 24, padding: 24, boxShadow: "0 28px 80px rgba(24,22,55,.24)" }}>
+        <h2 id="cookie-title" style={{ margin: 0, fontSize: 25 }}>Vos choix de confidentialité</h2>
+        <p style={{ color: "#66667a", lineHeight: 1.6, margin: "10px 0 0" }}>Les cookies strictement nécessaires fonctionnent toujours. La mesure d’audience, la personnalisation et la publicité ne sont activées qu’avec votre accord.</p>
+        {settings && <div style={{ display: "grid", gap: 10, marginTop: 18 }}>{([['analytics','Mesure d’audience'],['personalization','Personnalisation'],['advertising','Publicité']] as const).map(([key,label]) => <label key={key} style={{ display: "flex", gap: 10, alignItems: "center", padding: 12, border: "1px solid #ecebf2", borderRadius: 14 }}><input type="checkbox" checked={choices[key]} onChange={(e) => setChoices({ ...choices, [key]: e.target.checked })} /> {label}</label>)}</div>}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 22 }}>
+          <button type="button" style={secondary} onClick={() => save({ analytics: false, personalization: false, advertising: false })}>Tout refuser</button>
+          <button type="button" style={secondary} onClick={() => setSettings(!settings)}>Personnaliser</button>
+          {settings ? <button type="button" style={primary} onClick={() => save(choices)}>Enregistrer mes choix</button> : <button type="button" style={primary} onClick={() => save({ analytics: true, personalization: true, advertising: true })}>Tout accepter</button>}
         </div>
       </div>
     </div>
