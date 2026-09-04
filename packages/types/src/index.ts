@@ -30,3 +30,4 @@ export interface MobileApiEnvelope<T> {
 }
 
 export * from "./catalog";
+export * from "./deep-catalog";
