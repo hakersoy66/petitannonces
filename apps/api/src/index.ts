@@ -5,6 +5,7 @@ import { registerAuthRoutes } from "./auth.js";
 import { registerComplianceRoutes } from "./compliance.js";
 import { registerDsaComplianceRoutes } from "./dsa-compliance.js";
 import { registerDisputeRoutes } from "./disputes.js";
+import { registerGrowthRoutes } from "./growth.js";
 import { registerListingRoutes } from "./listings.js";
 import { registerMessagingRoutes } from "./messaging.js";
 import { registerModerationRoutes } from "./moderation.js";
@@ -33,6 +34,7 @@ await registerModerationRoutes(app);
 await registerComplianceRoutes(app);
 await registerDsaComplianceRoutes(app);
 await registerOperationsRoutes(app);
+await registerGrowthRoutes(app);
 app.get("/admin/session-check", { preHandler: requireAdminRoles(["SUPER_ADMIN", "ADMIN", "MODERATOR", "SUPPORT", "FINANCE", "COMPLIANCE", "MARKETING"]) }, async () => ({ authorized: true }));
 const port = Number(process.env.API_PORT ?? 4000);
 try { await app.listen({ port, host: "0.0.0.0" }); } catch (error) { app.log.error(error); process.exit(1); }
