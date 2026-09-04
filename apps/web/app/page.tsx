@@ -21,10 +21,12 @@ const listings = [
   { title: "Sony PlayStation 5 Slim", price: "399 €", city: "Lille", meta: "Excellent état", tone: "rose" },
 ] as const;
 
-const categoryRows = [
-  { title: "High-tech à la une", slug: "high-tech", items: listings.slice(0, 3) },
-  { title: "Auto & mobilité", slug: "vehicules", items: [listings[1]!, listings[4]!, listings[0]!] },
-  { title: "Maison & quotidien", slug: "maison-jardin", items: [listings[2]!, listings[5]!, listings[3]!] },
+type Listing = (typeof listings)[number];
+
+const categoryRows: { title: string; slug: string; items: readonly Listing[] }[] = [
+  { title: "High-tech à la une", slug: "high-tech", items: [listings[0], listings[3], listings[5]] },
+  { title: "Auto & mobilité", slug: "vehicules", items: [listings[1], listings[4], listings[0]] },
+  { title: "Maison & quotidien", slug: "maison-jardin", items: [listings[2], listings[5], listings[3]] },
 ];
 
 const trustItems = [
@@ -33,7 +35,7 @@ const trustItems = [
   { icon: "↗", title: "Livraison suivie", text: "Suivez votre colis et gardez toutes les étapes d'achat au même endroit." },
 ];
 
-function ListingCard({ listing, index = 0, compact = false }: { listing: (typeof listings)[number]; index?: number; compact?: boolean }) {
+function ListingCard({ listing, index = 0, compact = false }: { listing: Listing; index?: number; compact?: boolean }) {
   return <article className={`listing-card${compact ? " listing-card-compact" : ""}`}>
     <div className={`listing-visual listing-visual-${listing.tone}`}>
       <span className="visual-watermark">{index % 3 === 0 ? "PA" : index % 3 === 1 ? "PRO" : "NEW"}</span>
