@@ -7,7 +7,7 @@ const nav = [
   ["Recherche", "/recherche", "⌕"],
   ["Déposer", "/deposer-une-annonce", "+"],
   ["Messages", "/messages", "✉"],
-  ["Compte", "/conformite", "☺"],
+  ["Compte", "/mon-compte", "☺"],
 ];
 
 export function PwaClient() {
