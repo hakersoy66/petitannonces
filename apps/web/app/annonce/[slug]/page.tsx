@@ -49,6 +49,8 @@ export default async function ListingPage({ params }: Props) {
 
   const isVehicle = listing.category.domain === "VEHICLE";
   const isProperty = listing.category.domain === "REAL_ESTATE";
+  const canCheckout = !isVehicle && !isProperty && listing.priceMinor != null && listing.commerce.securePaymentEnabled && listing.commerce.shippingEnabled;
+  const checkoutHref = `/checkout?listingId=${encodeURIComponent(listing.id)}`;
   const title = listing.title ?? listing.category.name;
   const price = formatMoney(listing.priceMinor, listing.currency);
   const location = [listing.city, listing.postalCode].filter(Boolean).join(" ") || listing.region || "France";
@@ -101,12 +103,12 @@ export default async function ListingPage({ params }: Props) {
           </section>
 
           <aside className={styles.sidebar}>
-            <div className={styles.priceCard}><div className={styles.priceLabel}>Prix</div><div className={styles.price}>{price}</div><button className={styles.primary}>{isProperty ? "Demander une visite" : isVehicle ? "Contacter le vendeur" : "Acheter en toute sécurité"}</button><button className={styles.secondary}>Envoyer un message</button>{!isProperty && <button className={styles.ghost}>Faire une offre</button>}<div className={styles.secure}>{isVehicle ? "🚘 Vérifiez les documents et organisez l’essai avant la transaction." : isProperty ? "🏠 Vérifiez diagnostics et informations du bien avant engagement." : "🔒 Paiement protégé lorsque la transaction Petit Annonces est disponible."}</div></div>
+            <div className={styles.priceCard}><div className={styles.priceLabel}>Prix</div><div className={styles.price}>{price}</div>{canCheckout ? <a className={styles.primary} href={checkoutHref}>Acheter en toute sécurité</a> : <button className={styles.primary}>{isProperty ? "Demander une visite" : isVehicle ? "Contacter le vendeur" : "Contacter le vendeur"}</button>}<button className={styles.secondary}>Envoyer un message</button>{!isProperty && <button className={styles.ghost}>Faire une offre</button>}<div className={styles.secure}>{isVehicle ? "🚘 Vérifiez les documents et organisez l’essai avant la transaction." : isProperty ? "🏠 Vérifiez diagnostics et informations du bien avant engagement." : canCheckout ? "🔒 Paiement protégé et livraison Sendcloud disponibles pour cette annonce." : "🔒 Contactez le vendeur pour organiser la transaction."}</div></div>
             <div className={styles.sellerCard}><div className={styles.sellerHead}><div className={styles.avatar}>{listing.seller.name.slice(0, 2).toUpperCase()}</div><div><strong>{listing.seller.name}</strong><div className={styles.meta}>{listing.seller.verified && <span>Vérifié</span>}</div></div></div><button className={styles.ghost}>Voir le profil</button></div>
           </aside>
         </div>
       </main>
-      <div className={styles.mobileBar}><div className={styles.mobileBarInner}><div><small>Prix</small><strong>{price}</strong></div><button>{isProperty ? "Contacter" : isVehicle ? "Message" : "Acheter"}</button></div></div>
+      <div className={styles.mobileBar}><div className={styles.mobileBarInner}><div><small>Prix</small><strong>{price}</strong></div>{canCheckout ? <a href={checkoutHref}>Acheter</a> : <button>{isProperty ? "Contacter" : isVehicle ? "Message" : "Contacter"}</button>}</div></div>
     </div>
   );
 }
