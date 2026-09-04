@@ -45,25 +45,55 @@ enum ListingStatus {
   EXPIRED
 }
 
+enum CategoryDomain {
+  GENERAL
+  VEHICLE
+  REAL_ESTATE
+}
+
+enum AttributeType {
+  TEXT
+  NUMBER
+  BOOLEAN
+  SELECT
+  MULTISELECT
+  DATE
+}
+
+enum PropertyTransactionType {
+  SALE
+  RENTAL
+}
+
+enum EnergyClass {
+  A
+  B
+  C
+  D
+  E
+  F
+  G
+}
+
 model User {
-  id                 String       @id @default(cuid())
-  email              String       @unique
-  emailVerifiedAt    DateTime?
-  passwordHash       String
-  kind               UserKind     @default(PARTICULIER)
-  status             UserStatus   @default(PENDING_VERIFICATION)
-  failedLoginAttempts Int         @default(0)
-  lockedUntil        DateTime?
-  lastLoginAt        DateTime?
-  createdAt          DateTime     @default(now())
-  updatedAt          DateTime     @updatedAt
-  profile            UserProfile?
-  addresses          Address[]
-  sessions           Session[]
-  verificationTokens EmailVerificationToken[]
+  id                  String       @id @default(cuid())
+  email               String       @unique
+  emailVerifiedAt     DateTime?
+  passwordHash        String
+  kind                UserKind     @default(PARTICULIER)
+  status              UserStatus   @default(PENDING_VERIFICATION)
+  failedLoginAttempts Int          @default(0)
+  lockedUntil         DateTime?
+  lastLoginAt         DateTime?
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+  profile             UserProfile?
+  addresses           Address[]
+  sessions            Session[]
+  verificationTokens  EmailVerificationToken[]
   passwordResetTokens PasswordResetToken[]
-  roles              UserAdminRole[]
-  listings           Listing[]
+  roles               UserAdminRole[]
+  listings            Listing[]
 
   @@index([status, createdAt])
 }
@@ -104,16 +134,16 @@ model Address {
 }
 
 model Session {
-  id          String   @id @default(cuid())
-  userId      String
-  tokenHash   String   @unique
-  userAgent   String?
-  ipHash      String?
-  expiresAt   DateTime
-  lastSeenAt  DateTime @default(now())
-  revokedAt   DateTime?
-  createdAt   DateTime @default(now())
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id         String   @id @default(cuid())
+  userId     String
+  tokenHash  String   @unique
+  userAgent  String?
+  ipHash     String?
+  expiresAt  DateTime
+  lastSeenAt DateTime @default(now())
+  revokedAt  DateTime?
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, expiresAt])
 }
@@ -154,32 +184,165 @@ model UserAdminRole {
 }
 
 model Category {
-  id        String     @id @default(cuid())
-  name      String
-  slug      String     @unique
-  parentId  String?
-  parent    Category?  @relation("CategoryTree", fields: [parentId], references: [id])
-  children  Category[] @relation("CategoryTree")
-  listings  Listing[]
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
+  id         String              @id @default(cuid())
+  name       String
+  slug       String              @unique
+  domain     CategoryDomain      @default(GENERAL)
+  parentId   String?
+  parent     Category?           @relation("CategoryTree", fields: [parentId], references: [id])
+  children   Category[]          @relation("CategoryTree")
+  attributes CategoryAttribute[]
+  listings   Listing[]
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
+
+  @@index([domain])
+}
+
+model CategoryAttribute {
+  id          String                    @id @default(cuid())
+  categoryId  String
+  key         String
+  label       String
+  type        AttributeType
+  unit        String?
+  required    Boolean                   @default(false)
+  filterable  Boolean                   @default(true)
+  searchable  Boolean                   @default(false)
+  sortOrder   Int                       @default(0)
+  config      Json?
+  category    Category                  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  options     CategoryAttributeOption[]
+  values      ListingAttributeValue[]
+  createdAt   DateTime                  @default(now())
+  updatedAt   DateTime                  @updatedAt
+
+  @@unique([categoryId, key])
+  @@index([categoryId, sortOrder])
+}
+
+model CategoryAttributeOption {
+  id          String            @id @default(cuid())
+  attributeId String
+  value       String
+  label       String
+  sortOrder   Int               @default(0)
+  attribute   CategoryAttribute @relation(fields: [attributeId], references: [id], onDelete: Cascade)
+
+  @@unique([attributeId, value])
+  @@index([attributeId, sortOrder])
 }
 
 model Listing {
-  id          String        @id @default(cuid())
-  title       String
-  slug        String        @unique
-  description String
-  priceMinor  Int?
-  currency    String        @default("EUR")
-  status      ListingStatus @default(DRAFT)
-  sellerId    String
-  categoryId  String
-  seller      User          @relation(fields: [sellerId], references: [id])
-  category    Category      @relation(fields: [categoryId], references: [id])
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  id            String                  @id @default(cuid())
+  title         String?
+  slug          String?                 @unique
+  description   String?
+  priceMinor    Int?
+  currency      String                  @default("EUR")
+  status        ListingStatus           @default(DRAFT)
+  sellerId      String
+  categoryId    String
+  seller        User                    @relation(fields: [sellerId], references: [id])
+  category      Category                @relation(fields: [categoryId], references: [id])
+  attributes    ListingAttributeValue[]
+  vehicle       VehicleDetails?
+  property      PropertyDetails?
+  energy        PropertyEnergyPerformance?
+  createdAt     DateTime                @default(now())
+  updatedAt     DateTime                @updatedAt
+  publishedAt   DateTime?
 
   @@index([status, categoryId])
   @@index([sellerId, createdAt])
+}
+
+model ListingAttributeValue {
+  id           String            @id @default(cuid())
+  listingId    String
+  attributeId  String
+  valueText    String?
+  valueNumber  Float?
+  valueBoolean Boolean?
+  valueJson    Json?
+  listing      Listing           @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  attribute    CategoryAttribute @relation(fields: [attributeId], references: [id], onDelete: Cascade)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  @@unique([listingId, attributeId])
+  @@index([attributeId, valueText])
+  @@index([attributeId, valueNumber])
+}
+
+model VehicleDetails {
+  id                         String   @id @default(cuid())
+  listingId                  String   @unique
+  registrationPlateHash      String?
+  registrationPlateLast4     String?
+  dataSource                 String?
+  dataVerifiedAt             DateTime?
+  make                       String?
+  model                      String?
+  version                    String?
+  firstRegistrationDate      DateTime?
+  modelYear                  Int?
+  fuel                       String?
+  transmission               String?
+  bodyType                   String?
+  powerKw                    Int?
+  fiscalPowerCv              Int?
+  co2GKm                     Int?
+  euroStandard               String?
+  seats                      Int?
+  doors                      Int?
+  color                      String?
+  mileageKm                  Int?
+  listing                    Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
+}
+
+model PropertyDetails {
+  id              String                  @id @default(cuid())
+  listingId       String                  @unique
+  transactionType PropertyTransactionType
+  propertyType    String
+  surfaceM2       Float
+  rooms           Int?
+  bedrooms        Int?
+  furnished       Boolean                 @default(false)
+  floor           Int?
+  totalFloors     Int?
+  landM2          Float?
+  postalCode      String?
+  city            String?
+  countryCode     String                  @default("FR")
+  listing         Listing                 @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+}
+
+model PropertyEnergyPerformance {
+  id                         String      @id @default(cuid())
+  listingId                  String      @unique
+  dpeNumber                  String?
+  dpeDate                    DateTime?
+  validUntil                 DateTime?
+  isExempt                   Boolean     @default(false)
+  exemptionReason            String?
+  energyClass                EnergyClass?
+  climateClass               EnergyClass?
+  energyConsumptionKwhM2Year Float?
+  ghgKgCo2M2Year             Float?
+  annualCostMinMinor         Int?
+  annualCostMaxMinor         Int?
+  energyPriceReferenceYears  String?
+  excessiveConsumption       Boolean     @default(false)
+  listing                    Listing     @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  createdAt                  DateTime    @default(now())
+  updatedAt                  DateTime    @updatedAt
+
+  @@index([energyClass])
+  @@index([climateClass])
 }
