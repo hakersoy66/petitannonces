@@ -8,8 +8,23 @@ on:
 jobs:
   quality:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: petitannonces
+          POSTGRES_PASSWORD: petitannonces
+          POSTGRES_DB: petitannonces
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U petitannonces -d petitannonces"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
     env:
       DATABASE_URL: postgresql://petitannonces:petitannonces@localhost:5432/petitannonces?schema=public
+      REDIS_URL: ""
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -18,6 +33,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+          cache: pnpm
       - run: pnpm install --no-frozen-lockfile
+      - name: Database bootstrap and migration smoke test
+        run: bash scripts/migration-smoke.sh
       - run: pnpm typecheck
       - run: pnpm build
