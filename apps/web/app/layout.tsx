@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { CookieConsent } from "../components/cookie-consent";
+import { PwaClient } from "../components/pwa-client";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -10,6 +11,13 @@ export const metadata: Metadata = {
   },
   description: "Achetez, vendez et découvrez des annonces partout en France avec paiement protégé, livraison suivie et boutiques professionnelles.",
   applicationName: "Petit Annonces",
+  manifest: "/manifest.webmanifest",
+  themeColor: "#5b4cf0",
+  appleWebApp: {
+    capable: true,
+    title: "Petit Annonces",
+    statusBarStyle: "default",
+  },
   alternates: { canonical: "/" },
   openGraph: {
     type: "website",
@@ -23,7 +31,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="fr">
-      <body>{children}<CookieConsent /></body>
+      <body>{children}<CookieConsent /><PwaClient /></body>
     </html>
   );
 }
