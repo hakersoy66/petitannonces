@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { CatalogBrowser } from "../../components/catalog-browser";
 import { ListingCommerceForm } from "../../components/listing-commerce-form";
 import { ListingPhotoUploader } from "../../components/listing-photo-uploader";
+import { ListingPublicationReview } from "../../components/listing-publication-review";
 import { SiteHeader } from "../../components/site-header";
 import styles from "./page.module.css";
 
@@ -23,13 +24,13 @@ export default async function CreateListingPage({ searchParams }: Props) {
         <div className={styles.shell}>
           <div className={styles.heading}>
             <p className={styles.eyebrow}>Nouvelle annonce</p>
-            <h1>Choisissez la bonne catégorie, le formulaire fait le reste.</h1>
-            <p>Petit Annonces adapte automatiquement les champs, contrôles, photos, prix et options de remise à la catégorie choisie.</p>
+            <h1>Créez, vérifiez et publiez votre annonce.</h1>
+            <p>Petit Annonces adapte les champs, photos, prix, livraison et contrôles de publication à la catégorie choisie.</p>
           </div>
 
           <ol className={styles.steps} aria-label="Étapes de création de l'annonce">
             {steps.map((step, index) => (
-              <li key={step} className={index <= 3 ? styles.activeStep : undefined}>
+              <li key={step} className={index <= 4 ? styles.activeStep : undefined}>
                 <span>{index + 1}</span>
                 {step}
               </li>
@@ -39,7 +40,7 @@ export default async function CreateListingPage({ searchParams }: Props) {
           <section className={styles.card}>
             <div className={styles.cardHeader}>
               <div>
-                <p className={styles.stepLabel}>Étape 1 · Catégorie & détails</p>
+                <p className={styles.stepLabel}>Étapes 1 & 2 · Catégorie & détails</p>
                 <h2>Que souhaitez-vous vendre ou proposer ?</h2>
               </div>
               <span className={styles.saved}>Brouillon enregistré</span>
@@ -69,6 +70,18 @@ export default async function CreateListingPage({ searchParams }: Props) {
               <span className={styles.photoTip}>Paiement & remise</span>
             </div>
             <ListingCommerceForm listingId={listingId} />
+          </section>
+
+          <section className={`${styles.card} ${styles.commerceSection}`}>
+            <div className={styles.cardHeader}>
+              <div>
+                <p className={styles.stepLabel}>Étape 5 · Vérification & publication</p>
+                <h2>Une dernière vérification avant la modération.</h2>
+                <p className={styles.cardIntro}>Nous contrôlons les champs obligatoires, les informations réglementaires, les photos et la livraison avant d’envoyer l’annonce en modération.</p>
+              </div>
+              <span className={styles.photoTip}>Contrôle final</span>
+            </div>
+            <ListingPublicationReview listingId={listingId} />
           </section>
 
           <div className={styles.specialGrid}>
@@ -103,8 +116,8 @@ export default async function CreateListingPage({ searchParams }: Props) {
           </div>
 
           <div className={styles.actions}>
-            <a href="/" className={styles.secondaryButton}>Annuler</a>
-            <button type="button" className={styles.primaryButton}>Continuer vers vérification</button>
+            <a href="/" className={styles.secondaryButton}>Quitter</a>
+            <a href={listingId ? `?listingId=${encodeURIComponent(listingId)}#verification` : "#"} className={styles.primaryButton}>Vérifier l’annonce</a>
           </div>
         </div>
       </main>
