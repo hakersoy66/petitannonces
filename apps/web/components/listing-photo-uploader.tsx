@@ -32,7 +32,7 @@ const MAX_FILES = 20;
 const MAX_BYTES = 15 * 1024 * 1024;
 
 function apiBase() {
-  return (process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:4000").replace(/\/$/, "");
+  return (process.env.NEXT_PUBLIC_API_URL ?? "/api").replace(/\/$/, "");
 }
 
 function readDimensions(file: File) {
@@ -61,7 +61,7 @@ function putWithProgress(url: string, file: File, headers: Record<string, string
 
 export function ListingPhotoUploader({ listingId }: { listingId?: string }) {
   const [items, setItems] = useState<MediaItem[]>([]);
-  const [message, setMessage] = useState<string>(listingId ? "" : "Le brouillon sera créé avant l’envoi définitif des photos.");
+  const [message, setMessage] = useState<string>(listingId ? "" : "Créez d’abord le brouillon de l’annonce.");
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const dragIndex = useRef<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -94,20 +94,19 @@ export function ListingPhotoUploader({ listingId }: { listingId?: string }) {
       setMessage("Maximum 20 photos par annonce.");
       return;
     }
+    if (!listingId) {
+      setMessage("Créez d’abord le brouillon de l’annonce avant d’ajouter des photos.");
+      return;
+    }
 
     const tempId = `local-${crypto.randomUUID()}`;
     const localPreview = URL.createObjectURL(file);
     const optimistic: MediaItem = {
       id: tempId, publicUrl: null, mimeType: file.type, sizeBytes: file.size, width: null, height: null,
-      sortOrder: items.length * 10, isCover: items.length === 0, status: listingId ? "PENDING" : "LOCAL", localPreview, progress: 0, uploading: Boolean(listingId),
+      sortOrder: items.length * 10, isCover: items.length === 0, status: "PENDING", localPreview, progress: 0, uploading: true,
       altText: file.name,
     };
     setItems((current) => [...current, optimistic]);
-
-    if (!listingId) {
-      setMessage("Photo prête. Elle sera envoyée dès que le brouillon de l’annonce sera créé.");
-      return;
-    }
 
     try {
       const intentResponse = await fetch(`${apiBase()}/listings/${encodeURIComponent(listingId)}/media/upload-intent`, {
@@ -146,13 +145,14 @@ export function ListingPhotoUploader({ listingId }: { listingId?: string }) {
       URL.revokeObjectURL(localPreview);
     } catch {
       setItems((current) => current.map((item) => item.id === tempId ? { ...item, uploading: false, error: "Échec de l’envoi" } : item));
-      setMessage("Une photo n’a pas pu être envoyée. Vous pouvez la supprimer puis réessayer.");
+      setMessage("Une photo n’a pas pu être envoyée. Vérifiez la connexion au stockage puis réessayez.");
     }
   }
 
   async function handleFiles(files: FileList | File[]) {
     const list = Array.from(files).slice(0, Math.max(0, MAX_FILES - items.length));
     for (const file of list) await uploadFile(file);
+    if (inputRef.current) inputRef.current.value = "";
   }
 
   async function persistOrder(next: MediaItem[], coverId?: string) {
@@ -216,10 +216,10 @@ export function ListingPhotoUploader({ listingId }: { listingId?: string }) {
         <div className={styles.camera}>📷</div>
         <div>
           <strong>Ajoutez jusqu’à 20 photos</strong>
-          <p>Glissez-déposez vos images ici ou choisissez-les depuis votre téléphone. La première photo devient la couverture.</p>
+          <p>Choisissez plusieurs images depuis votre galerie ou vos fichiers. Sur mobile, le sélecteur système vous laisse choisir galerie ou caméra.</p>
         </div>
         <button type="button" onClick={() => inputRef.current?.click()}>Choisir des photos</button>
-        <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp,image/avif" multiple capture="environment" hidden onChange={(event) => event.target.files && void handleFiles(event.target.files)} />
+        <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp,image/avif" multiple hidden onChange={(event) => event.target.files && void handleFiles(event.target.files)} />
       </div>
 
       <div className={styles.infoRow}>
@@ -248,7 +248,7 @@ export function ListingPhotoUploader({ listingId }: { listingId?: string }) {
                 </div>
                 {item.uploading && <div className={styles.progress}><i style={{ width: `${item.progress ?? 0}%` }} /></div>}
                 <div className={styles.photoActions}>
-                  <button type="button" disabled={item.uploading || (item.status !== "READY" && Boolean(listingId))} onClick={() => void setCover(item.id)}>Définir couverture</button>
+                  <button type="button" disabled={item.uploading || item.status !== "READY"} onClick={() => void setCover(item.id)}>Définir couverture</button>
                   <button type="button" disabled={item.uploading} onClick={() => void removeItem(item)}>Supprimer</button>
                 </div>
                 <div className={styles.dragHint}>☰ Glisser pour réordonner</div>
