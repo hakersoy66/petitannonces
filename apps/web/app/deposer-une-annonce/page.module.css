@@ -53,10 +53,9 @@
   .steps li { font-size: 0; justify-content: center; }
 }
 @media (max-width: 600px) {
-  .main { padding: 26px 0 64px; }
+  .main { padding: 14px 0 64px; }
   .shell { width: min(100% - 20px, 1120px); }
-  .heading h1 { font-size: clamp(2.15rem, 11vw, 3.2rem); }
-  .heading > p:last-child { font-size: .95rem; }
+  .heading { display: none; }
   .steps { margin: 24px 0; gap: 6px; }
   .steps li span { width: 30px; height: 30px; }
   .card { padding: 20px; border-radius: 20px; }
