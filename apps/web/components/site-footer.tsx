@@ -1,15 +1,30 @@
 const footerGroups = [
   {
     title: "Petit Annonces",
-    links: ["À propos", "Comment ça marche", "Sécurité", "Centre d'aide"],
+    links: [
+      { label: "À propos", href: "/bienvenue" },
+      { label: "Comment ça marche", href: "/bienvenue" },
+      { label: "Sécurité", href: "/conformite" },
+      { label: "Centre d'aide", href: "/signaler-contenu-illicite" },
+    ],
   },
   {
     title: "Acheter & vendre",
-    links: ["Déposer une annonce", "Paiement sécurisé", "Livraison", "Boutiques pro"],
+    links: [
+      { label: "Déposer une annonce", href: "/deposer-une-annonce" },
+      { label: "Paiement sécurisé", href: "/conditions-generales" },
+      { label: "Livraison", href: "/conditions-generales" },
+      { label: "Boutiques pro", href: "/boutique" },
+    ],
   },
   {
     title: "Informations",
-    links: ["Conditions", "Confidentialité", "Cookies", "Accessibilité"],
+    links: [
+      { label: "Conditions", href: "/conditions-generales" },
+      { label: "Confidentialité", href: "/confidentialite" },
+      { label: "Cookies", href: "/cookies" },
+      { label: "Accessibilité", href: "/conformite" },
+    ],
   },
 ];
 
@@ -18,7 +33,7 @@ export function SiteFooter() {
     <footer className="site-footer">
       <div className="shell footer-grid">
         <div className="footer-brand">
-          <a className="brand brand-footer" href="#top" aria-label="Petit Annonces, accueil">
+          <a className="brand brand-footer" href="/" aria-label="Petit Annonces, accueil">
             <span className="brand-mark" aria-hidden="true">pa</span>
             <span className="brand-copy"><strong>Petit Annonces</strong><small>France</small></span>
           </a>
@@ -27,7 +42,7 @@ export function SiteFooter() {
         {footerGroups.map((group) => (
           <div key={group.title} className="footer-column">
             <h3>{group.title}</h3>
-            {group.links.map((link) => <a key={link} href="#">{link}</a>)}
+            {group.links.map((link) => <a key={link.label} href={link.href}>{link.label}</a>)}
           </div>
         ))}
       </div>
