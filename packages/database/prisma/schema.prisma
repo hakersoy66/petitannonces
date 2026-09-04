@@ -12,6 +12,30 @@ enum UserKind {
   PROFESSIONNEL
 }
 
+enum UserStatus {
+  PENDING_VERIFICATION
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+enum AddressType {
+  HOME
+  BILLING
+  SHIPPING
+  BUSINESS
+}
+
+enum AdminRole {
+  SUPER_ADMIN
+  ADMIN
+  MODERATOR
+  SUPPORT
+  FINANCE
+  COMPLIANCE
+  MARKETING
+}
+
 enum ListingStatus {
   DRAFT
   PENDING
@@ -22,12 +46,111 @@ enum ListingStatus {
 }
 
 model User {
+  id                 String       @id @default(cuid())
+  email              String       @unique
+  emailVerifiedAt    DateTime?
+  passwordHash       String
+  kind               UserKind     @default(PARTICULIER)
+  status             UserStatus   @default(PENDING_VERIFICATION)
+  failedLoginAttempts Int         @default(0)
+  lockedUntil        DateTime?
+  lastLoginAt        DateTime?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+  profile            UserProfile?
+  addresses          Address[]
+  sessions           Session[]
+  verificationTokens EmailVerificationToken[]
+  passwordResetTokens PasswordResetToken[]
+  roles              UserAdminRole[]
+  listings           Listing[]
+
+  @@index([status, createdAt])
+}
+
+model UserProfile {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  displayName String?
+  firstName   String?
+  lastName    String?
+  phone       String?
+  avatarUrl   String?
+  locale      String   @default("fr-FR")
+  countryCode String   @default("FR")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Address {
+  id          String      @id @default(cuid())
+  userId      String
+  type        AddressType @default(HOME)
+  label       String?
+  recipient   String?
+  line1       String
+  line2       String?
+  postalCode  String
+  city        String
+  region      String?
+  countryCode String      @default("FR")
+  isDefault   Boolean     @default(false)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isDefault])
+}
+
+model Session {
+  id          String   @id @default(cuid())
+  userId      String
+  tokenHash   String   @unique
+  userAgent   String?
+  ipHash      String?
+  expiresAt   DateTime
+  lastSeenAt  DateTime @default(now())
+  revokedAt   DateTime?
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model EmailVerificationToken {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model UserAdminRole {
   id        String    @id @default(cuid())
-  email     String    @unique
-  kind      UserKind  @default(PARTICULIER)
+  userId    String
+  role      AdminRole
   createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  listings  Listing[]
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, role])
+  @@index([role])
 }
 
 model Category {
