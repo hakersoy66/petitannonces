@@ -30,16 +30,17 @@ jobs:
       - name: Configure SSH
         env:
           SSH_PRIVATE_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
-          SSH_HOST_KEY: ${{ secrets.PRODUCTION_SSH_HOST_KEY }}
         run: |
           test -n "$PRODUCTION_HOST"
           test -n "$PRODUCTION_USER"
           test -n "$SSH_PRIVATE_KEY"
-          test -n "$SSH_HOST_KEY"
           install -d -m 700 ~/.ssh
           printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          printf '%s\n' "$SSH_HOST_KEY" > ~/.ssh/known_hosts
+          printf '%s ssh-ed25519 %s\n' \
+            "$PRODUCTION_HOST" \
+            'AAAAC3NzaC1lZDI1NTE5AAAAIGb5fP7d4Vh1gELLdX9xwaHCkE5AFRp4TFS9Dn9tkr3Z' \
+            > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
       - name: Deploy versioned release
@@ -52,5 +53,3 @@ jobs:
         run: |
           curl --fail --silent --show-error --retry 8 --retry-delay 3 \
             "http://$PRODUCTION_HOST/healthz"
-
-# Pipeline verification marker: repository variable enabled.
