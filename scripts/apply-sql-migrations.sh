@@ -3,7 +3,11 @@ set -euo pipefail
 
 : "${DATABASE_URL:?DATABASE_URL is required}"
 
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+# shellcheck disable=SC1091
+source scripts/lib/database-url.sh
+PG_DATABASE_URL="$(pg_url_from_prisma "$DATABASE_URL")"
+
+psql "$PG_DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
 CREATE TABLE IF NOT EXISTS pa_sql_migrations (
   name text PRIMARY KEY,
   checksum text NOT NULL,
@@ -11,12 +15,19 @@ CREATE TABLE IF NOT EXISTS pa_sql_migrations (
 );
 SQL
 
-mapfile -t files < <(find packages/database/prisma/migrations -mindepth 2 -maxdepth 2 -name migration.sql -type f | sort)
+mapfile -t files < <(
+  find packages/database/prisma/migrations -mindepth 2 -maxdepth 2 -name migration.sql -type f | while read -r file; do
+    name="$(basename "$(dirname "$file")")"
+    phase="$(printf '%s' "$name" | sed -n 's/.*_phase\([0-9][0-9]*\)_.*/\1/p')"
+    [[ -n "$phase" ]] || phase=999
+    printf '%04d\t%s\n' "$phase" "$file"
+  done | sort -n -k1,1 -k2,2 | cut -f2-
+)
 
 for file in "${files[@]}"; do
   name="$(basename "$(dirname "$file")")"
   checksum="$(sha256sum "$file" | awk '{print $1}')"
-  existing="$(psql "$DATABASE_URL" -At -v ON_ERROR_STOP=1 -v name="$name" -c "SELECT checksum FROM pa_sql_migrations WHERE name = :'name';")"
+  existing="$(psql "$PG_DATABASE_URL" -At -v ON_ERROR_STOP=1 -v name="$name" -c "SELECT checksum FROM pa_sql_migrations WHERE name = :'name';")"
 
   if [[ -n "$existing" ]]; then
     if [[ "$existing" != "$checksum" ]]; then
@@ -28,7 +39,7 @@ for file in "${files[@]}"; do
   fi
 
   echo "Applying: $name"
-  psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<SQL
+  psql "$PG_DATABASE_URL" -v ON_ERROR_STOP=1 <<SQL
 BEGIN;
 \i '$file'
 INSERT INTO pa_sql_migrations(name, checksum) VALUES ('$name', '$checksum');
