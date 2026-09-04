@@ -14,6 +14,24 @@ function extensionForMime(mimeType: string) {
 }
 
 export async function registerMediaRoutes(app: FastifyInstance) {
+  app.get("/listings/:id/media", async (request, reply) => {
+    const user = await requireListingUser(request, reply); if (!user) return;
+    const params = z.object({ id: z.string().min(1) }).safeParse(request.params);
+    if (!params.success) return reply.code(400).send({ error: "invalid_request" });
+    const listing = await prisma.listing.findFirst({ where: { id: params.data.id, sellerId: user.id }, select: { id: true } });
+    if (!listing) return reply.code(404).send({ error: "listing_not_found" });
+
+    const media = await prisma.$queryRawUnsafe<Array<{
+      id: string; publicUrl: string | null; mimeType: string; sizeBytes: number; width: number | null; height: number | null;
+      sortOrder: number; isCover: boolean; status: string; altText: string | null;
+    }>>(
+      `SELECT "id","publicUrl","mimeType","sizeBytes","width","height","sortOrder","isCover","status","altText"
+       FROM "ListingMedia" WHERE "listingId"=$1 AND "status" <> 'FAILED' ORDER BY "sortOrder" ASC, "createdAt" ASC`,
+      listing.id,
+    );
+    return reply.send({ media });
+  });
+
   app.post("/listings/:id/media/upload-intent", async (request, reply) => {
     const user = await requireListingUser(request, reply); if (!user) return;
     if (!storageConfigured()) return reply.code(503).send({ error: "object_storage_not_configured" });
