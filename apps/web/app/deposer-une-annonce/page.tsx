@@ -72,7 +72,7 @@ export default async function CreateListingPage({ searchParams }: Props) {
             <ListingCommerceForm listingId={listingId} />
           </section>
 
-          <section className={`${styles.card} ${styles.commerceSection}`}>
+          <section id="verification" className={`${styles.card} ${styles.commerceSection}`}>
             <div className={styles.cardHeader}>
               <div>
                 <p className={styles.stepLabel}>Étape 5 · Vérification & publication</p>
@@ -117,7 +117,7 @@ export default async function CreateListingPage({ searchParams }: Props) {
 
           <div className={styles.actions}>
             <a href="/" className={styles.secondaryButton}>Quitter</a>
-            <a href={listingId ? `?listingId=${encodeURIComponent(listingId)}#verification` : "#"} className={styles.primaryButton}>Vérifier l’annonce</a>
+            {listingId ? <a href={`?listingId=${encodeURIComponent(listingId)}#verification`} className={styles.primaryButton}>Vérifier l’annonce</a> : <span className={`${styles.primaryButton} ${styles.disabledButton}`} aria-disabled="true">Créez d’abord le brouillon</span>}
           </div>
         </div>
       </main>
