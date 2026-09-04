@@ -1,0 +1,222 @@
+import { createHash, randomBytes } from "node:crypto";
+import { hash, verify, Algorithm } from "@node-rs/argon2";
+import { prisma } from "@pa/database";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { z } from "zod";
+
+const SESSION_COOKIE = "pa_session";
+const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30;
+const EMAIL_TOKEN_TTL_MS = 1000 * 60 * 60 * 24;
+
+const registerSchema = z.object({
+  email: z.string().trim().toLowerCase().email(),
+  password: z.string().min(10).max(128),
+  displayName: z.string().trim().min(2).max(80).optional(),
+  kind: z.enum(["PARTICULIER", "PROFESSIONNEL"]).default("PARTICULIER"),
+});
+
+const loginSchema = z.object({
+  email: z.string().trim().toLowerCase().email(),
+  password: z.string().min(1).max(128),
+});
+
+function sha256(value: string) {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function newOpaqueToken(bytes = 32) {
+  return randomBytes(bytes).toString("base64url");
+}
+
+async function hashPassword(password: string) {
+  return hash(password, {
+    algorithm: Algorithm.Argon2id,
+    memoryCost: 19456,
+    timeCost: 2,
+    parallelism: 1,
+  });
+}
+
+async function issueSession(userId: string, request: FastifyRequest, reply: FastifyReply) {
+  const token = newOpaqueToken();
+  const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
+
+  await prisma.session.create({
+    data: {
+      userId,
+      tokenHash: sha256(token),
+      userAgent: request.headers["user-agent"]?.slice(0, 500),
+      expiresAt,
+    },
+  });
+
+  reply.setCookie(SESSION_COOKIE, token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    expires: expiresAt,
+  });
+}
+
+async function getCurrentUser(request: FastifyRequest) {
+  const token = request.cookies[SESSION_COOKIE];
+  if (!token) return null;
+
+  const session = await prisma.session.findUnique({
+    where: { tokenHash: sha256(token) },
+    include: {
+      user: {
+        include: {
+          profile: true,
+          roles: true,
+        },
+      },
+    },
+  });
+
+  if (!session || session.revokedAt || session.expiresAt <= new Date()) return null;
+  if (session.user.status !== "ACTIVE") return null;
+
+  return { session, user: session.user };
+}
+
+export async function registerAuthRoutes(app: FastifyInstance) {
+  app.post("/auth/register", async (request, reply) => {
+    const parsed = registerSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "invalid_request", details: parsed.error.flatten() });
+    }
+
+    const { email, password, displayName, kind } = parsed.data;
+    const existing = await prisma.user.findUnique({ where: { email } });
+    if (existing) {
+      return reply.code(409).send({ error: "email_already_registered" });
+    }
+
+    const verificationToken = newOpaqueToken();
+    const passwordHash = await hashPassword(password);
+
+    const user = await prisma.$transaction(async (tx) => {
+      const created = await tx.user.create({
+        data: {
+          email,
+          passwordHash,
+          kind,
+          profile: {
+            create: {
+              displayName,
+              locale: "fr-FR",
+              countryCode: "FR",
+            },
+          },
+        },
+        select: { id: true, email: true, kind: true, status: true },
+      });
+
+      await tx.emailVerificationToken.create({
+        data: {
+          userId: created.id,
+          tokenHash: sha256(verificationToken),
+          expiresAt: new Date(Date.now() + EMAIL_TOKEN_TTL_MS),
+        },
+      });
+
+      return created;
+    });
+
+    // Email provider integration is added in the notifications phase.
+    return reply.code(201).send({
+      user,
+      verificationRequired: true,
+      ...(process.env.NODE_ENV !== "production" ? { devVerificationToken: verificationToken } : {}),
+    });
+  });
+
+  app.post("/auth/verify-email", async (request, reply) => {
+    const body = z.object({ token: z.string().min(20) }).safeParse(request.body);
+    if (!body.success) return reply.code(400).send({ error: "invalid_token" });
+
+    const tokenHash = sha256(body.data.token);
+    const record = await prisma.emailVerificationToken.findUnique({ where: { tokenHash } });
+
+    if (!record || record.usedAt || record.expiresAt <= new Date()) {
+      return reply.code(400).send({ error: "invalid_or_expired_token" });
+    }
+
+    await prisma.$transaction([
+      prisma.emailVerificationToken.update({ where: { id: record.id }, data: { usedAt: new Date() } }),
+      prisma.user.update({
+        where: { id: record.userId },
+        data: { status: "ACTIVE", emailVerifiedAt: new Date() },
+      }),
+    ]);
+
+    return reply.send({ verified: true });
+  });
+
+  app.post("/auth/login", async (request, reply) => {
+    const parsed = loginSchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: "invalid_request" });
+
+    const user = await prisma.user.findUnique({ where: { email: parsed.data.email } });
+    if (!user) return reply.code(401).send({ error: "invalid_credentials" });
+
+    if (user.lockedUntil && user.lockedUntil > new Date()) {
+      return reply.code(423).send({ error: "account_temporarily_locked" });
+    }
+
+    const valid = await verify(user.passwordHash, parsed.data.password);
+    if (!valid) {
+      const attempts = user.failedLoginAttempts + 1;
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          failedLoginAttempts: attempts >= 5 ? 0 : attempts,
+          lockedUntil: attempts >= 5 ? new Date(Date.now() + 15 * 60 * 1000) : null,
+        },
+      });
+      return reply.code(401).send({ error: "invalid_credentials" });
+    }
+
+    if (user.status !== "ACTIVE") {
+      return reply.code(403).send({ error: user.status === "PENDING_VERIFICATION" ? "email_verification_required" : "account_unavailable" });
+    }
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { failedLoginAttempts: 0, lockedUntil: null, lastLoginAt: new Date() },
+    });
+
+    await issueSession(user.id, request, reply);
+    return reply.send({ authenticated: true });
+  });
+
+  app.post("/auth/logout", async (request, reply) => {
+    const token = request.cookies[SESSION_COOKIE];
+    if (token) {
+      await prisma.session.updateMany({
+        where: { tokenHash: sha256(token), revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+    }
+
+    reply.clearCookie(SESSION_COOKIE, { path: "/" });
+    return reply.code(204).send();
+  });
+
+  app.get("/auth/me", async (request, reply) => {
+    const auth = await getCurrentUser(request);
+    if (!auth) return reply.code(401).send({ error: "unauthenticated" });
+
+    return reply.send({
+      user: {
+        id: auth.user.id,
+        email: auth.user.email,
+        kind: auth.user.kind,
+        profile: auth.user.profile,
+        roles: auth.user.roles.map((entry) => entry.role),
+      },
+    });
+  });
+}
