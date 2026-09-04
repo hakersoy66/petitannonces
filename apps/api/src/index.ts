@@ -1,12 +1,31 @@
+import cookie from "@fastify/cookie";
 import Fastify from "fastify";
+import { registerAccountRoutes } from "./account.js";
+import { registerAuthRoutes } from "./auth.js";
+import { requireAdminRoles } from "./rbac.js";
 
-const app = Fastify({ logger: true });
+const app = Fastify({
+  logger: true,
+  trustProxy: true,
+  bodyLimit: 1024 * 1024,
+});
+
+await app.register(cookie);
 
 app.get("/health", async () => ({
   status: "ok",
   service: "petitannonces-api",
   timestamp: new Date().toISOString(),
 }));
+
+await registerAuthRoutes(app);
+await registerAccountRoutes(app);
+
+app.get(
+  "/admin/session-check",
+  { preHandler: requireAdminRoles(["SUPER_ADMIN", "ADMIN", "MODERATOR", "SUPPORT", "FINANCE", "COMPLIANCE", "MARKETING"]) },
+  async () => ({ authorized: true }),
+);
 
 const port = Number(process.env.API_PORT ?? 4000);
 
