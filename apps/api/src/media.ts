@@ -57,11 +57,12 @@ export async function registerMediaRoutes(app: FastifyInstance) {
       mediaId, listing.id, objectKey, body.data.mimeType, body.data.sizeBytes, sortOrder, count === 0, body.data.altText ?? null,
     );
 
+    const upload = await createPresignedUpload(objectKey, body.data.mimeType);
     return reply.code(201).send({
       mediaId,
-      uploadUrl: await createPresignedUpload(objectKey, body.data.mimeType),
+      uploadUrl: upload.url,
       method: "PUT",
-      headers: { "content-type": body.data.mimeType },
+      headers: upload.headers,
       expiresInSeconds: 600,
     });
   });
