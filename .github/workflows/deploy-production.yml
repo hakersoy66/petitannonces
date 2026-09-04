@@ -23,23 +23,32 @@ jobs:
       PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
       PRODUCTION_USER: ${{ secrets.PRODUCTION_USER }}
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ env.DEPLOY_SHA }}
+      - name: Validate release SHA
+        run: |
+          [[ "$DEPLOY_SHA" =~ ^[0-9a-f]{40}$ ]]
+
       - name: Configure SSH
         env:
           SSH_PRIVATE_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
           SSH_HOST_KEY: ${{ secrets.PRODUCTION_SSH_HOST_KEY }}
         run: |
+          test -n "$PRODUCTION_HOST"
+          test -n "$PRODUCTION_USER"
+          test -n "$SSH_PRIVATE_KEY"
+          test -n "$SSH_HOST_KEY"
           install -d -m 700 ~/.ssh
           printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           printf '%s\n' "$SSH_HOST_KEY" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
-      - name: Deploy release
+
+      - name: Deploy versioned release
         run: |
-          test -n "$PRODUCTION_HOST"
-          test -n "$PRODUCTION_USER"
-          ssh -o BatchMode=yes "$PRODUCTION_USER@$PRODUCTION_HOST" "bash -s -- '$DEPLOY_SHA'" < scripts/deploy-production.sh
-      - name: Verify public health
-        run: curl --fail --silent --show-error --retry 5 --retry-delay 3 https://petitannonces.fr/healthz
+          ssh -o BatchMode=yes -o IdentitiesOnly=yes \
+            "$PRODUCTION_USER@$PRODUCTION_HOST" \
+            "sudo /usr/local/sbin/petitannonces-deploy '$DEPLOY_SHA'"
+
+      - name: Verify production health
+        run: |
+          curl --fail --silent --show-error --retry 8 --retry-delay 3 \
+            "http://$PRODUCTION_HOST/healthz"
