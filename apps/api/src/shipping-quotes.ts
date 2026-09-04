@@ -1,13 +1,18 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
-export type ShippingCarrier = "MONDIAL_RELAY" | "COLISSIMO";
 export type ShippingQuotePayload = {
-  carrier: ShippingCarrier;
-  service: string;
+  provider: "SENDCLOUD";
+  shippingOptionCode: string;
+  carrierCode: string;
+  carrierName: string;
+  serviceName: string;
   amountMinor: number;
+  currency: string;
+  servicePoint: boolean;
+  contractId?: number;
   weightG: number;
-  postalCode: string;
-  countryCode: string;
+  recipientPostalCode: string;
+  recipientCountryCode: string;
   expiresAt: number;
 };
 
@@ -36,32 +41,9 @@ export function verifyShippingQuote(token: string): ShippingQuotePayload | null 
   if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
   try {
     const payload = JSON.parse(decode(encoded)) as ShippingQuotePayload;
-    if (!payload.carrier || !payload.service || !Number.isInteger(payload.amountMinor) || payload.amountMinor < 0) return null;
+    if (payload.provider !== "SENDCLOUD" || !payload.shippingOptionCode || !payload.carrierCode || !payload.serviceName) return null;
+    if (!Number.isInteger(payload.amountMinor) || payload.amountMinor < 0 || !Number.isInteger(payload.weightG) || payload.weightG < 50) return null;
     if (payload.expiresAt <= Math.floor(Date.now() / 1000)) return null;
     return payload;
   } catch { return null; }
-}
-
-export async function getShippingQuotes(weightG: number, postalCode: string, countryCode: string) {
-  const endpoint = process.env.SHIPPING_RATE_PROXY_URL;
-  const token = process.env.SHIPPING_RATE_PROXY_TOKEN;
-  if (endpoint && token) {
-    const url = new URL(endpoint);
-    url.searchParams.set("weightG", String(weightG));
-    url.searchParams.set("postalCode", postalCode);
-    url.searchParams.set("countryCode", countryCode);
-    const response = await fetch(url, { headers: { authorization: `Bearer ${token}` } });
-    if (response.ok) {
-      const data = await response.json() as { quotes?: Array<{ carrier: ShippingCarrier; service: string; amountMinor: number; label?: string; etaDays?: string }> };
-      if (Array.isArray(data.quotes) && data.quotes.length) return data.quotes;
-    }
-  }
-
-  const kg = Math.max(0.1, weightG / 1000);
-  const mr = Math.round(399 + Math.max(0, kg - 0.5) * 85);
-  const colissimo = Math.round(599 + Math.max(0, kg - 0.5) * 135);
-  return [
-    { carrier: "MONDIAL_RELAY" as const, service: "POINT_RELAIS", amountMinor: mr, label: "Mondial Relay · Point Relais", etaDays: "3–5 jours" },
-    { carrier: "COLISSIMO" as const, service: "DOM", amountMinor: colissimo, label: "Colissimo · Domicile", etaDays: "2–3 jours" },
-  ];
 }
