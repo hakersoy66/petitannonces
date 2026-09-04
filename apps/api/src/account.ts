@@ -86,7 +86,7 @@ export async function registerAccountRoutes(app: FastifyInstance) {
     const parsed = addressSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: "invalid_request", details: parsed.error.flatten() });
 
-    const address = await prisma.$transaction(async (tx) => {
+    const address = await prisma.$transaction(async (tx: any) => {
       if (parsed.data.isDefault) {
         await tx.address.updateMany({ where: { userId: user.id }, data: { isDefault: false } });
       }
