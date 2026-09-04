@@ -1,6 +1,42 @@
+"use client";
+
 import { SiteHeader } from "../../components/site-header";
-import styles from "../auth.module.css";
+import styles from "./page.module.css";
+
+const pieces = Array.from({ length: 34 }, (_, index) => ({
+  left: `${(index * 29) % 100}%`,
+  delay: `${(index % 9) * 0.22}s`,
+  duration: `${4.8 + (index % 7) * 0.35}s`,
+}));
 
 export default function WelcomePage(){
-  return <div className={styles.page}><SiteHeader/><main className={styles.main}><div className={styles.authGrid}><section className={styles.formCard}><span className={styles.eyebrow}>Bienvenue chez Petit Annonces</span><h1 className={styles.title}>Votre compte est prêt.</h1><p className={styles.lead}>Vous pouvez maintenant publier, acheter, vendre et gérer toute votre activité depuis votre espace personnel.</p><div className={styles.benefits}><div className={styles.benefit}><div className={styles.benefitIcon}>1</div><div><strong>Complétez votre profil</strong><p>Ajoutez votre nom, téléphone et adresse pour renforcer la confiance.</p></div></div><div className={styles.benefit}><div className={styles.benefitIcon}>2</div><div><strong>Déposez votre première annonce</strong><p>Choisissez une catégorie et laissez le formulaire s’adapter automatiquement.</p></div></div><div className={styles.benefit}><div className={styles.benefitIcon}>3</div><div><strong>Suivez tout depuis votre tableau de bord</strong><p>Messages, offres, annonces, achats et ventes restent regroupés au même endroit.</p></div></div></div><a className={styles.primary} href="/connexion">Se connecter à mon compte</a><p className={styles.footText}><a href="/">Retour à l’accueil</a></p></section><aside className={styles.benefitCard}><span className={styles.eyebrow}>Vos prochains avantages</span><h2 className={styles.title}>Commencez simplement, évoluez quand vous le souhaitez.</h2><p className={styles.lead}>Le compte particulier reste simple pour vendre et acheter. Si votre activité se développe, vous pourrez passer à Petit Annonces Pro sans repartir de zéro.</p><div className={styles.benefits}><div className={styles.benefit}><div className={styles.benefitIcon}>＋</div><div><strong>Annonces adaptées</strong><p>Des champs spécifiques pour véhicules, immobilier, high-tech et plus encore.</p></div></div><div className={styles.benefit}><div className={styles.benefitIcon}>✉</div><div><strong>Échanges centralisés</strong><p>Discutez et recevez des offres sans quitter la plateforme.</p></div></div><div className={styles.benefit}><div className={styles.benefitIcon}>PRO</div><div><strong>Évolution professionnelle</strong><p>Boutique, statistiques et outils Pro restent accessibles quand vous en avez besoin.</p></div></div></div></aside></div></main></div>
+  return <div className={styles.page}>
+    <SiteHeader/>
+    <div className={styles.confetti} aria-hidden="true">{pieces.map((piece,index)=><span key={index} className={styles.piece} style={{left:piece.left,animationDelay:piece.delay,animationDuration:piece.duration}}/>)}</div>
+    <main className={styles.main}>
+      <section className={styles.hero}>
+        <div>
+          <span className={styles.eyebrow}>Bienvenue chez Petit Annonces 🎉</span>
+          <h1 className={styles.title}>Vous avez fait un bon choix.</h1>
+          <p className={styles.lead}>Votre inscription vous ouvre un espace plus simple pour publier, acheter, vendre, négocier et suivre toute votre activité. Plus votre profil est complet, plus vous gagnez en confiance et en efficacité sur la plateforme.</p>
+          <div className={styles.actions}>
+            <a className={styles.primary} href="/connexion">Se connecter à mon compte</a>
+            <a className={styles.secondary} href="/mon-compte/portefeuille">Voir mon portefeuille</a>
+          </div>
+        </div>
+        <aside className={styles.gift}>
+          <small>Cadeau de bienvenue</small>
+          <strong>20 PA</strong>
+          <p>Vos 20 crédits PA sont ajoutés automatiquement après la vérification de votre e-mail.</p>
+          <div className={styles.giftNote}>Utilisables uniquement sur Petit Annonces pour les fonctionnalités éligibles. Non convertibles en euros et non retirables.</div>
+        </aside>
+      </section>
+
+      <section className={styles.grid}>
+        <article className={styles.card}><div className={styles.icon}>＋</div><h3>Publiez plus facilement</h3><p>Des formulaires adaptés à chaque catégorie vous aident à créer des annonces plus complètes et plus attractives.</p></article>
+        <article className={styles.card}><div className={styles.icon}>✉</div><h3>Centralisez vos échanges</h3><p>Messages, offres et transactions restent regroupés dans votre compte pour vous faire gagner du temps.</p></article>
+        <article className={styles.card}><div className={styles.icon}>✓</div><h3>Renforcez votre confiance</h3><p>Profil vérifié, historique, sécurité et outils de modération rendent vos échanges plus rassurants.</p></article>
+      </section>
+    </main>
+  </div>
 }
