@@ -34,6 +34,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       title: `${listing.title ?? listing.category.name} | Petit Annonces`,
       description: listing.description?.slice(0, 155) ?? `Consultez cette annonce ${listing.category.name.toLowerCase()} sur Petit Annonces.`,
       alternates: { canonical: `/annonce/${slug}` },
+      openGraph: listing.media[0]?.url ? { images: [{ url: listing.media[0].url }] } : undefined,
     };
   } catch {
     return { title: "Petit Annonces" };
@@ -56,6 +57,8 @@ export default async function ListingPage({ params }: Props) {
     : isProperty
       ? propertySpecs(listing.property, listing.energy)
       : listing.attributes.map((item) => ({ label: item.label, value: attributeToText(item.value, item.unit) }));
+  const cover = listing.media.find((item) => item.isCover) ?? listing.media[0];
+  const thumbs = listing.media.filter((item) => item.id !== cover?.id).slice(0, 3);
 
   return (
     <div className={styles.page}>
@@ -65,8 +68,19 @@ export default async function ListingPage({ params }: Props) {
         <div className={styles.layout}>
           <section className={styles.main}>
             <div className={styles.gallery}>
-              <div className={styles.heroImage}>Photo principale<span className={styles.photoBadge}>Galerie</span></div>
-              <div className={styles.thumbs}><div className={styles.thumb}>Photo 2</div><div className={styles.thumb}>Photo 3</div><div className={styles.thumb}>+</div></div>
+              {cover ? (
+                <div className={styles.heroImage}>
+                  <img src={cover.url} alt={cover.altText ?? title} />
+                  <span className={styles.photoBadge}>1 / {listing.media.length} photos</span>
+                </div>
+              ) : (
+                <div className={styles.heroImage}>Aucune photo<span className={styles.photoBadge}>Galerie</span></div>
+              )}
+              <div className={styles.thumbs}>
+                {thumbs.map((media, index) => <div className={styles.thumb} key={media.id}><img src={media.url} alt={media.altText ?? `${title} photo ${index + 2}`} /></div>)}
+                {listing.media.length > 4 && <div className={styles.thumb}>+{listing.media.length - 4}</div>}
+                {listing.media.length <= 1 && <div className={styles.thumb}>Photos supplémentaires</div>}
+              </div>
             </div>
 
             <div className={styles.topline}>
@@ -87,7 +101,7 @@ export default async function ListingPage({ params }: Props) {
           </section>
 
           <aside className={styles.sidebar}>
-            <div className={styles.priceCard}><div className={styles.priceLabel}>{isProperty ? "Prix" : "Prix"}</div><div className={styles.price}>{price}</div><button className={styles.primary}>{isProperty ? "Demander une visite" : isVehicle ? "Contacter le vendeur" : "Acheter en toute sécurité"}</button><button className={styles.secondary}>Envoyer un message</button>{!isProperty && <button className={styles.ghost}>Faire une offre</button>}<div className={styles.secure}>{isVehicle ? "🚘 Vérifiez les documents et organisez l’essai avant la transaction." : isProperty ? "🏠 Vérifiez diagnostics et informations du bien avant engagement." : "🔒 Paiement protégé lorsque la transaction Petit Annonces est disponible."}</div></div>
+            <div className={styles.priceCard}><div className={styles.priceLabel}>Prix</div><div className={styles.price}>{price}</div><button className={styles.primary}>{isProperty ? "Demander une visite" : isVehicle ? "Contacter le vendeur" : "Acheter en toute sécurité"}</button><button className={styles.secondary}>Envoyer un message</button>{!isProperty && <button className={styles.ghost}>Faire une offre</button>}<div className={styles.secure}>{isVehicle ? "🚘 Vérifiez les documents et organisez l’essai avant la transaction." : isProperty ? "🏠 Vérifiez diagnostics et informations du bien avant engagement." : "🔒 Paiement protégé lorsque la transaction Petit Annonces est disponible."}</div></div>
             <div className={styles.sellerCard}><div className={styles.sellerHead}><div className={styles.avatar}>{listing.seller.name.slice(0, 2).toUpperCase()}</div><div><strong>{listing.seller.name}</strong><div className={styles.meta}>{listing.seller.verified && <span>Vérifié</span>}</div></div></div><button className={styles.ghost}>Voir le profil</button></div>
           </aside>
         </div>
