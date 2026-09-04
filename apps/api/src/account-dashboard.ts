@@ -9,42 +9,13 @@ export async function registerAccountDashboardRoutes(app: FastifyInstance) {
     const user = await requireListingUser(request, reply);
     if (!user) return;
 
-    const [profile, groupedListings, recentListings, conversations, pendingOffers, stores] = await Promise.all([
+    const [profile, groupedListings, recentListings, conversations, pendingOffers, unreadNotificationsRows, stores] = await Promise.all([
       prisma.userProfile.findUnique({ where: { userId: user.id } }),
       prisma.listing.groupBy({ by: ["status"], where: { sellerId: user.id }, _count: { _all: true } }),
-      prisma.listing.findMany({
-        where: { sellerId: user.id },
-        select: {
-          id: true,
-          title: true,
-          slug: true,
-          status: true,
-          priceMinor: true,
-          currency: true,
-          city: true,
-          updatedAt: true,
-          publishedAt: true,
-          category: { select: { name: true, slug: true } },
-        },
-        orderBy: { updatedAt: "desc" },
-        take: 6,
-      }),
-      prisma.conversation.findMany({
-        where: { OR: [{ buyerId: user.id }, { sellerId: user.id }] },
-        select: {
-          id: true,
-          buyerId: true,
-          sellerId: true,
-          buyerLastReadAt: true,
-          sellerLastReadAt: true,
-          lastMessageAt: true,
-          updatedAt: true,
-          messages: { orderBy: { createdAt: "desc" }, take: 1, select: { createdAt: true } },
-        },
-        orderBy: [{ lastMessageAt: "desc" }, { updatedAt: "desc" }],
-        take: 100,
-      }),
+      prisma.listing.findMany({ where: { sellerId: user.id }, select: { id: true,title: true,slug: true,status: true,priceMinor: true,currency: true,city: true,updatedAt: true,publishedAt: true,category: { select: { name: true, slug: true } } }, orderBy: { updatedAt: "desc" }, take: 6 }),
+      prisma.conversation.findMany({ where: { OR: [{ buyerId: user.id }, { sellerId: user.id }] }, select: { id: true,buyerId: true,sellerId: true,buyerLastReadAt: true,sellerLastReadAt: true,lastMessageAt: true,updatedAt: true,messages: { orderBy: { createdAt: "desc" }, take: 1, select: { createdAt: true, senderId: true } } }, orderBy: [{ lastMessageAt: "desc" }, { updatedAt: "desc" }], take: 100 }),
       prisma.offer.count({ where: { recipientId: user.id, status: "PENDING" } }),
+      prisma.$queryRawUnsafe<Array<{count:bigint}>>(`SELECT COUNT(*)::bigint AS "count" FROM "UserNotification" WHERE "userId"=$1 AND "readAt" IS NULL`,user.id),
       prisma.store.findMany({ where: { ownerId: user.id }, select: { id: true, name: true, slug: true, status: true, isVerified: true }, take: 3 }),
     ]);
 
@@ -52,25 +23,15 @@ export async function registerAccountDashboardRoutes(app: FastifyInstance) {
     for (const row of groupedListings) counts[row.status] = row._count._all;
 
     const unreadConversations = conversations.filter((conversation) => {
+      const latest=conversation.messages[0];
+      if(!latest||latest.senderId===user.id)return false;
       const readAt = conversation.buyerId === user.id ? conversation.buyerLastReadAt : conversation.sellerLastReadAt;
-      const latestAt = conversation.messages[0]?.createdAt ?? conversation.lastMessageAt;
-      return Boolean(latestAt && (!readAt || latestAt > readAt));
+      return !readAt || latest.createdAt > readAt;
     }).length;
 
     return reply.send({
-      user: {
-        id: user.id,
-        email: user.email,
-        kind: user.kind,
-        displayName: profile?.displayName ?? profile?.firstName ?? user.email.split("@")[0],
-        avatarUrl: profile?.avatarUrl ?? null,
-      },
-      stats: {
-        listings: counts,
-        totalListings: Object.values(counts).reduce((sum, value) => sum + value, 0),
-        unreadConversations,
-        pendingOffers,
-      },
+      user: { id: user.id,email: user.email,kind: user.kind,displayName: profile?.displayName ?? profile?.firstName ?? user.email.split("@")[0],avatarUrl: profile?.avatarUrl ?? null },
+      stats: { listings: counts,totalListings: Object.values(counts).reduce((sum, value) => sum + value, 0),unreadConversations,pendingOffers,unreadNotifications:Number(unreadNotificationsRows[0]?.count??0n) },
       recentListings,
       stores,
     });
