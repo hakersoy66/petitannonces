@@ -24,9 +24,9 @@ const listings = [
 type Listing = (typeof listings)[number];
 
 const categoryRows: { title: string; slug: string; items: readonly Listing[] }[] = [
-  { title: "High-tech à la une", slug: "high-tech", items: [listings[0], listings[3], listings[5]] },
-  { title: "Auto & mobilité", slug: "vehicules", items: [listings[1], listings[4], listings[0]] },
-  { title: "Maison & quotidien", slug: "maison-jardin", items: [listings[2], listings[5], listings[3]] },
+  { title: "High-tech à la une", slug: "high-tech", items: [listings[0]!, listings[3]!, listings[5]!] },
+  { title: "Auto & mobilité", slug: "vehicules", items: [listings[1]!, listings[4]!, listings[0]!] },
+  { title: "Maison & quotidien", slug: "maison-jardin", items: [listings[2]!, listings[5]!, listings[3]!] },
 ];
 
 const trustItems = [
