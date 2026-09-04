@@ -11,6 +11,7 @@ export default function manifest(): MetadataRoute.Manifest {
     theme_color: "#5b4cf0",
     lang: "fr-FR",
     categories: ["shopping", "business", "lifestyle"],
+    icons: [{ src: "/icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any maskable" }],
     shortcuts: [
       { name: "Rechercher", short_name: "Rechercher", url: "/recherche" },
       { name: "Déposer une annonce", short_name: "Déposer", url: "/deposer-une-annonce" },
