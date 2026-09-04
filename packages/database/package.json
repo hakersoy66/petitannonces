@@ -1,6 +1,10 @@
 {
   "name": "@pa/database",
   "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "scripts": {
     "build": "prisma generate",
     "typecheck": "prisma validate",
@@ -8,6 +12,13 @@
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio"
   },
-  "dependencies": { "@prisma/client": "7.10.0" },
-  "devDependencies": { "prisma": "7.10.0" }
+  "dependencies": {
+    "@prisma/adapter-pg": "7.10.0",
+    "@prisma/client": "7.10.0",
+    "pg": "^8.16.3"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.15.5",
+    "prisma": "7.10.0"
+  }
 }
