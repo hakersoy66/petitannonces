@@ -1,0 +1,16 @@
+"use client";
+
+import { FormEvent, useEffect, useState } from "react";
+import { SiteHeader } from "../../../components/site-header";
+import styles from "./page.module.css";
+
+type Address={id:string;type:string;label:string|null;recipient:string|null;line1:string;line2:string|null;postalCode:string;city:string;region:string|null;countryCode:string;isDefault:boolean};
+function apiBase(){return (process.env.NEXT_PUBLIC_API_URL??"http://127.0.0.1:4000").replace(/\/$/,"")}
+
+export default function AddressesPage(){
+ const [items,setItems]=useState<Address[]>([]);const [message,setMessage]=useState("");const [line1,setLine1]=useState("");const [postalCode,setPostalCode]=useState("");const [city,setCity]=useState("");const [recipient,setRecipient]=useState("");
+ async function load(){const r=await fetch(`${apiBase()}/account/addresses`,{credentials:"include"});if(!r.ok){setMessage("Connectez-vous pour gérer vos adresses.");return}const p=await r.json() as {addresses:Address[]};setItems(p.addresses)}
+ useEffect(()=>{void load()},[]);
+ async function add(e:FormEvent){e.preventDefault();const r=await fetch(`${apiBase()}/account/addresses`,{method:"POST",credentials:"include",headers:{"content-type":"application/json"},body:JSON.stringify({type:"HOME",recipient:recipient||undefined,line1,postalCode,city,countryCode:"FR",isDefault:items.length===0})});if(r.ok){setLine1("");setPostalCode("");setCity("");setRecipient("");setMessage("Adresse ajoutée.");void load()}else setMessage("Vérifiez les informations saisies.")}
+ return <div className={styles.page}><SiteHeader/><main className={styles.shell}><aside className={styles.side}><a href="/mon-compte">← Tableau de bord</a><a href="/mon-compte/profil">Profil & vérification</a><a className={styles.active} href="/mon-compte/adresses">Adresses</a><a href="/mon-compte/parametres">Paramètres & sécurité</a></aside><section className={styles.content}><div className={styles.heading}><span>Livraison</span><h1>Mes adresses</h1><p>Enregistrez vos adresses pour la livraison, la facturation et les remises en main propre.</p></div>{message&&<div className={styles.message}>{message}</div>}<div className={styles.addressGrid}>{items.map(a=><article className={styles.addressCard} key={a.id}><div className={styles.cardTop}><span>⌂</span>{a.isDefault&&<b>Par défaut</b>}</div><h2>{a.label||a.recipient||"Adresse"}</h2><p>{a.line1}{a.line2?<><br/>{a.line2}</>:null}<br/>{a.postalCode} {a.city}<br/>{a.countryCode}</p></article>)}{items.length===0&&<div className={styles.empty}>Aucune adresse enregistrée.</div>}</div><form className={styles.formCard} onSubmit={add}><div><h2>Ajouter une adresse</h2><p>Cette adresse pourra être utilisée lors d’un achat ou d’une vente.</p></div><div className={styles.grid}><input placeholder="Nom du destinataire" value={recipient} onChange={e=>setRecipient(e.target.value)}/><input required placeholder="Adresse" value={line1} onChange={e=>setLine1(e.target.value)}/><input required placeholder="Code postal" value={postalCode} onChange={e=>setPostalCode(e.target.value)}/><input required placeholder="Ville" value={city} onChange={e=>setCity(e.target.value)}/></div><button>Ajouter l’adresse</button></form></section></main></div>
+}
