@@ -27,7 +27,9 @@ mapfile -t files < <(
 for file in "${files[@]}"; do
   name="$(basename "$(dirname "$file")")"
   checksum="$(sha256sum "$file" | awk '{print $1}')"
-  existing="$(psql "$PG_DATABASE_URL" -At -v ON_ERROR_STOP=1 -v name="$name" -c "SELECT checksum FROM pa_sql_migrations WHERE name = :'name';")"
+  [[ "$name" =~ ^[A-Za-z0-9_.-]+$ ]] || { echo "Unsafe migration name: $name" >&2; exit 1; }
+  [[ "$checksum" =~ ^[a-f0-9]{64}$ ]] || { echo "Invalid checksum: $checksum" >&2; exit 1; }
+  existing="$(psql "$PG_DATABASE_URL" -At -v ON_ERROR_STOP=1 -c "SELECT checksum FROM pa_sql_migrations WHERE name = '$name';")"
 
   if [[ -n "$existing" ]]; then
     if [[ "$existing" != "$checksum" ]]; then
