@@ -67,14 +67,27 @@ bash scripts/apply-sql-migrations.sh
 # The Prisma seed uses upsert operations and is safe to run repeatedly.
 pnpm --filter @pa/database db:seed
 
+restart_release_apps() {
+  # PM2's startOrReload preserves the real cwd behind a symlink. Because
+  # /current points at a new immutable release after every deployment, a
+  # reload can leave Next.js serving the previous release. Recreate the
+  # processes so cwd is resolved from the new /current target every time.
+  pm2 delete petitannonces-web petitannonces-admin petitannonces-api >/dev/null 2>&1 || true
+  pm2 start "$CURRENT/infra/pm2/ecosystem.config.cjs" --update-env
+  pm2 save
+}
+
 ln -sfn "$RELEASE" "$CURRENT"
 export APP_VERSION="$SHA"
-pm2 startOrReload "$CURRENT/infra/pm2/ecosystem.config.cjs" --update-env
-pm2 save
+restart_release_apps
 
 healthy=false
 for _ in $(seq 1 20); do
-  if curl --fail --silent --max-time 3 http://127.0.0.1:4000/health/ready >/dev/null; then healthy=true; break; fi
+  api_ok=false
+  web_ok=false
+  if curl --fail --silent --max-time 3 http://127.0.0.1:4000/health/ready >/dev/null; then api_ok=true; fi
+  if curl --fail --silent --max-time 3 http://127.0.0.1:3000/ >/dev/null; then web_ok=true; fi
+  if [[ "$api_ok" == "true" && "$web_ok" == "true" ]]; then healthy=true; break; fi
   sleep 2
 done
 
@@ -83,8 +96,7 @@ if [[ "$healthy" != "true" ]]; then
   if [[ -n "$PREVIOUS" && -d "$PREVIOUS" ]]; then
     ln -sfn "$PREVIOUS" "$CURRENT"
     export APP_VERSION="$(basename "$PREVIOUS")"
-    pm2 startOrReload "$CURRENT/infra/pm2/ecosystem.config.cjs" --update-env
-    pm2 save
+    restart_release_apps
   fi
   exit 10
 fi
