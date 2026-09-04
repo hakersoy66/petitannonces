@@ -56,6 +56,17 @@ export default function HomePage() {
     <div id="top" className="page-shell">
       <SiteHeader />
       <main>
+        <section className="mobile-ai-search" aria-label="Recherche assistée">
+          <div className="mobile-ai-search-shell">
+            <div className="mobile-ai-search-head"><span className="mobile-ai-badge">IA</span><strong>Que cherchez-vous ?</strong></div>
+            <form action="/recherche" method="get" role="search">
+              <input name="q" type="search" aria-label="Décrivez ce que vous recherchez" placeholder="Ex. iPhone récent à Lyon, moins de 700 €" />
+              <button type="submit" aria-label="Rechercher">→</button>
+            </form>
+            <small>Décrivez simplement votre besoin, nous lançons la recherche correspondante.</small>
+          </div>
+        </section>
+
         <section className="hero-section">
           <div className="shell hero-layout">
             <div className="hero-copy">
