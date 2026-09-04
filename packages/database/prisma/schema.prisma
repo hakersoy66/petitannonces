@@ -7,15 +7,76 @@ datasource db {
   provider = "postgresql"
 }
 
-enum UserKind { PARTICULIER PROFESSIONNEL }
-enum UserStatus { PENDING_VERIFICATION ACTIVE SUSPENDED DELETED }
-enum AddressType { HOME BILLING SHIPPING BUSINESS }
-enum AdminRole { SUPER_ADMIN ADMIN MODERATOR SUPPORT FINANCE COMPLIANCE MARKETING }
-enum ListingStatus { DRAFT PENDING PUBLISHED SUSPENDED SOLD EXPIRED }
-enum CategoryDomain { GENERAL VEHICLE PROPERTY JOB SERVICE ANIMAL }
-enum AttributeType { TEXT NUMBER BOOLEAN SELECT MULTISELECT DATE }
-enum PropertyTransactionType { SALE RENT }
-enum EnergyClass { A B C D E F G }
+enum UserKind {
+  PARTICULIER
+  PROFESSIONNEL
+}
+
+enum UserStatus {
+  PENDING_VERIFICATION
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+enum AddressType {
+  HOME
+  BILLING
+  SHIPPING
+  BUSINESS
+}
+
+enum AdminRole {
+  SUPER_ADMIN
+  ADMIN
+  MODERATOR
+  SUPPORT
+  FINANCE
+  COMPLIANCE
+  MARKETING
+}
+
+enum ListingStatus {
+  DRAFT
+  PENDING
+  PUBLISHED
+  SUSPENDED
+  SOLD
+  EXPIRED
+}
+
+enum CategoryDomain {
+  GENERAL
+  VEHICLE
+  PROPERTY
+  JOB
+  SERVICE
+  ANIMAL
+}
+
+enum AttributeType {
+  TEXT
+  NUMBER
+  BOOLEAN
+  SELECT
+  MULTISELECT
+  DATE
+}
+
+enum PropertyTransactionType {
+  SALE
+  RENT
+}
+
+enum EnergyClass {
+  A
+  B
+  C
+  D
+  E
+  F
+  G
+}
 
 model User {
   id String @id @default(cuid())
