@@ -46,7 +46,7 @@ jobs:
         run: |
           ssh -o BatchMode=yes -o IdentitiesOnly=yes \
             "$PRODUCTION_USER@$PRODUCTION_HOST" \
-            "sudo /usr/local/sbin/petitannonces-deploy '$DEPLOY_SHA'"
+            "deploy $DEPLOY_SHA"
 
       - name: Verify production health
         run: |
