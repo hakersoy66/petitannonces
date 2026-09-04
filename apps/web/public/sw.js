@@ -1,6 +1,6 @@
 const CACHE = "pa-shell-v1";
 const OFFLINE_URL = "/offline";
-const CORE = ["/", "/recherche", "/offline"];
+const CORE = ["/", "/recherche", "/offline", "/icon.svg"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(CORE)));
@@ -47,8 +47,8 @@ self.addEventListener("push", (event) => {
   const title = data.title || "Petit Annonces";
   const options = {
     body: data.body || "Vous avez une nouvelle notification.",
-    icon: "/icon-192.png",
-    badge: "/icon-192.png",
+    icon: "/icon.svg",
+    badge: "/icon.svg",
     data: { url: data.url || "/" },
   };
   event.waitUntil(self.registration.showNotification(title, options));
