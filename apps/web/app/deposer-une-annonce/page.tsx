@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { CatalogBrowser } from "../../components/catalog-browser";
+import { ListingCommerceForm } from "../../components/listing-commerce-form";
 import { ListingPhotoUploader } from "../../components/listing-photo-uploader";
 import { SiteHeader } from "../../components/site-header";
 import styles from "./page.module.css";
@@ -23,12 +24,12 @@ export default async function CreateListingPage({ searchParams }: Props) {
           <div className={styles.heading}>
             <p className={styles.eyebrow}>Nouvelle annonce</p>
             <h1>Choisissez la bonne catégorie, le formulaire fait le reste.</h1>
-            <p>Petit Annonces adapte automatiquement les champs, contrôles, photos et filtres à la sous-catégorie choisie.</p>
+            <p>Petit Annonces adapte automatiquement les champs, contrôles, photos, prix et options de remise à la catégorie choisie.</p>
           </div>
 
           <ol className={styles.steps} aria-label="Étapes de création de l'annonce">
             {steps.map((step, index) => (
-              <li key={step} className={index <= 2 ? styles.activeStep : undefined}>
+              <li key={step} className={index <= 3 ? styles.activeStep : undefined}>
                 <span>{index + 1}</span>
                 {step}
               </li>
@@ -56,6 +57,18 @@ export default async function CreateListingPage({ searchParams }: Props) {
               <span className={styles.photoTip}>20 photos max</span>
             </div>
             <ListingPhotoUploader listingId={listingId} />
+          </section>
+
+          <section className={`${styles.card} ${styles.commerceSection}`}>
+            <div className={styles.cardHeader}>
+              <div>
+                <p className={styles.stepLabel}>Étape 4 · Prix & livraison</p>
+                <h2>Définissez le prix et les modes de remise.</h2>
+                <p className={styles.cardIntro}>Les options d’expédition sont automatiquement désactivées pour les catégories comme l’immobilier, les véhicules, les emplois et les services.</p>
+              </div>
+              <span className={styles.photoTip}>Paiement & remise</span>
+            </div>
+            <ListingCommerceForm listingId={listingId} />
           </section>
 
           <div className={styles.specialGrid}>
@@ -91,7 +104,7 @@ export default async function CreateListingPage({ searchParams }: Props) {
 
           <div className={styles.actions}>
             <a href="/" className={styles.secondaryButton}>Annuler</a>
-            <button type="button" className={styles.primaryButton}>Continuer vers prix & livraison</button>
+            <button type="button" className={styles.primaryButton}>Continuer vers vérification</button>
           </div>
         </div>
       </main>
