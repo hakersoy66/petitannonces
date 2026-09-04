@@ -36,8 +36,15 @@ export async function createPresignedUpload(objectKey: string, mimeType: string)
     Key: objectKey,
     ContentType: mimeType,
     CacheControl: "public, max-age=31536000, immutable",
+    ACL: "public-read",
   });
-  return getSignedUrl(client(), command, { expiresIn: 600 });
+  return {
+    url: await getSignedUrl(client(), command, { expiresIn: 600 }),
+    headers: {
+      "content-type": mimeType,
+      "x-amz-acl": "public-read",
+    },
+  };
 }
 
 export async function verifyStoredObject(objectKey: string) {
