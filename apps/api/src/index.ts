@@ -7,6 +7,7 @@ import { registerDsaComplianceRoutes } from "./dsa-compliance.js";
 import { registerDisputeRoutes } from "./disputes.js";
 import { registerGrowthAdminRoutes } from "./growth-admin.js";
 import { registerGrowthRoutes } from "./growth.js";
+import { registerHealthRoutes } from "./health.js";
 import { registerListingRoutes } from "./listings.js";
 import { registerMessagingRoutes } from "./messaging.js";
 import { registerMobilePushRoutes } from "./mobile-push.js";
@@ -21,7 +22,7 @@ import { registerShippingRoutes } from "./shipping.js";
 
 const app = Fastify({ logger: true, trustProxy: true, bodyLimit: 1024 * 1024 });
 await app.register(cookie);
-app.get("/health", async () => ({ status: "ok", service: "petitannonces-api", timestamp: new Date().toISOString() }));
+await registerHealthRoutes(app);
 await registerAuthRoutes(app);
 await registerAccountRoutes(app);
 await registerSecurityRoutes(app);
