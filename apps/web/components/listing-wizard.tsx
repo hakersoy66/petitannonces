@@ -15,31 +15,52 @@ const STEPS = ["Catégorie", "Détails", "Photos", "Prix & livraison", "Vérific
 const api = () => (process.env.NEXT_PUBLIC_API_URL ?? "/api").replace(/\/$/, "");
 const emptyVehicle:VehicleFields={make:"",model:"",version:"",modelYear:"",fuel:"",mileageKm:""};
 
+function descendants(category: Category) {
+  const out: Category[] = [];
+  const walk = (items: Category[] = []) => items.forEach((item) => {
+    out.push(item);
+    if (item.children?.length) walk(item.children);
+  });
+  walk(category.children);
+  return out;
+}
+
 export function ListingWizard({ initialListingId }: { initialListingId?: string }) {
   const [step,setStep]=useState(initialListingId?2:0);
   const [categories,setCategories]=useState<Category[]>([]);
+  const [root,setRoot]=useState<Category|null>(null);
   const [selected,setSelected]=useState<Category|null>(null);
   const [listingId,setListingId]=useState(initialListingId??"");
   const [title,setTitle]=useState("");
   const [description,setDescription]=useState("");
   const [busy,setBusy]=useState(false);
+  const [loadingCategories,setLoadingCategories]=useState(true);
   const [error,setError]=useState("");
   const [plate,setPlate]=useState("");
   const [plateMessage,setPlateMessage]=useState("");
   const [vehicle,setVehicle]=useState<VehicleFields>(emptyVehicle);
 
   useEffect(()=>{
+    setLoadingCategories(true);
     fetch(`${api()}/categories/tree`,{credentials:"include"})
       .then(async r=>{if(!r.ok) throw new Error("categories_failed"); return r.json() as Promise<CategoryTreeResponse>})
-      .then(p=>setCategories(p.categories))
-      .catch(()=>setError("Impossible de charger les catégories."));
+      .then(p=>{setCategories(p.categories);setError("")})
+      .catch(()=>setError("Impossible de charger les catégories. Réessayez dans quelques instants."))
+      .finally(()=>setLoadingCategories(false));
   },[]);
 
-  const leaves=useMemo(()=>{
-    const out:Category[]=[];
-    const walk=(items:Category[])=>items.forEach(c=>c.children?.length?walk(c.children):out.push(c));
-    walk(categories); return out;
-  },[categories]);
+  const subcategories=useMemo(()=>root?descendants(root):[],[root]);
+
+  function chooseRoot(category:Category){
+    setRoot(category);
+    setSelected(category.children?.length ? null : category);
+    setError("");
+  }
+
+  function chooseCategory(category:Category){
+    setSelected(category);
+    setError("");
+  }
 
   async function createDraft(){
     if(!selected) return;
@@ -61,14 +82,7 @@ export function ListingWizard({ initialListingId }: { initialListingId?: string 
       const r=await fetch(`${api()}/listings/${encodeURIComponent(listingId)}/basics`,{method:"PATCH",credentials:"include",headers:{"content-type":"application/json"},body:JSON.stringify({title,description})});
       const p=await r.json().catch(()=>({}));if(!r.ok)throw new Error(p.error??"basics_failed");
       if(selected?.domain==="VEHICLE"){
-        const payload={
-          make:vehicle.make.trim()||null,
-          model:vehicle.model.trim()||null,
-          version:vehicle.version.trim()||null,
-          modelYear:vehicle.modelYear?Number(vehicle.modelYear):null,
-          fuel:vehicle.fuel.trim()||null,
-          mileageKm:vehicle.mileageKm?Number(vehicle.mileageKm):null,
-        };
+        const payload={make:vehicle.make.trim()||null,model:vehicle.model.trim()||null,version:vehicle.version.trim()||null,modelYear:vehicle.modelYear?Number(vehicle.modelYear):null,fuel:vehicle.fuel.trim()||null,mileageKm:vehicle.mileageKm?Number(vehicle.mileageKm):null};
         const vr=await fetch(`${api()}/listings/${encodeURIComponent(listingId)}/vehicle`,{method:"PUT",credentials:"include",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});
         if(!vr.ok) throw new Error("vehicle_save_failed");
       }
@@ -83,14 +97,7 @@ export function ListingWizard({ initialListingId }: { initialListingId?: string 
       const p=await r.json().catch(()=>({}));
       if(!r.ok){const code=p.error;throw new Error(code??"vehicle_lookup_failed")}
       const v=(p.vehicle??{}) as Record<string,unknown>;
-      setVehicle(current=>({
-        ...current,
-        make:typeof v.make==="string"?v.make:current.make,
-        model:typeof v.model==="string"?v.model:current.model,
-        version:typeof v.version==="string"?v.version:current.version,
-        modelYear:typeof v.modelYear==="number"?String(v.modelYear):current.modelYear,
-        fuel:typeof v.fuel==="string"?v.fuel:current.fuel,
-      }));
+      setVehicle(current=>({...current,make:typeof v.make==="string"?v.make:current.make,model:typeof v.model==="string"?v.model:current.model,version:typeof v.version==="string"?v.version:current.version,modelYear:typeof v.modelYear==="number"?String(v.modelYear):current.modelYear,fuel:typeof v.fuel==="string"?v.fuel:current.fuel}));
       setPlateMessage("Véhicule identifié. Vérifiez les informations pré-remplies ci-dessous.");
     }catch(err){const code=err instanceof Error?err.message:"vehicle_lookup_failed";setPlateMessage(code==="vehicle_data_provider_not_configured"?"Identification automatique indisponible pour le moment. Renseignez le véhicule manuellement ci-dessous.":code==="vehicle_not_found"?"Aucun véhicule trouvé. Vous pouvez saisir les informations manuellement.":code==="invalid_registration_plate"?"Format de plaque invalide.":"Recherche de plaque indisponible. Vous pouvez continuer manuellement.")}finally{setBusy(false)}
   }
@@ -102,9 +109,12 @@ export function ListingWizard({ initialListingId }: { initialListingId?: string 
     {error&&<div className={styles.error}>{error}</div>}
 
     {step===0&&<section className={styles.panel}>
-      <div className={styles.head}><span>Étape 1 sur 5</span><h2>Choisissez la catégorie la plus précise</h2><p>Une fois la catégorie choisie, un vrai brouillon sera créé et les étapes suivantes pourront enregistrer vos données.</p></div>
-      <div className={styles.categoryGrid}>{leaves.map(c=><button type="button" key={c.id} className={selected?.id===c.id?styles.selected:""} onClick={()=>setSelected(c)}><strong>{c.name}</strong><small>{c.domain}</small></button>)}</div>
-      <div className={styles.nav}><span/><button type="button" disabled={!selected||busy} onClick={()=>void createDraft()}>{busy?"Création…":"Continuer"}</button></div>
+      <div className={styles.head}><span>Étape 1 sur 5</span><h2>Choisissez une catégorie</h2><p>Sélectionnez d’abord une grande catégorie, puis la catégorie la plus précise.</p></div>
+      {loadingCategories?<div className={styles.loading}>Chargement des catégories…</div>:<>
+        <div className={styles.rootGrid}>{categories.map(c=><button type="button" key={c.id} className={root?.id===c.id?styles.selectedRoot:""} onClick={()=>chooseRoot(c)}><strong>{c.name}</strong><small>{c.children?.length??0} sous-catégorie{(c.children?.length??0)>1?"s":""}</small></button>)}</div>
+        {root&&root.children?.length?<div className={styles.subcategoryBlock}><div className={styles.subcategoryTitle}><strong>{root.name}</strong><span>Choisissez la catégorie précise</span></div><div className={styles.categoryGrid}>{subcategories.map(c=><button type="button" key={c.id} className={selected?.id===c.id?styles.selected:""} onClick={()=>chooseCategory(c)}><strong>{c.name}</strong><small>{c.domain}</small>{selected?.id===c.id&&<i>✓</i>}</button>)}</div></div>:null}
+      </>}
+      <div className={styles.nav}><span>{selected?`Sélection : ${selected.name}`:"Choisissez une catégorie pour continuer"}</span><button type="button" disabled={!selected||busy} onClick={()=>void createDraft()}>{busy?"Création…":"Continuer"}</button></div>
     </section>}
 
     {step===1&&<section className={styles.panel}>
