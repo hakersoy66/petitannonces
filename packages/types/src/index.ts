@@ -29,4 +29,4 @@ export interface MobileApiEnvelope<T> {
   requestId?: string;
 }
 
-export * from "./catalog.js";
+export * from "./catalog";
