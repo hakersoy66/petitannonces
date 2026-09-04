@@ -36,14 +36,16 @@ export default function MessagesPage() {
       fetch(`${apiBase()}/auth/me`, { credentials: "include" }),
       fetch(`${apiBase()}/conversations`, { credentials: "include" }),
     ]);
+    if (meRes.status === 401 || convRes.status === 401) { window.location.href = `/connexion?next=${encodeURIComponent(`${window.location.pathname}${window.location.search}`)}`; return; }
     if (!meRes.ok || !convRes.ok) throw new Error("messages_unavailable");
     const mePayload = await meRes.json() as Me;
     const convPayload = await convRes.json() as { conversations: Conversation[] };
     setMe(mePayload.user);
     setConversations(convPayload.conversations);
-    const next = preselect ?? activeId ?? convPayload.conversations[0]?.id ?? null;
+    const requested = preselect && convPayload.conversations.some((c)=>c.id===preselect) ? preselect : null;
+    const next = requested ?? activeId ?? convPayload.conversations[0]?.id ?? null;
     setActiveId(next);
-    if (next) await loadMessages(next);
+    if (next) { await loadMessages(next); if (requested) setMobileChat(true); }
   }
 
   async function loadMessages(id: string) {
@@ -54,7 +56,7 @@ export default function MessagesPage() {
     setActiveId(id);
   }
 
-  useEffect(() => { loadConversations().catch(() => setError("Impossible de charger la messagerie.")); }, []);
+  useEffect(() => { const requested = new URLSearchParams(window.location.search).get("conversation"); loadConversations(requested).catch(() => setError("Impossible de charger la messagerie.")); }, []);
 
   const active = conversations.find((c) => c.id === activeId) ?? null;
   const filtered = useMemo(() => {
@@ -92,10 +94,11 @@ export default function MessagesPage() {
     setOfferBusy(true); setError("");
     try {
       const response = await fetch(`${apiBase()}/conversations/${activeId}/offers`, { method: "POST", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify({ amount }) });
-      if (!response.ok) throw new Error("offer_failed");
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error ?? "offer_failed");
       setOfferAmount("");
       await loadConversations(activeId);
-    } catch { setError("Impossible d’envoyer cette offre."); }
+    } catch (err) { setError(err instanceof Error && err.message === "offers_disabled" ? "Le vendeur n’accepte pas les offres sur cette annonce." : "Impossible d’envoyer cette offre."); }
     finally { setOfferBusy(false); }
   }
 
