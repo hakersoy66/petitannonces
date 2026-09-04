@@ -14,6 +14,7 @@ export type PublicListingDetail = {
   category: { id: string; name: string; slug: string; domain: "GENERAL" | "VEHICLE" | "REAL_ESTATE" | "JOB" | "SERVICE" | "ANIMAL" };
   breadcrumb: Array<{ name: string; slug: string }>;
   attributes: Array<{ key: string; label: string; unit: string | null; value: unknown }>;
+  media: Array<{ id: string; url: string; mimeType: string; width: number | null; height: number | null; altText: string | null; isCover: boolean }>;
   vehicle: Record<string, unknown> | null;
   property: Record<string, unknown> | null;
   energy: Record<string, unknown> | null;
