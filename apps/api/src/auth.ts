@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { hash, verify, Algorithm } from "@node-rs/argon2";
+import { hash, verify } from "@node-rs/argon2";
 import { prisma } from "@pa/database";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
@@ -30,7 +30,7 @@ function newOpaqueToken(bytes = 32) {
 
 async function hashPassword(password: string) {
   return hash(password, {
-    algorithm: Algorithm.Argon2id,
+    algorithm: 2,
     memoryCost: 19456,
     timeCost: 2,
     parallelism: 1,
@@ -97,7 +97,7 @@ export async function registerAuthRoutes(app: FastifyInstance) {
     const verificationToken = newOpaqueToken();
     const passwordHash = await hashPassword(password);
 
-    const user = await prisma.$transaction(async (tx) => {
+    const user = await prisma.$transaction(async (tx: any) => {
       const created = await tx.user.create({
         data: {
           email,
@@ -125,7 +125,6 @@ export async function registerAuthRoutes(app: FastifyInstance) {
       return created;
     });
 
-    // Email provider integration is added in the notifications phase.
     return reply.code(201).send({
       user,
       verificationRequired: true,
@@ -215,7 +214,7 @@ export async function registerAuthRoutes(app: FastifyInstance) {
         email: auth.user.email,
         kind: auth.user.kind,
         profile: auth.user.profile,
-        roles: auth.user.roles.map((entry) => entry.role),
+        roles: auth.user.roles.map((entry: { role: string }) => entry.role),
       },
     });
   });
