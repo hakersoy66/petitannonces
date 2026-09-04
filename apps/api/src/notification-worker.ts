@@ -1,0 +1,223 @@
+import { prisma } from "@pa/database";
+import webpush from "web-push";
+
+const MAX_ATTEMPTS = 5;
+const DEFAULT_BATCH_SIZE = 25;
+const STALE_PROCESSING_MINUTES = 10;
+
+type Channel = "EMAIL" | "PUSH";
+type OutboxRow = {
+  id: string;
+  userId: string;
+  eventKind: string;
+  channel: Channel;
+  payload: unknown;
+  attempts: number;
+};
+type DeliveryPayload = { title: string; body: string; actionUrl?: string | null; metadata?: Record<string, unknown> };
+type PushSubscriptionRow = {
+  id: string;
+  platform: "WEB" | "IOS" | "ANDROID";
+  endpoint: string | null;
+  p256dh: string | null;
+  auth: string | null;
+  nativeToken: string | null;
+};
+
+class ProviderUnavailableError extends Error {}
+
+function payloadOf(value: unknown): DeliveryPayload {
+  if (!value || typeof value !== "object") throw new Error("invalid_notification_payload");
+  const p = value as Record<string, unknown>;
+  if (typeof p.title !== "string" || typeof p.body !== "string") throw new Error("invalid_notification_payload");
+  return { title: p.title, body: p.body, actionUrl: typeof p.actionUrl === "string" ? p.actionUrl : null, metadata: p.metadata && typeof p.metadata === "object" ? p.metadata as Record<string, unknown> : {} };
+}
+
+function retryDelayMs(attempts: number) {
+  const schedule = [60_000, 5 * 60_000, 30 * 60_000, 2 * 60 * 60_000, 12 * 60 * 60_000];
+  return schedule[Math.min(Math.max(attempts - 1, 0), schedule.length - 1)] ?? 12 * 60 * 60_000;
+}
+
+function absoluteActionUrl(actionUrl?: string | null) {
+  if (!actionUrl) return null;
+  if (/^https?:\/\//i.test(actionUrl)) return actionUrl;
+  const base = (process.env.PUBLIC_WEB_URL ?? "https://petitannonces.fr").replace(/\/$/, "");
+  return `${base}${actionUrl.startsWith("/") ? actionUrl : `/${actionUrl}`}`;
+}
+
+function escapeHtml(value: string) {
+  return value.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[c] ?? c));
+}
+
+async function sendEmail(row: OutboxRow, payload: DeliveryPayload) {
+  const apiKey = process.env.RESEND_API_KEY;
+  const from = process.env.EMAIL_FROM;
+  if (!apiKey || !from) throw new ProviderUnavailableError("email_provider_not_configured");
+  const user = await prisma.user.findUnique({ where: { id: row.userId }, select: { email: true } });
+  if (!user?.email) throw new Error("recipient_email_missing");
+  const actionUrl = absoluteActionUrl(payload.actionUrl);
+  const html = `<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;padding:24px"><h2>${escapeHtml(payload.title)}</h2><p>${escapeHtml(payload.body)}</p>${actionUrl ? `<p><a href="${escapeHtml(actionUrl)}" style="display:inline-block;padding:12px 18px;background:#6d28d9;color:#fff;text-decoration:none;border-radius:10px">Voir sur Petit Annonces</a></p>` : ""}<p style="color:#6b7280;font-size:13px">Vous recevez cet e-mail selon vos préférences de notification Petit Annonces.</p></div>`;
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { "authorization": `Bearer ${apiKey}`, "content-type": "application/json", "idempotency-key": row.id },
+    body: JSON.stringify({ from, to: [user.email], subject: payload.title, html, text: `${payload.title}\n\n${payload.body}${actionUrl ? `\n\n${actionUrl}` : ""}` }),
+  });
+  if (!response.ok) throw new Error(`resend_${response.status}_${(await response.text()).slice(0, 300)}`);
+}
+
+function configureWebPush() {
+  const publicKey = process.env.NEXT_PUBLIC_WEB_PUSH_PUBLIC_KEY;
+  const privateKey = process.env.WEB_PUSH_PRIVATE_KEY;
+  const subject = process.env.WEB_PUSH_SUBJECT ?? "mailto:support@petitannonces.fr";
+  if (!publicKey || !privateKey) throw new ProviderUnavailableError("web_push_not_configured");
+  webpush.setVapidDetails(subject, publicKey, privateKey);
+}
+
+async function sendWebPush(subscription: PushSubscriptionRow, payload: DeliveryPayload) {
+  if (!subscription.endpoint || !subscription.p256dh || !subscription.auth) throw new Error("invalid_web_push_subscription");
+  configureWebPush();
+  try {
+    await webpush.sendNotification({ endpoint: subscription.endpoint, keys: { p256dh: subscription.p256dh, auth: subscription.auth } }, JSON.stringify({ title: payload.title, body: payload.body, url: absoluteActionUrl(payload.actionUrl), metadata: payload.metadata ?? {} }));
+  } catch (error) {
+    const statusCode = typeof error === "object" && error && "statusCode" in error ? Number((error as { statusCode?: unknown }).statusCode) : 0;
+    if (statusCode === 404 || statusCode === 410) {
+      await prisma.$executeRawUnsafe(`UPDATE "PushSubscription" SET "isActive"=FALSE,"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$1`, subscription.id);
+      return;
+    }
+    throw error;
+  }
+}
+
+function isExpoToken(value: string) {
+  return /^(ExponentPushToken|ExpoPushToken)\[.+\]$/.test(value);
+}
+
+async function sendNativePush(subscription: PushSubscriptionRow, payload: DeliveryPayload) {
+  if (!subscription.nativeToken) throw new Error("native_push_token_missing");
+  if (isExpoToken(subscription.nativeToken)) {
+    const response = await fetch("https://exp.host/--/api/v2/push/send", {
+      method: "POST",
+      headers: { "content-type": "application/json", "accept": "application/json", "accept-encoding": "gzip, deflate" },
+      body: JSON.stringify({ to: subscription.nativeToken, title: payload.title, body: payload.body, data: { url: absoluteActionUrl(payload.actionUrl), ...(payload.metadata ?? {}) }, sound: "default" }),
+    });
+    if (!response.ok) throw new Error(`expo_${response.status}_${(await response.text()).slice(0, 300)}`);
+    const result = await response.json() as { data?: { status?: string; details?: { error?: string } } };
+    if (result.data?.status === "error") {
+      if (result.data.details?.error === "DeviceNotRegistered") {
+        await prisma.$executeRawUnsafe(`UPDATE "PushSubscription" SET "isActive"=FALSE,"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$1`, subscription.id);
+        return;
+      }
+      throw new Error(`expo_${result.data.details?.error ?? "delivery_error"}`);
+    }
+    return;
+  }
+  const gateway = process.env.PUSH_NATIVE_GATEWAY_URL;
+  if (!gateway) throw new ProviderUnavailableError("native_push_gateway_not_configured");
+  const response = await fetch(gateway, {
+    method: "POST",
+    headers: { "content-type": "application/json", ...(process.env.PUSH_NATIVE_GATEWAY_TOKEN ? { "authorization": `Bearer ${process.env.PUSH_NATIVE_GATEWAY_TOKEN}` } : {}), "idempotency-key": subscription.id },
+    body: JSON.stringify({ platform: subscription.platform, token: subscription.nativeToken, title: payload.title, body: payload.body, actionUrl: absoluteActionUrl(payload.actionUrl), metadata: payload.metadata ?? {} }),
+  });
+  if (!response.ok) throw new Error(`native_gateway_${response.status}_${(await response.text()).slice(0, 300)}`);
+}
+
+async function sendPush(row: OutboxRow, payload: DeliveryPayload) {
+  const subscriptions = await prisma.$queryRawUnsafe<PushSubscriptionRow[]>(`SELECT "id","platform","endpoint","p256dh","auth","nativeToken" FROM "PushSubscription" WHERE "userId"=$1 AND "isActive"=TRUE ORDER BY "updatedAt" DESC`, row.userId);
+  if (subscriptions.length === 0) return;
+  let delivered = 0;
+  let unavailable = 0;
+  let lastError: unknown = null;
+  for (const subscription of subscriptions) {
+    try {
+      if (subscription.platform === "WEB") await sendWebPush(subscription, payload);
+      else await sendNativePush(subscription, payload);
+      delivered += 1;
+    } catch (error) {
+      lastError = error;
+      if (error instanceof ProviderUnavailableError) unavailable += 1;
+    }
+  }
+  if (delivered > 0) return;
+  if (unavailable === subscriptions.length) throw new ProviderUnavailableError("push_provider_not_configured");
+  if (lastError instanceof Error) throw lastError;
+  throw new Error("push_delivery_failed");
+}
+
+async function recoverStaleRows() {
+  await prisma.$executeRawUnsafe(`UPDATE "NotificationDeliveryOutbox" SET "status"='PENDING',"updatedAt"=CURRENT_TIMESTAMP,"lastError"=COALESCE("lastError",'worker_recovered_stale_claim') WHERE "status"='PROCESSING' AND "updatedAt" < CURRENT_TIMESTAMP - INTERVAL '${STALE_PROCESSING_MINUTES} minutes'`);
+}
+
+async function claimBatch(limit: number): Promise<OutboxRow[]> {
+  return prisma.$queryRawUnsafe<OutboxRow[]>(`
+    WITH picked AS (
+      SELECT "id" FROM "NotificationDeliveryOutbox"
+      WHERE "status"='PENDING' AND "availableAt"<=CURRENT_TIMESTAMP
+      ORDER BY "createdAt" ASC
+      LIMIT $1
+      FOR UPDATE SKIP LOCKED
+    )
+    UPDATE "NotificationDeliveryOutbox" o
+    SET "status"='PROCESSING',"attempts"=o."attempts"+1,"updatedAt"=CURRENT_TIMESTAMP
+    FROM picked
+    WHERE o."id"=picked."id"
+    RETURNING o."id",o."userId",o."eventKind",o."channel",o."payload",o."attempts"`, limit);
+}
+
+async function markSent(id: string) {
+  await prisma.$executeRawUnsafe(`UPDATE "NotificationDeliveryOutbox" SET "status"='SENT',"sentAt"=CURRENT_TIMESTAMP,"lastError"=NULL,"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$1`, id);
+}
+
+async function markRetry(row: OutboxRow, error: unknown) {
+  const message = error instanceof Error ? error.message.slice(0, 1000) : String(error).slice(0, 1000);
+  if (error instanceof ProviderUnavailableError) {
+    await prisma.$executeRawUnsafe(`UPDATE "NotificationDeliveryOutbox" SET "status"='PENDING',"attempts"=GREATEST("attempts"-1,0),"availableAt"=CURRENT_TIMESTAMP + INTERVAL '15 minutes',"lastError"=$2,"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$1`, row.id, message);
+    return;
+  }
+  if (row.attempts >= MAX_ATTEMPTS) {
+    await prisma.$executeRawUnsafe(`UPDATE "NotificationDeliveryOutbox" SET "status"='FAILED',"lastError"=$2,"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$1`, row.id, message);
+    return;
+  }
+  const next = new Date(Date.now() + retryDelayMs(row.attempts));
+  await prisma.$executeRawUnsafe(`UPDATE "NotificationDeliveryOutbox" SET "status"='PENDING',"availableAt"=$2,"lastError"=$3,"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$1`, row.id, next, message);
+}
+
+export async function processNotificationOutbox(batchSize = DEFAULT_BATCH_SIZE) {
+  await recoverStaleRows();
+  const rows = await claimBatch(Math.min(Math.max(batchSize, 1), 100));
+  let sent = 0;
+  let retried = 0;
+  let failed = 0;
+  for (const row of rows) {
+    try {
+      const payload = payloadOf(row.payload);
+      if (row.channel === "EMAIL") await sendEmail(row, payload);
+      else await sendPush(row, payload);
+      await markSent(row.id);
+      sent += 1;
+    } catch (error) {
+      await markRetry(row, error);
+      if (!(error instanceof ProviderUnavailableError) && row.attempts >= MAX_ATTEMPTS) failed += 1;
+      else retried += 1;
+    }
+  }
+  return { claimed: rows.length, sent, retried, failed };
+}
+
+export function startNotificationWorker(log?: { info: (value: unknown, message?: string) => void; error: (value: unknown, message?: string) => void }) {
+  if (process.env.NOTIFICATION_WORKER_ENABLED !== "true") return null;
+  const intervalMs = Math.max(Number(process.env.NOTIFICATION_WORKER_INTERVAL_MS ?? 15000), 5000);
+  let running = false;
+  const tick = async () => {
+    if (running) return;
+    running = true;
+    try {
+      const result = await processNotificationOutbox(Number(process.env.NOTIFICATION_WORKER_BATCH_SIZE ?? DEFAULT_BATCH_SIZE));
+      if (result.claimed > 0) log?.info(result, "notification delivery batch processed");
+    } catch (error) { log?.error(error, "notification delivery worker failed"); }
+    finally { running = false; }
+  };
+  void tick();
+  const timer = setInterval(() => void tick(), intervalMs);
+  timer.unref();
+  return timer;
+}
