@@ -34,42 +34,31 @@ export async function registerSearchRoutes(app: FastifyInstance) {
 
     const os = await searchOpenSearch({ q: p.q, category: p.category, city: p.city, minPriceMinor, maxPriceMinor, page: p.page, limit: p.limit }).catch(() => null);
     if (os?.ids.length) {
-      const records = await prisma.listing.findMany({
-        where: { id: { in: os.ids }, status: "PUBLISHED" },
-        include: { category: true, vehicle: true, property: true, energy: true },
-      });
+      const records = await prisma.listing.findMany({ where: { id: { in: os.ids }, status: "PUBLISHED" }, include: { category: true, vehicle: true, property: true, energy: true } });
       const byId = new Map(records.map((record) => [record.id, record]));
-      const ordered = os.ids.map((id) => byId.get(id)).filter(Boolean);
-      return reply.send({ engine: "opensearch", page: p.page, limit: p.limit, total: os.total, items: ordered });
+      return reply.send({ engine: "opensearch", page: p.page, limit: p.limit, total: os.total, items: os.ids.map((id) => byId.get(id)).filter(Boolean) });
     }
 
     const where = {
       status: "PUBLISHED" as const,
       ...(p.category ? { category: { slug: p.category } } : {}),
       ...(p.city ? { city: { equals: p.city, mode: "insensitive" as const } } : {}),
-      ...(p.q
-        ? {
-            OR: [
-              { title: { contains: p.q, mode: "insensitive" as const } },
-              { description: { contains: p.q, mode: "insensitive" as const } },
-              { category: { name: { contains: p.q, mode: "insensitive" as const } } },
-            ],
-          }
-        : {}),
-      ...(minPriceMinor !== undefined || maxPriceMinor !== undefined
-        ? { priceMinor: { ...(minPriceMinor !== undefined ? { gte: minPriceMinor } : {}), ...(maxPriceMinor !== undefined ? { lte: maxPriceMinor } : {}) } }
-        : {}),
+      ...(p.q ? { OR: [
+        { title: { contains: p.q, mode: "insensitive" as const } },
+        { description: { contains: p.q, mode: "insensitive" as const } },
+        { category: { name: { contains: p.q, mode: "insensitive" as const } } },
+      ] } : {}),
+      ...(minPriceMinor !== undefined || maxPriceMinor !== undefined ? { priceMinor: { ...(minPriceMinor !== undefined ? { gte: minPriceMinor } : {}), ...(maxPriceMinor !== undefined ? { lte: maxPriceMinor } : {}) } } : {}),
     };
 
     const needsGeo = p.lat !== undefined && p.lng !== undefined && p.radiusKm !== undefined;
-    const candidates = await prisma.listing.findMany({
-      where: needsGeo ? { ...where, latitude: { not: null }, longitude: { not: null } } : where,
-      include: { category: true, vehicle: true, property: true, energy: true },
-      orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }],
-      ...(needsGeo ? { take: 500 } : { skip: (p.page - 1) * p.limit, take: p.limit }),
-    });
-
     if (needsGeo) {
+      const candidates = await prisma.listing.findMany({
+        where: { ...where, latitude: { not: null }, longitude: { not: null } },
+        include: { category: true, vehicle: true, property: true, energy: true },
+        orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }],
+        take: 500,
+      });
       const filtered = candidates
         .map((item) => ({ ...item, distanceKm: haversineKm(p.lat!, p.lng!, item.latitude!, item.longitude!) }))
         .filter((item) => item.distanceKm <= p.radiusKm!)
@@ -78,8 +67,11 @@ export async function registerSearchRoutes(app: FastifyInstance) {
       return reply.send({ engine: "postgres", page: p.page, limit: p.limit, total: filtered.length, items: filtered.slice(start, start + p.limit) });
     }
 
-    const total = await prisma.listing.count({ where });
-    return reply.send({ engine: "postgres", page: p.page, limit: p.limit, total, items: candidates });
+    const [items, total] = await Promise.all([
+      prisma.listing.findMany({ where, include: { category: true, vehicle: true, property: true, energy: true }, orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }], skip: (p.page - 1) * p.limit, take: p.limit }),
+      prisma.listing.count({ where }),
+    ]);
+    return reply.send({ engine: "postgres", page: p.page, limit: p.limit, total, items });
   });
 
   app.get("/search/autocomplete", async (request, reply) => {
@@ -91,29 +83,21 @@ export async function registerSearchRoutes(app: FastifyInstance) {
       prisma.listing.findMany({ where: { status: "PUBLISHED", title: { contains: q, mode: "insensitive" } }, select: { title: true, slug: true }, take: 6 }),
       prisma.listing.findMany({ where: { status: "PUBLISHED", city: { contains: q, mode: "insensitive" } }, select: { city: true }, distinct: ["city"], take: 5 }),
     ]);
-    return reply.send({
-      suggestions: [
-        ...categories.map((item) => ({ type: "category", label: item.name, value: item.slug })),
-        ...listings.filter((item) => item.title && item.slug).map((item) => ({ type: "listing", label: item.title!, value: item.slug! })),
-        ...cities.filter((item) => item.city).map((item) => ({ type: "city", label: item.city!, value: item.city! })),
-      ],
-    });
+    return reply.send({ suggestions: [
+      ...categories.map((item) => ({ type: "category", label: item.name, value: item.slug })),
+      ...listings.filter((item) => item.title && item.slug).map((item) => ({ type: "listing", label: item.title!, value: item.slug! })),
+      ...cities.filter((item) => item.city).map((item) => ({ type: "city", label: item.city!, value: item.city! })),
+    ] });
   });
 
   app.get("/public/listings/:slug", async (request, reply) => {
     const parsed = z.object({ slug: z.string().min(1).max(220) }).safeParse(request.params);
     if (!parsed.success) return reply.code(400).send({ error: "invalid_slug" });
-    const listing = await prisma.listing.findFirst({
-      where: { slug: parsed.data.slug, status: "PUBLISHED" },
-      include: {
-        category: true,
-        vehicle: true,
-        property: true,
-        energy: true,
-        attributes: { include: { attribute: true } },
-        seller: { select: { id: true, kind: true, createdAt: true, profile: { select: { displayName: true, avatarUrl: true } } } },
-      },
-    });
+    const listing = await prisma.listing.findFirst({ where: { slug: parsed.data.slug, status: "PUBLISHED" }, include: {
+      category: true, vehicle: true, property: true, energy: true,
+      attributes: { include: { attribute: true } },
+      seller: { select: { id: true, kind: true, createdAt: true, profile: { select: { displayName: true, avatarUrl: true } } } },
+    } });
     if (!listing) return reply.code(404).send({ error: "listing_not_found" });
     return reply.send({ listing });
   });
