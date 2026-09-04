@@ -27,6 +27,8 @@ export type PublicListingDetail = {
     memberSince: string;
     verified: boolean;
     store: { name: string; slug: string; logoUrl: string | null; isVerified: boolean } | null;
+    completedSales: number;
+    trust: { score: number; reliableSeller: boolean; level: "NEW" | "ESTABLISHED" | "TRUSTED" };
     reviews: { count: number; average: number | null; recent: Array<{ id: string; rating: number; comment: string | null; createdAt: string; reviewerName: string }> };
   };
 };
