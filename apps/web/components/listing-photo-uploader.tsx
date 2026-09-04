@@ -159,8 +159,9 @@ export function ListingPhotoUploader({ listingId }: { listingId?: string }) {
     setItems(next.map((item, index) => ({ ...item, sortOrder: index * 10, isCover: item.id === coverId })));
     if (!listingId) return;
     const ready = next.filter((item) => item.status === "READY");
-    if (!ready.length) return;
-    const finalCover = coverId && ready.some((item) => item.id === coverId) ? coverId : ready.find((item) => item.isCover)?.id ?? ready[0].id;
+    const firstReady = ready[0];
+    if (!firstReady) return;
+    const finalCover = coverId && ready.some((item) => item.id === coverId) ? coverId : ready.find((item) => item.isCover)?.id ?? firstReady.id;
     await fetch(`${apiBase()}/listings/${encodeURIComponent(listingId)}/media/order`, {
       method: "PUT",
       credentials: "include",
@@ -173,6 +174,7 @@ export function ListingPhotoUploader({ listingId }: { listingId?: string }) {
     if (dragIndex.current === null || dragIndex.current === index) return;
     const next = [...items];
     const [moved] = next.splice(dragIndex.current, 1);
+    if (!moved) return;
     next.splice(index, 0, moved);
     dragIndex.current = null;
     void persistOrder(next, next.find((item) => item.isCover)?.id);
@@ -246,7 +248,7 @@ export function ListingPhotoUploader({ listingId }: { listingId?: string }) {
                 </div>
                 {item.uploading && <div className={styles.progress}><i style={{ width: `${item.progress ?? 0}%` }} /></div>}
                 <div className={styles.photoActions}>
-                  <button type="button" disabled={item.uploading || item.status !== "READY" && Boolean(listingId)} onClick={() => void setCover(item.id)}>Définir couverture</button>
+                  <button type="button" disabled={item.uploading || (item.status !== "READY" && Boolean(listingId))} onClick={() => void setCover(item.id)}>Définir couverture</button>
                   <button type="button" disabled={item.uploading} onClick={() => void removeItem(item)}>Supprimer</button>
                 </div>
                 <div className={styles.dragHint}>☰ Glisser pour réordonner</div>
