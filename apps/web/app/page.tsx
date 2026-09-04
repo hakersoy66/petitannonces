@@ -2,14 +2,14 @@ import { SiteFooter } from "../components/site-footer";
 import { SiteHeader } from "../components/site-header";
 
 const categories = [
-  { icon: "🚗", label: "Véhicules", count: "124k annonces" },
-  { icon: "🏠", label: "Immobilier", count: "86k annonces" },
-  { icon: "💻", label: "High-tech", count: "58k annonces" },
-  { icon: "🛋️", label: "Maison", count: "74k annonces" },
-  { icon: "👕", label: "Mode", count: "92k annonces" },
-  { icon: "⚽", label: "Sports", count: "31k annonces" },
-  { icon: "🧸", label: "Enfants", count: "43k annonces" },
-  { icon: "🛠️", label: "Services", count: "21k annonces" },
+  { icon: "🚗", label: "Véhicules", count: "124k annonces", slug: "vehicules" },
+  { icon: "🏠", label: "Immobilier", count: "86k annonces", slug: "immobilier" },
+  { icon: "💻", label: "High-tech", count: "58k annonces", slug: "high-tech" },
+  { icon: "🛋️", label: "Maison", count: "74k annonces", slug: "maison-jardin" },
+  { icon: "👕", label: "Mode", count: "92k annonces", slug: "mode" },
+  { icon: "⚽", label: "Sports", count: "31k annonces", slug: "sports-loisirs" },
+  { icon: "🧸", label: "Enfants", count: "43k annonces", slug: "enfants" },
+  { icon: "🛠️", label: "Services", count: "21k annonces", slug: "services" },
 ];
 
 const listings = [
@@ -38,26 +38,26 @@ export default function HomePage() {
               <h1>Tout ce que vous cherchez.<br /><span>Juste à côté.</span></h1>
               <p className="hero-lead">Achetez, vendez et découvrez des milliers d'annonces partout en France avec une expérience simple, rapide et sécurisée.</p>
 
-              <form className="search-panel" role="search" action="#annonces">
+              <form className="search-panel" role="search" action="/recherche" method="get">
                 <label className="search-field search-field-main">
                   <span className="field-icon" aria-hidden="true">⌕</span>
                   <span className="sr-only">Que recherchez-vous ?</span>
-                  <input type="search" placeholder="Que recherchez-vous ?" />
+                  <input name="q" type="search" placeholder="Que recherchez-vous ?" />
                 </label>
                 <label className="search-field search-field-location">
                   <span className="field-icon" aria-hidden="true">⌖</span>
                   <span className="sr-only">Localisation</span>
-                  <input type="text" defaultValue="Toute la France" />
+                  <input name="city" type="text" placeholder="Toute la France" />
                 </label>
                 <button className="button button-primary search-button" type="submit">Rechercher</button>
               </form>
 
               <div className="quick-links" aria-label="Recherches populaires">
                 <span>Populaire :</span>
-                <a href="#annonces">iPhone</a>
-                <a href="#annonces">Peugeot 3008</a>
-                <a href="#annonces">Appartement</a>
-                <a href="#annonces">Vélo électrique</a>
+                <a href="/recherche?q=iPhone">iPhone</a>
+                <a href="/recherche?q=Peugeot%203008">Peugeot 3008</a>
+                <a href="/recherche?q=Appartement">Appartement</a>
+                <a href="/recherche?q=V%C3%A9lo%20%C3%A9lectrique">Vélo électrique</a>
               </div>
             </div>
 
@@ -96,11 +96,11 @@ export default function HomePage() {
           <div className="shell">
             <div className="section-heading heading-row">
               <div><span className="section-eyebrow">Explorer</span><h2>Toutes les catégories</h2></div>
-              <a className="text-link" href="#">Voir toutes les catégories <span aria-hidden="true">→</span></a>
+              <a className="text-link" href="/recherche">Voir toutes les catégories <span aria-hidden="true">→</span></a>
             </div>
             <div className="category-grid">
               {categories.map((category) => (
-                <a className="category-card" href="#annonces" key={category.label}>
+                <a className="category-card" href={`/categorie/${category.slug}`} key={category.label}>
                   <span className="category-icon" aria-hidden="true">{category.icon}</span>
                   <strong>{category.label}</strong>
                   <small>{category.count}</small>
@@ -114,7 +114,7 @@ export default function HomePage() {
           <div className="shell">
             <div className="section-heading heading-row">
               <div><span className="section-eyebrow">À découvrir</span><h2>Annonces près de chez vous</h2><p>Une sélection fraîche, mise à jour en continu.</p></div>
-              <a className="text-link" href="#">Voir toutes les annonces <span aria-hidden="true">→</span></a>
+              <a className="text-link" href="/recherche">Voir toutes les annonces <span aria-hidden="true">→</span></a>
             </div>
             <div className="listing-grid">
               {listings.map((listing, index) => (
@@ -142,7 +142,7 @@ export default function HomePage() {
               <span className="section-eyebrow light">La confiance intégrée</span>
               <h2>Achetez et vendez<br />l'esprit tranquille.</h2>
               <p>Petit Annonces réunit paiement, suivi et protection dans une expérience conçue pour réduire les mauvaises surprises.</p>
-              <a className="button button-light" href="#">Découvrir notre protection</a>
+              <a className="button button-light" href="/conformite">Découvrir notre protection</a>
             </div>
             <div className="trust-list">
               {trustItems.map((item) => (
@@ -161,7 +161,7 @@ export default function HomePage() {
               <span className="section-eyebrow">Pour les professionnels</span>
               <h2>Votre boutique.<br />Votre vitrine.<br /><span>Votre croissance.</span></h2>
               <p>Présentez votre activité, publiez vos annonces et pilotez vos ventes depuis un espace professionnel pensé pour le marché français.</p>
-              <div className="actions-row"><a className="button button-primary" href="#">Créer une boutique</a><a className="text-link" href="#">Découvrir les offres →</a></div>
+              <div className="actions-row"><a className="button button-primary" href="/inscription/pro">Créer une boutique</a><a className="text-link" href="/promouvoir">Découvrir les offres →</a></div>
             </div>
             <div className="pro-mockup" aria-label="Aperçu d'une boutique professionnelle">
               <div className="browser-top"><span /><span /><span /><div>petitannonces.fr/boutique/atelier-lyon</div></div>
@@ -175,7 +175,7 @@ export default function HomePage() {
         <section id="deposer" className="cta-section">
           <div className="shell cta-panel">
             <div><span className="section-eyebrow">C'est parti</span><h2>Vous avez quelque chose à vendre ?</h2><p>Publiez votre annonce en quelques minutes et trouvez le bon acheteur.</p></div>
-            <a className="button button-primary button-large" href="#"><span className="button-plus">+</span> Déposer une annonce</a>
+            <a className="button button-primary button-large" href="/deposer-une-annonce"><span className="button-plus">+</span> Déposer une annonce</a>
           </div>
         </section>
       </main>
