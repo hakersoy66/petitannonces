@@ -24,7 +24,7 @@ export function SiteHeader() {
 
         <div className="header-actions">
           <a className="icon-action" href="/#favoris" aria-label="Mes favoris">♡</a>
-          <a className="account-link" href="/#compte">Se connecter</a>
+          <a className="account-link" href="/mon-compte">Mon compte</a>
           <a className="button button-primary button-compact" href="/deposer-une-annonce">
             <span className="button-plus" aria-hidden="true">+</span>
             Déposer une annonce
