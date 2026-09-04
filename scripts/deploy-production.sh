@@ -33,7 +33,6 @@ fi
 git -C "$SOURCE" worktree add --detach "$RELEASE" "$SHA"
 ln -sfn "$SHARED/.env" "$RELEASE/.env"
 
-# Production build-time configuration (Prisma config requires DATABASE_URL).
 set -a
 # shellcheck disable=SC1090
 source "$SHARED/.env"
@@ -63,6 +62,10 @@ backup="$BACKUPS/pre-${SHA}-$(date -u +%Y%m%dT%H%M%SZ).dump"
 pg_dump "$PG_DATABASE_URL" --format=custom --no-owner --no-acl --file="$backup"
 
 bash scripts/apply-sql-migrations.sh
+
+# Keep catalog/category data present on fresh production databases.
+# The Prisma seed uses upsert operations and is safe to run repeatedly.
+pnpm --filter @pa/database db:seed
 
 ln -sfn "$RELEASE" "$CURRENT"
 export APP_VERSION="$SHA"
