@@ -1,44 +1,42 @@
-import type { Metadata } from "next";
+"use client";
 
-export const metadata: Metadata = {
-  title: "Suivi de commande | Petit Annonces",
-  description: "Suivez la livraison, confirmez la réception ou ouvrez un litige depuis votre commande Petit Annonces.",
-};
+import { FormEvent, useEffect, useState } from "react";
+import { useParams } from "next/navigation";
+import { SiteHeader } from "../../../components/site-header";
+import styles from "./page.module.css";
 
-export default async function OrderPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
-  return (
-    <main className="site-shell" style={{ paddingBlock: 48 }}>
-      <section style={{ maxWidth: 980, margin: "0 auto" }}>
-        <p className="eyebrow">Commande {id}</p>
-        <h1>Suivi de votre commande</h1>
-        <p className="muted">Retrouvez ici le transport, la protection acheteur et les actions disponibles selon l’état de la transaction.</p>
+type Order = Record<string, any> & { id:string; orderNumber:string; role:"BUYER"|"SELLER"; status:string; title:string|null; slug:string|null; currency:string; totalAmountMinor:number; sellerNetMinor:number; shipmentStatus?:string|null; carrier?:string|null; trackingNumber?:string|null; trackingUrl?:string|null; disputeId?:string|null; disputeStatus?:string|null; returnRequestStatus?:string|null };
+type DisputePayload={dispute:any;messages:Array<any>;evidence:Array<any>};
+const api=()=> (process.env.NEXT_PUBLIC_API_URL??"http://127.0.0.1:4000").replace(/\/$/,"");
+const money=(v:number,c="EUR")=>new Intl.NumberFormat("fr-FR",{style:"currency",currency:c}).format(v/100);
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))", gap: 18, marginTop: 28 }}>
-          <article className="panel" style={{ padding: 24 }}>
-            <strong>Livraison</strong>
-            <ol style={{ margin: "18px 0 0", paddingLeft: 20, display: "grid", gap: 12 }}>
-              <li>Commande payée</li>
-              <li>Colis expédié</li>
-              <li>En cours d’acheminement</li>
-              <li>Livré</li>
-            </ol>
-            <p className="muted" style={{ marginTop: 18 }}>Le numéro de suivi et le transporteur sont affichés dès que le vendeur expédie le colis.</p>
-          </article>
-
-          <article className="panel" style={{ padding: 24 }}>
-            <strong>Protection acheteur</strong>
-            <p className="muted" style={{ marginTop: 12 }}>Après la livraison, une période de protection s’ouvre avant le déblocage du paiement vendeur. Vous pouvez confirmer plus tôt si tout est conforme.</p>
-            <button type="button" className="primary-button" style={{ marginTop: 18 }}>Tout est conforme</button>
-          </article>
-        </div>
-
-        <article className="panel" style={{ padding: 24, marginTop: 18 }}>
-          <strong>Un problème avec la commande ?</strong>
-          <p className="muted" style={{ marginTop: 10 }}>Article non reçu, endommagé, non conforme, mauvais article ou suspicion de contrefaçon : ouvrez un litige avant la fin de la protection acheteur.</p>
-          <button type="button" className="secondary-button" style={{ marginTop: 16 }}>Ouvrir un litige</button>
-        </article>
-      </section>
-    </main>
-  );
+export default function OrderDetailPage(){
+ const params=useParams<{id:string}>(); const id=params.id;
+ const [order,setOrder]=useState<Order|null>(null); const [loading,setLoading]=useState(true); const [error,setError]=useState(""); const [notice,setNotice]=useState("");
+ const [carrier,setCarrier]=useState(""); const [tracking,setTracking]=useState(""); const [returnReason,setReturnReason]=useState(""); const [returnDetails,setReturnDetails]=useState("");
+ const [disputeReason,setDisputeReason]=useState("ITEM_NOT_AS_DESCRIBED"); const [disputeSummary,setDisputeSummary]=useState(""); const [dispute,setDispute]=useState<DisputePayload|null>(null); const [disputeMessage,setDisputeMessage]=useState(""); const [evidenceUrl,setEvidenceUrl]=useState("");
+ const load=async()=>{setLoading(true);const r=await fetch(`${api()}/account/orders/${id}`,{credentials:"include"});if(!r.ok){setError("Commande introuvable ou accès refusé.");setLoading(false);return}const p=await r.json();setOrder(p.order);setCarrier(p.order.carrier??"");setTracking(p.order.trackingNumber??"");if(p.order.disputeId){const d=await fetch(`${api()}/disputes/${p.order.disputeId}`,{credentials:"include"});if(d.ok)setDispute(await d.json())}setLoading(false)};
+ useEffect(()=>{void load()},[id]);
+ async function send(path:string,body?:unknown){setError("");setNotice("");const r=await fetch(`${api()}${path}`,{method:"POST",credentials:"include",headers:{"content-type":"application/json"},body:body===undefined?undefined:JSON.stringify(body)});const p=await r.json().catch(()=>({}));if(!r.ok){setError(p.error??"Une erreur est survenue.");return false}setNotice("Action enregistrée.");await load();return true}
+ async function shipment(e:FormEvent){e.preventDefault();await send(`/orders/${id}/shipment`,{carrier,trackingNumber:tracking})}
+ async function returnReq(e:FormEvent){e.preventDefault();await send(`/account/orders/${id}/return-request`,{reason:returnReason,details:returnDetails})}
+ async function openDispute(e:FormEvent){e.preventDefault();await send(`/orders/${id}/disputes`,{reason:disputeReason,summary:disputeSummary})}
+ async function addMessage(e:FormEvent){e.preventDefault();if(!order?.disputeId)return;if(await send(`/disputes/${order.disputeId}/messages`,{body:disputeMessage}))setDisputeMessage("")}
+ async function addEvidence(e:FormEvent){e.preventDefault();if(!order?.disputeId)return;if(await send(`/disputes/${order.disputeId}/evidence`,{fileUrl:evidenceUrl,fileName:"Justificatif"}))setEvidenceUrl("")}
+ if(loading)return <div><SiteHeader/><main className={styles.shell}>Chargement…</main></div>;
+ if(!order)return <div><SiteHeader/><main className={styles.shell}><div className={styles.error}>{error}</div></main></div>;
+ return <div className={styles.page}><SiteHeader/><main className={styles.shell}>
+  <div className={styles.top}><div><a href="/commandes">← Retour aux commandes</a><h1>{order.title??"Commande"}</h1><p>{order.orderNumber} · {order.role==="BUYER"?"Achat":"Vente"}</p></div><span className={styles.status}>{order.status}</span></div>
+  {error&&<div className={styles.error}>{error}</div>}{notice&&<div className={styles.notice}>{notice}</div>}
+  <div className={styles.grid}>
+   <section className={styles.main}>
+    <article className={styles.card}><h2>Suivi de la commande</h2><div className={styles.steps}>{["PAID","PROCESSING","SHIPPED","DELIVERED","COMPLETED"].map((s,i)=><div key={s} className={["PENDING_PAYMENT","PAID","PROCESSING","SHIPPED","DELIVERED","COMPLETED"].indexOf(order.status)>=i+1?styles.done:""}><b>{i+1}</b><span>{s}</span></div>)}</div></article>
+    <article className={styles.card}><h2>Paiement & montants</h2><div className={styles.moneyRow}><span>Total</span><strong>{money(order.totalAmountMinor,order.currency)}</strong></div>{order.role==="SELLER"&&<div className={styles.moneyRow}><span>Net vendeur</span><strong>{money(order.sellerNetMinor,order.currency)}</strong></div>}<p>Paiement: {order.paymentStatus??"—"}</p></article>
+    <article className={styles.card}><h2>Livraison</h2>{order.shipmentStatus?<div><p><strong>{order.carrier}</strong> · {order.trackingNumber}</p><p>Statut: {order.shipmentStatus}</p>{order.trackingUrl&&<a href={order.trackingUrl} target="_blank" rel="noreferrer">Suivre le colis ↗</a>}</div>:<p>Aucune expédition enregistrée.</p>}{order.role==="SELLER"&&["PAID","PROCESSING"].includes(order.status)&&<form onSubmit={shipment} className={styles.form}><input value={carrier} onChange={e=>setCarrier(e.target.value)} placeholder="Transporteur" required/><input value={tracking} onChange={e=>setTracking(e.target.value)} placeholder="Numéro de suivi" required/><button>Enregistrer l’expédition</button></form>}{order.role==="BUYER"&&order.status==="DELIVERED"&&<button className={styles.primary} onClick={()=>void send(`/orders/${id}/confirm-delivery`)}>Confirmer la réception</button>}</article>
+    <article className={styles.card}><h2>Retour / remboursement</h2>{order.returnRequestStatus?<p>Demande en cours: <strong>{order.returnRequestStatus}</strong></p>:["PAID","PROCESSING","SHIPPED","DELIVERED"].includes(order.status)?<form onSubmit={returnReq} className={styles.form}><input value={returnReason} onChange={e=>setReturnReason(e.target.value)} placeholder="Motif" required/><textarea value={returnDetails} onChange={e=>setReturnDetails(e.target.value)} placeholder="Expliquez votre demande" required/><button>Envoyer la demande</button></form>:<p>Aucune demande possible pour ce statut.</p>}</article>
+    <article className={styles.card}><h2>Litige</h2>{!order.disputeId?["PAID","PROCESSING","SHIPPED","DELIVERED"].includes(order.status)?<form onSubmit={openDispute} className={styles.form}><select value={disputeReason} onChange={e=>setDisputeReason(e.target.value)}><option value="ITEM_NOT_RECEIVED">Article non reçu</option><option value="ITEM_NOT_AS_DESCRIBED">Non conforme à l’annonce</option><option value="DAMAGED_ITEM">Article endommagé</option><option value="MISSING_PARTS">Pièces manquantes</option><option value="WRONG_ITEM">Mauvais article</option><option value="OTHER">Autre</option></select><textarea value={disputeSummary} onChange={e=>setDisputeSummary(e.target.value)} placeholder="Décrivez précisément le problème" required/><button>Ouvrir un litige</button></form>:<p>Le litige n’est pas disponible à ce stade.</p>:<div><p>Statut: <strong>{order.disputeStatus}</strong></p><div className={styles.thread}>{dispute?.messages?.map(m=><div key={m.id}><b>{m.kind}</b><span>{m.body}</span></div>)}</div><form onSubmit={addMessage} className={styles.inline}><input value={disputeMessage} onChange={e=>setDisputeMessage(e.target.value)} placeholder="Ajouter un message" required/><button>Envoyer</button></form><form onSubmit={addEvidence} className={styles.inline}><input type="url" value={evidenceUrl} onChange={e=>setEvidenceUrl(e.target.value)} placeholder="URL d’un justificatif" required/><button>Ajouter une preuve</button></form><small>Le dépôt de fichier direct sera raccordé au stockage média lors de l’intégration finale.</small></div>}</article>
+   </section>
+   <aside className={styles.side}><div className={styles.card}><h3>Résumé</h3><p>Rôle: {order.role==="BUYER"?"Acheteur":"Vendeur"}</p><p>Protection: {order.protectionStatus??"—"}</p><p>Litige: {order.disputeStatus??"Aucun"}</p><p>Retour: {order.returnRequestStatus??"Aucun"}</p>{order.slug&&<a href={`/annonce/${order.slug}`}>Voir l’annonce →</a>}</div></aside>
+  </div>
+ </main></div>
 }
