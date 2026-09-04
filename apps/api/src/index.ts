@@ -1,5 +1,6 @@
 import cookie from "@fastify/cookie";
 import Fastify from "fastify";
+import rawBody from "fastify-raw-body";
 import { registerAccountRoutes } from "./account.js";
 import { registerAccountActivityRoutes } from "./account-activity.js";
 import { registerAccountDashboardRoutes } from "./account-dashboard.js";
@@ -36,11 +37,13 @@ import { registerPublicListingRoutes } from "./public-listings.js";
 import { requireAdminRoles } from "./rbac.js";
 import { registerSearchRoutes } from "./search.js";
 import { registerSecurityRoutes } from "./security.js";
+import { registerSendcloudWebhookRoutes } from "./sendcloud-webhooks.js";
 import { registerShippingRoutes } from "./shipping.js";
 import { registerTwoFactorRoutes } from "./two-factor.js";
 
 const app = Fastify({ logger: true, trustProxy: true, bodyLimit: 1024 * 1024 });
 await app.register(cookie);
+await app.register(rawBody,{field:"rawBody",global:false,encoding:"utf8",runFirst:true});
 await registerHealthRoutes(app);
 await registerAuthRoutes(app);
 await registerAuthRecoveryRoutes(app);
@@ -68,6 +71,7 @@ await registerCheckoutListingRoutes(app);
 await registerPaymentRoutes(app);
 await registerOrderFulfillmentRoutes(app);
 await registerShippingRoutes(app);
+await registerSendcloudWebhookRoutes(app);
 await registerDisputeRoutes(app);
 await registerModerationRoutes(app);
 await registerComplianceRoutes(app);
