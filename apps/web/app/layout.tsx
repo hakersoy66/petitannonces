@@ -4,6 +4,7 @@ import { CookieConsent } from "../components/cookie-consent";
 import { PwaClient } from "../components/pwa-client";
 import "./globals.css";
 import "./typography.css";
+import "./header.css";
 import "./pwa.css";
 
 const inter = Inter({
