@@ -1,6 +1,7 @@
 import cookie from "@fastify/cookie";
 import Fastify from "fastify";
 import { registerAccountRoutes } from "./account.js";
+import { registerAccountDashboardRoutes } from "./account-dashboard.js";
 import { registerAuthRoutes } from "./auth.js";
 import { registerComplianceRoutes } from "./compliance.js";
 import { registerDsaComplianceRoutes } from "./dsa-compliance.js";
@@ -29,6 +30,7 @@ await app.register(cookie);
 await registerHealthRoutes(app);
 await registerAuthRoutes(app);
 await registerAccountRoutes(app);
+await registerAccountDashboardRoutes(app);
 await registerSecurityRoutes(app);
 await registerListingRoutes(app);
 await registerListingCommerceRoutes(app);
