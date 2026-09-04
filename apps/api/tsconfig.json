@@ -7,5 +7,5 @@
     "declaration": true,
     "noEmit": false
   },
-  "include": ["src/**/*.ts", "../../packages/database/src/**/*.ts", "../../packages/database/generated/prisma/**/*.ts"]
+  "include": ["src/**/*.ts"]
 }
