@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { AccountNav } from "../../components/account-nav";
 import { SiteHeader } from "../../components/site-header";
 import styles from "./page.module.css";
 
@@ -11,7 +12,7 @@ type Message = { id: string; senderId: string; kind: "TEXT" | "IMAGE" | "FILE" |
 type Conversation = { id: string; buyerId: string; sellerId: string; status: string; buyerLastReadAt?: string | null; sellerLastReadAt?: string | null; lastMessageAt?: string | null; listing: Listing; buyer: Person; seller: Person; messages: Message[] };
 type Me = { user: { id: string; profile?: { displayName?: string | null } | null } };
 
-function apiBase() { return (process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:4000").replace(/\/$/, ""); }
+function apiBase() { return (process.env.NEXT_PUBLIC_API_URL ?? "/api").replace(/\/$/, ""); }
 function money(minor: number | null, currency = "EUR") { return minor == null ? "Prix non défini" : new Intl.NumberFormat("fr-FR", { style: "currency", currency }).format(minor / 100); }
 function timeLabel(value?: string | null) { if (!value) return ""; return new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit" }).format(new Date(value)); }
 function dateLabel(value: string) { return new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(value)); }
@@ -112,6 +113,7 @@ export default function MessagesPage() {
   return <div className={styles.page}>
     <SiteHeader />
     <main className={styles.shell}>
+      <AccountNav active="messages" />
       <div className={styles.topbar}>
         <div><span className={styles.eyebrow}>Messagerie sécurisée</span><h1>Mes messages</h1><p>Discutez, négociez et suivez vos offres sans quitter Petit Annonces.</p></div>
         <a href="/mon-compte/activite" className={styles.secondary}>Voir toute l’activité</a>
@@ -136,10 +138,10 @@ export default function MessagesPage() {
         <section className={styles.chatPanel}>
           {!active || !me ? <div className={styles.emptyChat}><div>💬</div><h2>Sélectionnez une conversation</h2><p>Vos messages, offres et échanges liés à une annonce apparaîtront ici.</p></div> : <>
             <header className={styles.chatHeader}>
-              <button className={styles.back} onClick={()=>setMobileChat(false)}>‹</button>
+              <button className={styles.back} onClick={()=>setMobileChat(false)} aria-label="Retour aux conversations">‹</button>
               <div className={styles.avatar}>{otherName.slice(0,2).toUpperCase()}</div>
               <div className={styles.chatIdentity}><strong>{otherName}</strong><span>Échange lié à une annonce Petit Annonces</span></div>
-              <a href={active.listing.slug ? `/annonce/${active.listing.slug}` : "#"} className={styles.listingLink}><span>{active.listing.title ?? "Annonce"}</span><b>{money(active.listing.priceMinor, active.listing.currency)}</b></a>
+              {active.listing.slug ? <a href={`/annonce/${active.listing.slug}`} className={styles.listingLink}><span>{active.listing.title ?? "Annonce"}</span><b>{money(active.listing.priceMinor, active.listing.currency)}</b></a> : <div className={styles.listingLink}><span>{active.listing.title ?? "Annonce"}</span><b>{money(active.listing.priceMinor, active.listing.currency)}</b></div>}
             </header>
             <div className={styles.security}>🔒 Restez sur Petit Annonces pour vos échanges et paiements. N’envoyez jamais d’argent par virement, mandat ou crypto à la demande d’un inconnu.</div>
             <div className={styles.messages}>
@@ -148,9 +150,7 @@ export default function MessagesPage() {
                 if (message.kind === "OFFER" && message.offer) {
                   const offer = message.offer;
                   const canRespond = offer.recipientId === me.id && offer.status === "PENDING";
-                  return <div key={message.id} className={`${styles.offerCard} ${mine ? styles.mineOffer : ""}`}>
-                    <div><span>Offre</span><strong>{money(offer.amountMinor, offer.currency)}</strong></div><p>{mine ? "Vous avez envoyé cette offre." : `${otherName} vous a envoyé une offre.`}</p><small>{dateLabel(message.createdAt)} · {offer.status}</small>{canRespond && <div className={styles.offerActions}><button onClick={()=>respondOffer(offer.id,"ACCEPT")}>Accepter</button><button onClick={()=>respondOffer(offer.id,"DECLINE")}>Refuser</button></div>}
-                  </div>;
+                  return <div key={message.id} className={`${styles.offerCard} ${mine ? styles.mineOffer : ""}`}><div><span>Offre</span><strong>{money(offer.amountMinor, offer.currency)}</strong></div><p>{mine ? "Vous avez envoyé cette offre." : `${otherName} vous a envoyé une offre.`}</p><small>{dateLabel(message.createdAt)} · {offer.status}</small>{canRespond && <div className={styles.offerActions}><button onClick={()=>respondOffer(offer.id,"ACCEPT")}>Accepter</button><button onClick={()=>respondOffer(offer.id,"DECLINE")}>Refuser</button></div>}</div>;
                 }
                 return <div key={message.id} className={`${styles.messageRow} ${mine ? styles.mine : ""}`}><div className={styles.bubble}><p>{message.body}</p><small>{dateLabel(message.createdAt)}</small></div></div>;
               })}
