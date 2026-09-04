@@ -25,6 +25,8 @@ function propertySpecs(property: Record<string, unknown> | null, energy: Record<
   return pairs.filter(([, value]) => value !== null && value !== undefined).map(([label, value, unit]) => ({ label, value: attributeToText(value, unit) }));
 }
 
+function stars(value:number|null){if(value==null)return "Aucune évaluation";const rounded=Math.round(value);return `${"★".repeat(rounded)}${"☆".repeat(5-rounded)} ${value.toFixed(1)}/5`;}
+
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
   try {
@@ -61,6 +63,7 @@ export default async function ListingPage({ params }: Props) {
       : listing.attributes.map((item) => ({ label: item.label, value: attributeToText(item.value, item.unit) }));
   const cover = listing.media.find((item) => item.isCover) ?? listing.media[0];
   const thumbs = listing.media.filter((item) => item.id !== cover?.id).slice(0, 3);
+  const reviewLabel=listing.seller.reviews.count?`${stars(listing.seller.reviews.average)} · ${listing.seller.reviews.count} avis`:"Nouveau vendeur";
 
   return (
     <div className={styles.page}>
@@ -70,41 +73,19 @@ export default async function ListingPage({ params }: Props) {
         <div className={styles.layout}>
           <section className={styles.main}>
             <div className={styles.gallery}>
-              {cover ? (
-                <div className={styles.heroImage}>
-                  <img src={cover.url} alt={cover.altText ?? title} />
-                  <span className={styles.photoBadge}>1 / {listing.media.length} photos</span>
-                </div>
-              ) : (
-                <div className={styles.heroImage}>Aucune photo<span className={styles.photoBadge}>Galerie</span></div>
-              )}
-              <div className={styles.thumbs}>
-                {thumbs.map((media, index) => <div className={styles.thumb} key={media.id}><img src={media.url} alt={media.altText ?? `${title} photo ${index + 2}`} /></div>)}
-                {listing.media.length > 4 && <div className={styles.thumb}>+{listing.media.length - 4}</div>}
-                {listing.media.length <= 1 && <div className={styles.thumb}>Photos supplémentaires</div>}
-              </div>
+              {cover ? <div className={styles.heroImage}><img src={cover.url} alt={cover.altText ?? title} /><span className={styles.photoBadge}>1 / {listing.media.length} photos</span></div> : <div className={styles.heroImage}>Aucune photo<span className={styles.photoBadge}>Galerie</span></div>}
+              <div className={styles.thumbs}>{thumbs.map((media, index) => <div className={styles.thumb} key={media.id}><img src={media.url} alt={media.altText ?? `${title} photo ${index + 2}`} /></div>)}{listing.media.length > 4 && <div className={styles.thumb}>+{listing.media.length - 4}</div>}{listing.media.length <= 1 && <div className={styles.thumb}>Photos supplémentaires</div>}</div>
             </div>
-
-            <div className={styles.topline}>
-              <div className={styles.titleBlock}>
-                <h1>{title}</h1>
-                <div className={styles.meta}><span>📍 {location}</span>{listing.publishedAt && <span>🕒 {new Intl.DateTimeFormat("fr-FR").format(new Date(listing.publishedAt))}</span>}</div>
-              </div>
-              <div className={styles.actions}><button className={styles.iconBtn}>♡</button><button className={styles.iconBtn}>↗</button></div>
-            </div>
-
+            <div className={styles.topline}><div className={styles.titleBlock}><h1>{title}</h1><div className={styles.meta}><span>📍 {location}</span>{listing.publishedAt && <span>🕒 {new Intl.DateTimeFormat("fr-FR").format(new Date(listing.publishedAt))}</span>}</div></div><div className={styles.actions}><button className={styles.iconBtn}>♡</button><button className={styles.iconBtn}>↗</button></div></div>
             {specs.length > 0 && <section className={styles.card}><h2>{isVehicle ? "Caractéristiques du véhicule" : isProperty ? "Caractéristiques du bien" : "Caractéristiques"}</h2><div className={styles.specGrid}>{specs.map((spec) => <div className={styles.spec} key={spec.label}><small>{spec.label}</small><strong>{spec.value}</strong></div>)}</div></section>}
-
             {isProperty && listing.energy && <section className={styles.card}><h2>Performance énergétique</h2><div className={styles.deliveryRows}><div className={styles.deliveryRow}><span>DPE</span><strong>{attributeToText(listing.energy.energyClass)}</strong></div><div className={styles.deliveryRow}><span>GES</span><strong>{attributeToText(listing.energy.climateClass)}</strong></div>{listing.energy.annualCostMinMinor != null && listing.energy.annualCostMaxMinor != null && <div className={styles.deliveryRow}><span>Dépenses annuelles estimées</span><strong>{formatMoney(Number(listing.energy.annualCostMinMinor))} – {formatMoney(Number(listing.energy.annualCostMaxMinor))}</strong></div>}</div></section>}
-
             <section className={styles.card}><h2>Description</h2><p className={styles.description}>{listing.description ?? "Aucune description fournie."}</p></section>
             <section className={styles.card}><h2>Localisation</h2><div className={styles.locationBox}>Zone approximative · {location}</div></section>
-            <section className={styles.card}><h2>À propos de l’annonceur</h2><div className={styles.sellerMini}><div className={styles.avatar}>{listing.seller.name.slice(0, 2).toUpperCase()}</div><div><strong>{listing.seller.name}</strong><div className={styles.meta}><span>{listing.seller.kind === "PROFESSIONNEL" ? "Professionnel" : "Particulier"}</span>{listing.seller.verified && <span>✓ Vérifié</span>}</div></div></div></section>
+            <section className={styles.card}><h2>À propos de l’annonceur</h2><div className={styles.sellerMini}><div className={styles.avatar}>{listing.seller.name.slice(0, 2).toUpperCase()}</div><div><strong>{listing.seller.name}</strong><div className={styles.meta}><span>{listing.seller.kind === "PROFESSIONNEL" ? "Professionnel" : "Particulier"}</span>{listing.seller.verified && <span>✓ Vérifié</span>}</div><div>{reviewLabel}</div></div></div>{listing.seller.reviews.recent.length>0&&<div style={{display:"grid",gap:10,marginTop:18}}>{listing.seller.reviews.recent.map(r=><div key={r.id} style={{padding:14,border:"1px solid #ececf2",borderRadius:14}}><strong>{"★".repeat(r.rating)}{"☆".repeat(5-r.rating)}</strong><p style={{margin:"6px 0"}}>{r.comment}</p><small>{r.reviewerName}</small></div>)}</div>}<a href={`/profil/${listing.seller.id}`} style={{display:"inline-block",marginTop:16}}>Voir le profil et tous les avis →</a></section>
           </section>
-
           <aside className={styles.sidebar}>
-            <div className={styles.priceCard}><div className={styles.priceLabel}>Prix</div><div className={styles.price}>{price}</div>{canCheckout ? <a className={styles.primary} href={checkoutHref}>Acheter en toute sécurité</a> : <button className={styles.primary}>{isProperty ? "Demander une visite" : isVehicle ? "Contacter le vendeur" : "Contacter le vendeur"}</button>}<button className={styles.secondary}>Envoyer un message</button>{!isProperty && <button className={styles.ghost}>Faire une offre</button>}<div className={styles.secure}>{isVehicle ? "🚘 Vérifiez les documents et organisez l’essai avant la transaction." : isProperty ? "🏠 Vérifiez diagnostics et informations du bien avant engagement." : canCheckout ? "🔒 Paiement protégé et livraison Sendcloud disponibles pour cette annonce." : "🔒 Contactez le vendeur pour organiser la transaction."}</div></div>
-            <div className={styles.sellerCard}><div className={styles.sellerHead}><div className={styles.avatar}>{listing.seller.name.slice(0, 2).toUpperCase()}</div><div><strong>{listing.seller.name}</strong><div className={styles.meta}>{listing.seller.verified && <span>Vérifié</span>}</div></div></div><button className={styles.ghost}>Voir le profil</button></div>
+            <div className={styles.priceCard}><div className={styles.priceLabel}>Prix</div><div className={styles.price}>{price}</div>{canCheckout ? <a className={styles.primary} href={checkoutHref}>Acheter en toute sécurité</a> : <button className={styles.primary}>{isProperty ? "Demander une visite" : isVehicle ? "Contacter le vendeur" : "Contacter le vendeur"}</button>}<button className={styles.secondary}>Envoyer un message</button>{!isProperty && <button className={styles.ghost}>Faire une offre</button>}<div className={styles.secure}>{isVehicle ? "🚘 Vérifiez les documents et organisez l’essai avant la transaction." : isProperty ? "🏠 Vérifiez diagnostics et informations du bien avant engagement." : canCheckout ? "🔒 Paiement protégé et livraison disponibles pour cette annonce." : "🔒 Contactez le vendeur pour organiser la transaction."}</div></div>
+            <div className={styles.sellerCard}><div className={styles.sellerHead}><div className={styles.avatar}>{listing.seller.name.slice(0, 2).toUpperCase()}</div><div><strong>{listing.seller.name}</strong><div className={styles.meta}>{listing.seller.verified && <span>Vérifié</span>}</div><div>{listing.seller.reviews.average!=null?`${listing.seller.reviews.average.toFixed(1)} ★ · ${listing.seller.reviews.count} avis`:"Pas encore d’avis"}</div></div></div><a className={styles.ghost} href={`/profil/${listing.seller.id}`}>Voir le profil</a></div>
           </aside>
         </div>
       </main>
