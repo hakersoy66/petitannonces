@@ -1,10 +1,10 @@
 generator client {
-  provider = "prisma-client-js"
+  provider = "prisma-client"
+  output   = "../generated/prisma"
 }
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 enum UserKind {
@@ -22,11 +22,11 @@ enum ListingStatus {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  kind      UserKind @default(PARTICULIER)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id        String    @id @default(cuid())
+  email     String    @unique
+  kind      UserKind  @default(PARTICULIER)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
   listings  Listing[]
 }
 
