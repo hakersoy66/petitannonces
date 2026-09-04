@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { CookieConsent } from "../components/cookie-consent";
 import { PwaClient } from "../components/pwa-client";
 import "./globals.css";
+import "./pwa.css";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://petitannonces.fr"),
