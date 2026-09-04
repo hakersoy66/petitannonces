@@ -4,7 +4,9 @@ import { useEffect, useState } from "react";
 
 const STORAGE_KEY = "pa_cookie_consent_v1";
 const POLICY_VERSION = "2026-09";
+const CONSENT_TTL_MS = 180 * 24 * 60 * 60 * 1000;
 type Choices = { analytics: boolean; personalization: boolean; advertising: boolean };
+type StoredConsent = Choices & { policyVersion?: string; savedAt?: string };
 
 function anonymousId() {
   const key = "pa_anon_id";
@@ -20,19 +22,42 @@ const primary = { ...secondary, border: 0, background: "#5b4cf0", color: "#fff" 
 
 export function CookieConsent() {
   const [open, setOpen] = useState(false);
+  const [ready, setReady] = useState(false);
   const [settings, setSettings] = useState(false);
   const [choices, setChoices] = useState<Choices>({ analytics: false, personalization: false, advertising: false });
-  useEffect(() => { setOpen(!localStorage.getItem(STORAGE_KEY)); }, []);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) { setOpen(true); setReady(true); return; }
+      const saved = JSON.parse(raw) as StoredConsent;
+      const savedAt = saved.savedAt ? new Date(saved.savedAt).getTime() : 0;
+      const valid = saved.policyVersion === POLICY_VERSION && Number.isFinite(savedAt) && Date.now() - savedAt < CONSENT_TTL_MS;
+      if (valid) {
+        setChoices({ analytics: Boolean(saved.analytics), personalization: Boolean(saved.personalization), advertising: Boolean(saved.advertising) });
+        setOpen(false);
+      } else {
+        localStorage.removeItem(STORAGE_KEY);
+        setOpen(true);
+      }
+    } catch {
+      localStorage.removeItem(STORAGE_KEY);
+      setOpen(true);
+    } finally {
+      setReady(true);
+    }
+  }, []);
 
   async function save(next: Choices) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...next, policyVersion: POLICY_VERSION, savedAt: new Date().toISOString() }));
-    setChoices(next); setOpen(false);
+    setChoices(next);
+    setOpen(false);
     try {
-      await fetch(`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"}/privacy/cookies`, { method: "POST", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify({ anonymousId: anonymousId(), policyVersion: POLICY_VERSION, source: "WEB", choices: next }) });
-    } catch { /* the local choice still prevents front-end non-essential loading */ }
+      await fetch(`${process.env.NEXT_PUBLIC_API_URL ?? "/api"}/privacy/cookies`, { method: "POST", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify({ anonymousId: anonymousId(), policyVersion: POLICY_VERSION, source: "WEB", choices: next }) });
+    } catch { /* local consent remains authoritative for front-end non-essential loading */ }
   }
 
-  if (!open) return <button type="button" onClick={() => setOpen(true)} style={{ position: "fixed", right: 18, bottom: 18, zIndex: 70, ...secondary, padding: "9px 13px", fontSize: 12 }}>Gérer mes cookies</button>;
+  if (!ready || !open) return null;
 
   return (
     <div role="dialog" aria-modal="true" aria-labelledby="cookie-title" style={{ position: "fixed", inset: 0, zIndex: 100, display: "grid", alignItems: "end", background: "rgba(18,18,35,.34)", padding: 18 }}>
