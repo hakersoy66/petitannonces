@@ -101,6 +101,35 @@ enum OfferStatus {
   EXPIRED
 }
 
+enum BusinessVerificationStatus {
+  NOT_STARTED
+  PENDING
+  VERIFIED
+  REJECTED
+  SUSPENDED
+}
+
+enum StoreStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  SUSPENDED
+}
+
+enum ProfessionalPlanCode {
+  ESSENTIEL
+  PROFESSIONNEL
+  PREMIUM
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  EXPIRED
+}
+
 model User {
   id String @id @default(cuid())
   email String @unique
@@ -125,6 +154,9 @@ model User {
   messages Message[]
   offersMade Offer[] @relation("OfferMaker")
   offersReceived Offer[] @relation("OfferRecipient")
+  business BusinessProfile?
+  stores Store[]
+  subscriptions ProfessionalSubscription[]
   @@index([status, createdAt])
 }
 
@@ -265,6 +297,7 @@ model Listing {
   status ListingStatus @default(DRAFT)
   sellerId String
   categoryId String
+  storeId String?
   city String?
   postalCode String?
   region String?
@@ -272,6 +305,7 @@ model Listing {
   longitude Float?
   seller User @relation(fields: [sellerId], references: [id])
   category Category @relation(fields: [categoryId], references: [id])
+  store Store? @relation(fields: [storeId], references: [id], onDelete: SetNull)
   attributes ListingAttributeValue[]
   vehicle VehicleDetails?
   property PropertyDetails?
@@ -283,6 +317,7 @@ model Listing {
   publishedAt DateTime?
   @@index([status, categoryId])
   @@index([sellerId, createdAt])
+  @@index([storeId, status, publishedAt])
   @@index([status, city, publishedAt])
   @@index([status, priceMinor])
   @@index([latitude, longitude])
@@ -440,4 +475,100 @@ model Offer {
   @@index([conversationId, createdAt])
   @@index([listingId, status])
   @@index([recipientId, status])
+}
+
+model BusinessProfile {
+  id String @id @default(cuid())
+  userId String @unique
+  legalName String
+  tradeName String?
+  siren String? @unique
+  siret String? @unique
+  vatNumber String?
+  legalForm String?
+  nafCode String?
+  registrationCountry String @default("FR")
+  headquartersAddress String?
+  headquartersPostalCode String?
+  headquartersCity String?
+  verificationStatus BusinessVerificationStatus @default(NOT_STARTED)
+  verificationProvider String?
+  verificationReference String?
+  verifiedAt DateTime?
+  lastRegistryCheckAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stores Store[]
+  @@index([verificationStatus])
+  @@index([siren])
+  @@index([siret])
+}
+
+model Store {
+  id String @id @default(cuid())
+  ownerId String
+  businessId String?
+  slug String @unique
+  name String
+  description String?
+  logoUrl String?
+  coverUrl String?
+  websiteUrl String?
+  phone String?
+  email String?
+  city String?
+  postalCode String?
+  countryCode String @default("FR")
+  status StoreStatus @default(DRAFT)
+  isVerified Boolean @default(false)
+  publishedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  business BusinessProfile? @relation(fields: [businessId], references: [id], onDelete: SetNull)
+  listings Listing[]
+  @@index([ownerId, status])
+  @@index([businessId])
+}
+
+model ProfessionalPlan {
+  id String @id @default(cuid())
+  code ProfessionalPlanCode @unique
+  name String
+  description String?
+  monthlyPriceMinor Int
+  yearlyPriceMinor Int?
+  currency String @default("EUR")
+  maxActiveListings Int?
+  maxStores Int @default(1)
+  analyticsEnabled Boolean @default(false)
+  autoRenewListings Boolean @default(false)
+  prioritySupport Boolean @default(false)
+  featuredCreditsMonthly Int @default(0)
+  bulkImportEnabled Boolean @default(false)
+  apiFeedEnabled Boolean @default(false)
+  isActive Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  subscriptions ProfessionalSubscription[]
+}
+
+model ProfessionalSubscription {
+  id String @id @default(cuid())
+  userId String
+  planId String
+  status SubscriptionStatus @default(TRIALING)
+  trialEndsAt DateTime?
+  currentPeriodStart DateTime?
+  currentPeriodEnd DateTime?
+  cancelAtPeriodEnd Boolean @default(false)
+  externalProvider String?
+  externalSubscriptionId String? @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan ProfessionalPlan @relation(fields: [planId], references: [id])
+  @@index([userId, status])
+  @@index([planId, status])
 }
