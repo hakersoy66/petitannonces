@@ -1,5 +1,3 @@
-BEGIN;
-
 CREATE TABLE IF NOT EXISTS "ListingCommerceSettings" (
   "listingId" TEXT PRIMARY KEY,
   "acceptsOffers" BOOLEAN NOT NULL DEFAULT TRUE,
@@ -22,9 +20,3 @@ CREATE TABLE IF NOT EXISTS "ListingCommerceSettings" (
 
 CREATE INDEX IF NOT EXISTS "ListingCommerceSettings_shipping_idx"
   ON "ListingCommerceSettings" ("mondialRelayEnabled", "colissimoEnabled", "handDeliveryEnabled");
-
-INSERT INTO "_pa_sql_migrations" ("name", "checksum", "applied_at")
-VALUES ('20260904124000_phase16_listing_commerce', 'managed-by-runner', NOW())
-ON CONFLICT ("name") DO NOTHING;
-
-COMMIT;
