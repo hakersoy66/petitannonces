@@ -3,11 +3,14 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    }
   },
   "scripts": {
-    "build": "prisma generate",
-    "typecheck": "prisma validate",
+    "build": "prisma generate && tsc -p tsconfig.json",
+    "typecheck": "prisma validate && tsc --noEmit -p tsconfig.json",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
