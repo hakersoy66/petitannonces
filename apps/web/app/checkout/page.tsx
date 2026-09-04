@@ -1,27 +1,31 @@
+import { SiteHeader } from "../../components/site-header";
+import { CheckoutClient } from "./checkout-client";
+
 export const metadata = {
   title: "Paiement sécurisé | Petit Annonces",
-  description: "Finalisez votre achat avec paiement protégé sur Petit Annonces.",
+  description: "Choisissez votre livraison Sendcloud puis finalisez votre achat protégé sur Petit Annonces.",
 };
 
-export default function CheckoutPage() {
+export default async function CheckoutPage({searchParams}:{searchParams:Promise<Record<string,string|string[]|undefined>>}) {
+  const params=await searchParams;
+  const listingId=typeof params.listingId==="string"?params.listingId:"";
+  const fromPostalCode=typeof params.fromPostalCode==="string"?params.fromPostalCode:"75001";
+  const parsedAmount=typeof params.itemAmountMinor==="string"?Number(params.itemAmountMinor):0;
+  const itemAmountMinor=Number.isInteger(parsedAmount)&&parsedAmount>0?parsedAmount:0;
+
   return (
-    <main className="site-shell" style={{ paddingBlock: 48 }}>
-      <section className="panel" style={{ maxWidth: 920, margin: "0 auto", padding: 28 }}>
-        <p className="eyebrow">Paiement protégé</p>
-        <h1>Finaliser votre achat</h1>
-        <p className="muted">Le paiement est traité par un prestataire de paiement agréé. Petit Annonces ne stocke jamais les données de carte bancaire.</p>
-        <div style={{ display: "grid", gap: 16, marginTop: 28 }}>
-          <div className="panel" style={{ padding: 20 }}>
-            <strong>Récapitulatif</strong>
-            <p className="muted">Prix de l’article, livraison éventuelle et frais de protection acheteur sont détaillés avant validation.</p>
-          </div>
-          <div className="panel" style={{ padding: 20 }}>
-            <strong>Protection acheteur</strong>
-            <p className="muted">Le vendeur n’est payé qu’après les étapes prévues de la transaction. Les remboursements et litiges utilisent le même numéro de commande.</p>
-          </div>
-          <button type="button" className="primary-button">Continuer vers le paiement sécurisé</button>
+    <>
+      <SiteHeader />
+      <main className="site-shell" style={{paddingBlock:36}}>
+        <div style={{maxWidth:1180,margin:"0 auto 22px"}}>
+          <p className="eyebrow">Paiement protégé</p>
+          <h1 style={{marginBottom:8}}>Finaliser votre achat</h1>
+          <p className="muted" style={{maxWidth:760}}>Choisissez votre mode de livraison parmi les options proposées par Sendcloud, sélectionnez un point relais lorsque nécessaire, puis poursuivez vers le paiement sécurisé.</p>
         </div>
-      </section>
-    </main>
+        <div style={{maxWidth:1180,margin:"0 auto"}}>
+          <CheckoutClient listingId={listingId} fromPostalCode={fromPostalCode} itemAmountMinor={itemAmountMinor} />
+        </div>
+      </main>
+    </>
   );
 }
