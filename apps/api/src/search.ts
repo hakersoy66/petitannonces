@@ -2,6 +2,7 @@ import { prisma } from "@pa/database";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { searchOpenSearch } from "./opensearch.js";
+import { calculateTrustScore } from "./trust-score.js";
 
 const searchSchema = z.object({
   q: z.string().trim().max(120).optional(),
@@ -24,6 +25,36 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number) {
   return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+type SearchItemBase = { id: string; sellerId: string };
+type ReputationRow = { id:string; createdAt:Date; verified:boolean; reviewCount:bigint; reviewAverage:number|null; completedSales:bigint };
+type MediaRow = { listingId:string; publicUrl:string };
+
+async function enrichItems<T extends SearchItemBase>(items:T[]){
+  if(!items.length)return items;
+  const sellerIds=[...new Set(items.map((item)=>item.sellerId))];
+  const listingIds=items.map((item)=>item.id);
+  const [reputationRows,mediaRows]=await Promise.all([
+    prisma.$queryRawUnsafe<ReputationRow[]>(`
+      SELECT u."id",u."createdAt",
+        (COALESCE(b."verificationStatus"='VERIFIED',FALSE) OR EXISTS(SELECT 1 FROM "Store" s WHERE s."ownerId"=u."id" AND s."status"='ACTIVE' AND s."isVerified"=TRUE)) AS "verified",
+        COALESCE(r."reviewCount",0)::bigint AS "reviewCount",r."reviewAverage",
+        COALESCE(o."completedSales",0)::bigint AS "completedSales"
+      FROM "User" u
+      LEFT JOIN "BusinessProfile" b ON b."userId"=u."id"
+      LEFT JOIN LATERAL (SELECT COUNT(*)::bigint AS "reviewCount",AVG("rating")::float AS "reviewAverage" FROM "MarketplaceReview" mr WHERE mr."revieweeId"=u."id") r ON TRUE
+      LEFT JOIN LATERAL (SELECT COUNT(*)::bigint AS "completedSales" FROM "MarketplaceOrder" mo WHERE mo."sellerId"=u."id" AND mo."status"='COMPLETED') o ON TRUE
+      WHERE u."id" = ANY($1::text[])`,sellerIds),
+    prisma.$queryRawUnsafe<MediaRow[]>(`SELECT DISTINCT ON (lm."listingId") lm."listingId",lm."publicUrl" FROM "ListingMedia" lm WHERE lm."listingId" = ANY($1::text[]) AND lm."status"='READY' AND lm."publicUrl" IS NOT NULL ORDER BY lm."listingId",lm."isCover" DESC,lm."sortOrder" ASC,lm."createdAt" ASC`,listingIds)
+  ]);
+  const reps=new Map(reputationRows.map((row)=>{
+    const reviewCount=Number(row.reviewCount);const completedSales=Number(row.completedSales);
+    const trust=calculateTrustScore({verified:row.verified,reviewCount,reviewAverage:row.reviewAverage,completedSales,memberSince:row.createdAt});
+    return [row.id,{verified:row.verified,reviewCount,reviewAverage:row.reviewAverage,completedSales,trust}] as const;
+  }));
+  const media=new Map(mediaRows.map((row)=>[row.listingId,row.publicUrl] as const));
+  return items.map((item)=>({...item,imageUrl:media.get(item.id)??null,sellerReputation:reps.get(item.sellerId)??{verified:false,reviewCount:0,reviewAverage:null,completedSales:0,trust:{score:0,reliableSeller:false,level:"NEW" as const}}}));
+}
+
 export async function registerSearchRoutes(app: FastifyInstance) {
   app.get("/search", async (request, reply) => {
     const parsed = searchSchema.safeParse(request.query);
@@ -36,7 +67,8 @@ export async function registerSearchRoutes(app: FastifyInstance) {
     if (os?.ids.length) {
       const records = await prisma.listing.findMany({ where: { id: { in: os.ids }, status: "PUBLISHED" }, include: { category: true, vehicle: true, property: true, energy: true } });
       const byId = new Map(records.map((record) => [record.id, record]));
-      return reply.send({ engine: "opensearch", page: p.page, limit: p.limit, total: os.total, items: os.ids.map((id) => byId.get(id)).filter(Boolean) });
+      const ordered=os.ids.map((id) => byId.get(id)).filter((item): item is NonNullable<typeof item>=>Boolean(item));
+      return reply.send({ engine: "opensearch", page: p.page, limit: p.limit, total: os.total, items: await enrichItems(ordered) });
     }
 
     const where = {
@@ -56,22 +88,18 @@ export async function registerSearchRoutes(app: FastifyInstance) {
       const candidates = await prisma.listing.findMany({
         where: { ...where, latitude: { not: null }, longitude: { not: null } },
         include: { category: true, vehicle: true, property: true, energy: true },
-        orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }],
-        take: 500,
+        orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }], take: 500,
       });
-      const filtered = candidates
-        .map((item) => ({ ...item, distanceKm: haversineKm(p.lat!, p.lng!, item.latitude!, item.longitude!) }))
-        .filter((item) => item.distanceKm <= p.radiusKm!)
-        .sort((a, b) => a.distanceKm - b.distanceKm);
+      const filtered = candidates.map((item) => ({ ...item, distanceKm: haversineKm(p.lat!, p.lng!, item.latitude!, item.longitude!) })).filter((item) => item.distanceKm <= p.radiusKm!).sort((a, b) => a.distanceKm - b.distanceKm);
       const start = (p.page - 1) * p.limit;
-      return reply.send({ engine: "postgres", page: p.page, limit: p.limit, total: filtered.length, items: filtered.slice(start, start + p.limit) });
+      return reply.send({ engine: "postgres", page: p.page, limit: p.limit, total: filtered.length, items: await enrichItems(filtered.slice(start, start + p.limit)) });
     }
 
     const [items, total] = await Promise.all([
       prisma.listing.findMany({ where, include: { category: true, vehicle: true, property: true, energy: true }, orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }], skip: (p.page - 1) * p.limit, take: p.limit }),
       prisma.listing.count({ where }),
     ]);
-    return reply.send({ engine: "postgres", page: p.page, limit: p.limit, total, items });
+    return reply.send({ engine: "postgres", page: p.page, limit: p.limit, total, items: await enrichItems(items) });
   });
 
   app.get("/search/autocomplete", async (request, reply) => {
@@ -90,29 +118,12 @@ export async function registerSearchRoutes(app: FastifyInstance) {
     ] });
   });
 
-  app.get("/public/listings/:slug", async (request, reply) => {
-    const parsed = z.object({ slug: z.string().min(1).max(220) }).safeParse(request.params);
-    if (!parsed.success) return reply.code(400).send({ error: "invalid_slug" });
-    const listing = await prisma.listing.findFirst({ where: { slug: parsed.data.slug, status: "PUBLISHED" }, include: {
-      category: true, vehicle: true, property: true, energy: true,
-      attributes: { include: { attribute: true } },
-      seller: { select: { id: true, kind: true, createdAt: true, profile: { select: { displayName: true, avatarUrl: true } } } },
-    } });
-    if (!listing) return reply.code(404).send({ error: "listing_not_found" });
-    return reply.send({ listing });
-  });
-
   app.get("/seo/category/:category/city/:city", async (request, reply) => {
     const parsed = z.object({ category: z.string().min(1), city: z.string().min(1) }).safeParse(request.params);
     if (!parsed.success) return reply.code(400).send({ error: "invalid_route" });
     const category = await prisma.category.findUnique({ where: { slug: parsed.data.category }, select: { name: true, slug: true } });
     if (!category) return reply.code(404).send({ error: "category_not_found" });
     const total = await prisma.listing.count({ where: { status: "PUBLISHED", category: { slug: parsed.data.category }, city: { equals: parsed.data.city, mode: "insensitive" } } });
-    return reply.send({
-      title: `${category.name} à ${parsed.data.city} - Annonces | Petit Annonces`,
-      description: `Découvrez ${total} annonce${total > 1 ? "s" : ""} ${category.name.toLowerCase()} à ${parsed.data.city} sur Petit Annonces.`,
-      canonicalPath: `/c/${category.slug}/${encodeURIComponent(parsed.data.city.toLowerCase())}`,
-      total,
-    });
+    return reply.send({ title: `${category.name} à ${parsed.data.city} - Annonces | Petit Annonces`, description: `Découvrez ${total} annonce${total > 1 ? "s" : ""} ${category.name.toLowerCase()} à ${parsed.data.city} sur Petit Annonces.`, canonicalPath: `/c/${category.slug}/${encodeURIComponent(parsed.data.city.toLowerCase())}`, total });
   });
 }
