@@ -18,6 +18,7 @@ export type PublicListingDetail = {
   vehicle: Record<string, unknown> | null;
   property: Record<string, unknown> | null;
   energy: Record<string, unknown> | null;
+  commerce: { securePaymentEnabled: boolean; shippingEnabled: boolean };
   seller: {
     id: string;
     kind: "PARTICULIER" | "PROFESSIONNEL";
@@ -31,10 +32,7 @@ export type PublicListingDetail = {
 
 export async function fetchPublicListing(slug: string): Promise<PublicListingDetail | null> {
   const baseUrl = process.env.API_INTERNAL_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:4000";
-  const response = await fetch(`${baseUrl.replace(/\/$/, "")}/public/listings/${encodeURIComponent(slug)}`, {
-    next: { revalidate: 60 },
-  });
-
+  const response = await fetch(`${baseUrl.replace(/\/$/, "")}/public/listings/${encodeURIComponent(slug)}`, { next: { revalidate: 60 } });
   if (response.status === 404) return null;
   if (!response.ok) throw new Error(`listing_api_${response.status}`);
   const payload = await response.json() as { listing: PublicListingDetail };
