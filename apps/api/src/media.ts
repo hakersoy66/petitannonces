@@ -27,15 +27,16 @@ export async function registerMediaRoutes(app: FastifyInstance) {
     const listing = await prisma.listing.findFirst({ where: { id: params.data.id, sellerId: user.id, status: { in: ["DRAFT", "PENDING", "PUBLISHED"] } }, select: { id: true } });
     if (!listing) return reply.code(404).send({ error: "listing_not_found" });
 
-    const [{ count }] = await prisma.$queryRawUnsafe<Array<{ count: bigint }>>(`SELECT COUNT(*)::bigint AS count FROM "ListingMedia" WHERE "listingId" = $1 AND "status" <> 'FAILED'`, listing.id);
-    if (Number(count) >= MAX_IMAGES_PER_LISTING) return reply.code(409).send({ error: "media_limit_reached", limit: MAX_IMAGES_PER_LISTING });
+    const countRows = await prisma.$queryRawUnsafe<Array<{ count: bigint }>>(`SELECT COUNT(*)::bigint AS count FROM "ListingMedia" WHERE "listingId" = $1 AND "status" <> 'FAILED'`, listing.id);
+    const count = Number(countRows[0]?.count ?? 0n);
+    if (count >= MAX_IMAGES_PER_LISTING) return reply.code(409).send({ error: "media_limit_reached", limit: MAX_IMAGES_PER_LISTING });
 
     const mediaId = randomUUID();
     const objectKey = `listings/${listing.id}/${mediaId}.${extensionForMime(body.data.mimeType)}`;
-    const sortOrder = Number(count) * 10;
+    const sortOrder = count * 10;
     await prisma.$executeRawUnsafe(
       `INSERT INTO "ListingMedia" ("id","listingId","objectKey","mimeType","sizeBytes","status","sortOrder","isCover","altText","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,'PENDING',$6,$7,$8,NOW(),NOW())`,
-      mediaId, listing.id, objectKey, body.data.mimeType, body.data.sizeBytes, sortOrder, Number(count) === 0, body.data.altText ?? null,
+      mediaId, listing.id, objectKey, body.data.mimeType, body.data.sizeBytes, sortOrder, count === 0, body.data.altText ?? null,
     );
 
     return reply.code(201).send({
