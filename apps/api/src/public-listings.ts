@@ -59,6 +59,20 @@ export async function registerPublicListingRoutes(app: FastifyInstance) {
       .filter(Boolean)
       .map((item) => ({ name: item!.name, slug: item!.slug }));
 
+    const media = await prisma.$queryRawUnsafe<Array<{
+      id: string;
+      publicUrl: string;
+      mimeType: string;
+      width: number | null;
+      height: number | null;
+      altText: string | null;
+      isCover: boolean;
+      sortOrder: number;
+    }>>(
+      `SELECT "id","publicUrl","mimeType","width","height","altText","isCover","sortOrder" FROM "ListingMedia" WHERE "listingId"=$1 AND "status"='READY' AND "publicUrl" IS NOT NULL ORDER BY "isCover" DESC, "sortOrder" ASC, "createdAt" ASC`,
+      listing.id,
+    );
+
     return reply.send({
       listing: {
         id: listing.id,
@@ -76,6 +90,15 @@ export async function registerPublicListingRoutes(app: FastifyInstance) {
         category: { id: listing.category.id, name: listing.category.name, slug: listing.category.slug, domain: listing.category.domain },
         breadcrumb,
         attributes,
+        media: media.map((item) => ({
+          id: item.id,
+          url: item.publicUrl,
+          mimeType: item.mimeType,
+          width: item.width,
+          height: item.height,
+          altText: item.altText,
+          isCover: item.isCover,
+        })),
         vehicle: listing.vehicle,
         property: listing.property,
         energy: listing.energy,
