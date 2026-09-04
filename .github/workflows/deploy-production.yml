@@ -52,3 +52,5 @@ jobs:
         run: |
           curl --fail --silent --show-error --retry 8 --retry-delay 3 \
             "http://$PRODUCTION_HOST/healthz"
+
+# Pipeline verification marker: repository variable enabled.
