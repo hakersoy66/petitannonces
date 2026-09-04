@@ -9,9 +9,11 @@ import styles from "./listing-wizard.module.css";
 type Category = { id:string; name:string; slug:string; domain:string; children?:Category[] };
 type CategoryTreeResponse = { categories: Category[] };
 type DraftResponse = { listing: { id:string; category:{ id:string; name:string; slug:string; domain:string } } };
+type VehicleFields = { make:string; model:string; version:string; modelYear:string; fuel:string; mileageKm:string };
 
 const STEPS = ["Catégorie", "Détails", "Photos", "Prix & livraison", "Vérification"];
 const api = () => (process.env.NEXT_PUBLIC_API_URL ?? "/api").replace(/\/$/, "");
+const emptyVehicle:VehicleFields={make:"",model:"",version:"",modelYear:"",fuel:"",mileageKm:""};
 
 export function ListingWizard({ initialListingId }: { initialListingId?: string }) {
   const [step,setStep]=useState(initialListingId?2:0);
@@ -24,7 +26,7 @@ export function ListingWizard({ initialListingId }: { initialListingId?: string 
   const [error,setError]=useState("");
   const [plate,setPlate]=useState("");
   const [plateMessage,setPlateMessage]=useState("");
-  const [vehicle,setVehicle]=useState<Record<string,unknown>|null>(null);
+  const [vehicle,setVehicle]=useState<VehicleFields>(emptyVehicle);
 
   useEffect(()=>{
     fetch(`${api()}/categories/tree`,{credentials:"include"})
@@ -57,8 +59,21 @@ export function ListingWizard({ initialListingId }: { initialListingId?: string 
     setBusy(true);setError("");
     try{
       const r=await fetch(`${api()}/listings/${encodeURIComponent(listingId)}/basics`,{method:"PATCH",credentials:"include",headers:{"content-type":"application/json"},body:JSON.stringify({title,description})});
-      const p=await r.json().catch(()=>({}));if(!r.ok)throw new Error(p.error??"basics_failed");setStep(2);
-    }catch{setError("Impossible d’enregistrer les détails. Le titre doit faire au moins 5 caractères et la description 20 caractères.")}finally{setBusy(false)}
+      const p=await r.json().catch(()=>({}));if(!r.ok)throw new Error(p.error??"basics_failed");
+      if(selected?.domain==="VEHICLE"){
+        const payload={
+          make:vehicle.make.trim()||null,
+          model:vehicle.model.trim()||null,
+          version:vehicle.version.trim()||null,
+          modelYear:vehicle.modelYear?Number(vehicle.modelYear):null,
+          fuel:vehicle.fuel.trim()||null,
+          mileageKm:vehicle.mileageKm?Number(vehicle.mileageKm):null,
+        };
+        const vr=await fetch(`${api()}/listings/${encodeURIComponent(listingId)}/vehicle`,{method:"PUT",credentials:"include",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});
+        if(!vr.ok) throw new Error("vehicle_save_failed");
+      }
+      setStep(2);
+    }catch{setError("Impossible d’enregistrer les détails. Vérifiez le titre, la description et les informations du véhicule.")}finally{setBusy(false)}
   }
 
   async function lookupPlate(){
@@ -67,9 +82,20 @@ export function ListingWizard({ initialListingId }: { initialListingId?: string 
       const r=await fetch(`${api()}/listings/${encodeURIComponent(listingId)}/vehicle/from-plate`,{method:"POST",credentials:"include",headers:{"content-type":"application/json"},body:JSON.stringify({registrationPlate:plate})});
       const p=await r.json().catch(()=>({}));
       if(!r.ok){const code=p.error;throw new Error(code??"vehicle_lookup_failed")}
-      setVehicle(p.vehicle??null);setPlateMessage("Véhicule identifié et informations enregistrées.");
-    }catch(err){const code=err instanceof Error?err.message:"vehicle_lookup_failed";setPlateMessage(code==="vehicle_data_provider_not_configured"?"Le fournisseur de données véhicule n’est pas encore configuré.":code==="vehicle_not_found"?"Aucun véhicule trouvé pour cette plaque.":code==="invalid_registration_plate"?"Format de plaque invalide.":"Recherche de plaque indisponible.")}finally{setBusy(false)}
+      const v=(p.vehicle??{}) as Record<string,unknown>;
+      setVehicle(current=>({
+        ...current,
+        make:typeof v.make==="string"?v.make:current.make,
+        model:typeof v.model==="string"?v.model:current.model,
+        version:typeof v.version==="string"?v.version:current.version,
+        modelYear:typeof v.modelYear==="number"?String(v.modelYear):current.modelYear,
+        fuel:typeof v.fuel==="string"?v.fuel:current.fuel,
+      }));
+      setPlateMessage("Véhicule identifié. Vérifiez les informations pré-remplies ci-dessous.");
+    }catch(err){const code=err instanceof Error?err.message:"vehicle_lookup_failed";setPlateMessage(code==="vehicle_data_provider_not_configured"?"Identification automatique indisponible pour le moment. Renseignez le véhicule manuellement ci-dessous.":code==="vehicle_not_found"?"Aucun véhicule trouvé. Vous pouvez saisir les informations manuellement.":code==="invalid_registration_plate"?"Format de plaque invalide.":"Recherche de plaque indisponible. Vous pouvez continuer manuellement.")}finally{setBusy(false)}
   }
+
+  const setVehicleField=(key:keyof VehicleFields)=>(value:string)=>setVehicle(current=>({...current,[key]:value}));
 
   return <div className={styles.wizard}>
     <ol className={styles.steps}>{STEPS.map((label,i)=><li key={label} className={i===step?styles.current:i<step?styles.done:""}><span>{i<step?"✓":i+1}</span><b>{label}</b></li>)}</ol>
@@ -84,7 +110,8 @@ export function ListingWizard({ initialListingId }: { initialListingId?: string 
     {step===1&&<section className={styles.panel}>
       <div className={styles.head}><span>Étape 2 sur 5</span><h2>Décrivez votre annonce</h2><p>Un titre clair et une description détaillée améliorent la confiance et la visibilité.</p></div>
       <form className={styles.form} onSubmit={saveBasics}><label>Titre<input value={title} onChange={e=>setTitle(e.target.value)} minLength={5} maxLength={120} required placeholder="Ex. iPhone 15 Pro 256 Go"/></label><label>Description<textarea value={description} onChange={e=>setDescription(e.target.value)} minLength={20} maxLength={12000} required placeholder="Décrivez l’état, les caractéristiques et les informations utiles…"/></label>
-      {selected?.domain==="VEHICLE"&&<div className={styles.plateBox}><div><strong>Pré-remplir avec la plaque</strong><p>La plaque n’est pas affichée publiquement.</p></div><div className={styles.plateRow}><input value={plate} onChange={e=>setPlate(e.target.value.toUpperCase())} placeholder="AB-123-CD" aria-label="Plaque d'immatriculation"/><button type="button" onClick={()=>void lookupPlate()} disabled={busy||plate.trim().length<5}>Identifier</button></div>{plateMessage&&<small>{plateMessage}</small>}{vehicle&&<div className={styles.vehicleResult}>{["make","model","version","fuel","modelYear"].map(k=>vehicle[k]?<span key={k}>{String(vehicle[k])}</span>:null)}</div>}</div>}
+      {selected?.domain==="VEHICLE"&&<div className={styles.plateBox}><div><strong>Identifier avec la plaque</strong><p>La plaque n’est jamais affichée publiquement. Si le service automatique n’est pas disponible, vous pouvez continuer manuellement.</p></div><div className={styles.plateRow}><input value={plate} onChange={e=>setPlate(e.target.value.toUpperCase())} placeholder="AB-123-CD" aria-label="Plaque d'immatriculation"/><button type="button" onClick={()=>void lookupPlate()} disabled={busy||plate.trim().length<5}>Identifier</button></div>{plateMessage&&<small>{plateMessage}</small>}
+      <div className={styles.vehicleFields}><label>Marque<input value={vehicle.make} onChange={e=>setVehicleField("make")(e.target.value)} placeholder="Peugeot"/></label><label>Modèle<input value={vehicle.model} onChange={e=>setVehicleField("model")(e.target.value)} placeholder="3008"/></label><label>Version<input value={vehicle.version} onChange={e=>setVehicleField("version")(e.target.value)} placeholder="GT Hybrid"/></label><label>Année<input type="number" min="1900" max="2100" inputMode="numeric" value={vehicle.modelYear} onChange={e=>setVehicleField("modelYear")(e.target.value)} placeholder="2024"/></label><label>Énergie<input value={vehicle.fuel} onChange={e=>setVehicleField("fuel")(e.target.value)} placeholder="Essence, Diesel, Électrique…"/></label><label>Kilométrage<input type="number" min="0" max="5000000" inputMode="numeric" value={vehicle.mileageKm} onChange={e=>setVehicleField("mileageKm")(e.target.value)} placeholder="18400"/></label></div></div>}
       <div className={styles.nav}><button type="button" className={styles.back} onClick={()=>setStep(0)}>Retour</button><button disabled={busy}>{busy?"Enregistrement…":"Continuer"}</button></div></form>
     </section>}
 
