@@ -18,7 +18,7 @@ export type PublicListingDetail = {
   vehicle: Record<string, unknown> | null;
   property: Record<string, unknown> | null;
   energy: Record<string, unknown> | null;
-  commerce: { securePaymentEnabled: boolean; shippingEnabled: boolean };
+  commerce: { acceptsOffers: boolean; securePaymentEnabled: boolean; shippingEnabled: boolean };
   seller: {
     id: string;
     kind: "PARTICULIER" | "PROFESSIONNEL";
