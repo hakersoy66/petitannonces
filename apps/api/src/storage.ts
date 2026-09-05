@@ -1,4 +1,4 @@
-import { HeadObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { HeadObjectCommand, PutObjectAclCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 function required(name: string) {
@@ -36,15 +36,8 @@ export async function createPresignedUpload(objectKey: string, mimeType: string)
     Key: objectKey,
     ContentType: mimeType,
     CacheControl: "public, max-age=31536000, immutable",
-    ACL: "public-read",
   });
-  return {
-    url: await getSignedUrl(client(), command, { expiresIn: 600 }),
-    headers: {
-      "content-type": mimeType,
-      "x-amz-acl": "public-read",
-    },
-  };
+  return getSignedUrl(client(), command, { expiresIn: 600 });
 }
 
 export async function verifyStoredObject(objectKey: string) {
@@ -57,4 +50,29 @@ export async function verifyStoredObject(objectKey: string) {
 
 export function publicObjectUrl(objectKey: string) {
   return `${required("OBJECT_STORAGE_PUBLIC_BASE_URL").replace(/\/$/, "")}/${objectKey.split("/").map(encodeURIComponent).join("/")}`;
+}
+
+function objectAclEnabled() {
+  return process.env.OBJECT_STORAGE_USE_ACL === "true";
+}
+
+export async function makeStoredObjectPublic(objectKey: string) {
+  if (!objectAclEnabled()) return;
+  await client().send(new PutObjectAclCommand({
+    Bucket: required("OBJECT_STORAGE_BUCKET"),
+    Key: objectKey,
+    ACL: "public-read",
+  }));
+}
+
+export async function uploadStoredObject(objectKey: string, mimeType: string, body: Uint8Array) {
+  await client().send(new PutObjectCommand({
+    Bucket: required("OBJECT_STORAGE_BUCKET"),
+    Key: objectKey,
+    Body: body,
+    ContentType: mimeType,
+    CacheControl: "public, max-age=31536000, immutable",
+    ...(objectAclEnabled() ? { ACL: "public-read" as const } : {}),
+  }));
+  return publicObjectUrl(objectKey);
 }
