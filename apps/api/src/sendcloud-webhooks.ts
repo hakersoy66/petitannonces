@@ -4,6 +4,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { deliverUserEvent } from "./notification-delivery.js";
 
 const DEFAULT_PROTECTION_HOURS = 48;
+const DEFAULT_PAYOUT_DELAY_DAYS = 21;
 type ShipmentStatus = "LABEL_CREATED"|"IN_TRANSIT"|"OUT_FOR_DELIVERY"|"DELIVERED"|"EXCEPTION"|"RETURNED"|"LOST"|"CANCELED";
 type RawRequest = FastifyRequest & { rawBody?: string | Buffer };
 
@@ -44,8 +45,10 @@ function eventTimestamp(body:any){
 }
 async function openProtectionWindow(orderId:string,deliveredAt:Date){
   const hours=Math.max(1,Number(process.env.BUYER_PROTECTION_HOURS??DEFAULT_PROTECTION_HOURS));
+  const payoutDelayDays=Math.max(0,Number(process.env.SELLER_PAYOUT_DELAY_DAYS??DEFAULT_PAYOUT_DELAY_DAYS));
   const endsAt=new Date(deliveredAt.getTime()+hours*60*60*1000);
-  await prisma.$executeRawUnsafe(`INSERT INTO "BuyerProtectionWindow" ("id","orderId","startsAt","endsAt","payoutEligibleAt") VALUES ($1,$2,$3,$4,$4) ON CONFLICT ("orderId") DO UPDATE SET "startsAt"=EXCLUDED."startsAt","endsAt"=EXCLUDED."endsAt","payoutEligibleAt"=EXCLUDED."payoutEligibleAt","updatedAt"=CURRENT_TIMESTAMP`,randomUUID(),orderId,deliveredAt,endsAt);
+  const payoutEligibleAt=new Date(endsAt.getTime()+payoutDelayDays*24*60*60*1000);
+  await prisma.$executeRawUnsafe(`INSERT INTO "BuyerProtectionWindow" ("id","orderId","startsAt","endsAt","payoutEligibleAt") VALUES ($1,$2,$3,$4,$5) ON CONFLICT ("orderId") DO UPDATE SET "startsAt"=EXCLUDED."startsAt","endsAt"=EXCLUDED."endsAt","payoutEligibleAt"=EXCLUDED."payoutEligibleAt","updatedAt"=CURRENT_TIMESTAMP`,randomUUID(),orderId,deliveredAt,endsAt,payoutEligibleAt);
 }
 function eventKey(raw:string,tracking:string,status:string,at:Date){return createHash("sha256").update(`${raw}|${tracking}|${status}|${at.toISOString()}`).digest("hex")}
 
@@ -76,7 +79,7 @@ export async function registerSendcloudWebhookRoutes(app:FastifyInstance){
       LABEL_CREATED:{title:"Envoi préparé",body:`Le bordereau de la commande ${order.orderNumber} est prêt.`},
       IN_TRANSIT:{title:"Colis expédié",body:`La commande ${order.orderNumber} est en cours d’acheminement.`},
       OUT_FOR_DELIVERY:{title:"Livraison en cours",body:`La commande ${order.orderNumber} est en cours de livraison.`},
-      DELIVERED:{title:"Colis livré",body:`La commande ${order.orderNumber} a été indiquée comme livrée.`},
+      DELIVERED:{title:"Colis livré",body:`La commande ${order.orderNumber} a été indiquée comme livrée. La protection acheteur reste active pendant 48 h, puis le versement vendeur suit le délai prévu.`},
       EXCEPTION:{title:"Incident de livraison",body:`Un incident a été signalé pour la commande ${order.orderNumber}.`},
       RETURNED:{title:"Retour du colis",body:`Le colis de la commande ${order.orderNumber} est en cours de retour.`},
       LOST:{title:"Colis signalé perdu",body:`Le transporteur signale un problème majeur sur la commande ${order.orderNumber}.`},
