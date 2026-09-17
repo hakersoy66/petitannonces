@@ -32,53 +32,35 @@ jobs:
       IOS_DISTRIBUTION_CERT_P12_BASE64: ${{ secrets.IOS_DISTRIBUTION_CERT_P12_BASE64 }}
       IOS_DISTRIBUTION_CERT_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_CERT_PASSWORD }}
       IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
-      PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
-      PRODUCTION_USER: ${{ secrets.PRODUCTION_USER }}
-      MOBILE_SOURCE_PATH: /var/www/petitannonces/repository/apps/mobile
+      MOBILE_BUILD_HOST: mail.petitannonces.fr
+      MOBILE_BUILD_USER: petitannonces
 
     steps:
-      - name: Configure private source SSH
+      - name: Configure restricted source SSH
         env:
           SSH_PRIVATE_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
         run: |
-          test -n "$PRODUCTION_HOST"
-          test -n "$PRODUCTION_USER"
+          test -n "$SSH_PRIVATE_KEY"
           install -d -m 700 ~/.ssh
           printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           printf '%s ssh-ed25519 %s\n' \
-            "$PRODUCTION_HOST" \
-            'AAAAC3NzaC1lZDI1NTE5AAAAIGb5fP7d4Vh1gELLdX9xwaHCkE5AFRp4TFS9Dn9tkr3Z' \
+            "$MOBILE_BUILD_HOST" \
+            'AAAAC3NzaC1lZDI1NTE5AAAAICGApKU1t+cQj2iIJJmGn5jYpWTJ0zYBWgthc+rjEpqq' \
             > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
       - name: Fetch private mobile source from build host
         run: |
-          ssh -o BatchMode=yes "$PRODUCTION_USER@$PRODUCTION_HOST" "test -f '$MOBILE_SOURCE_PATH/package.json'"
           rm -rf apps/mobile
           mkdir -p apps/mobile
-          rsync -az --delete \
-            --exclude 'node_modules/' \
-            --exclude '.expo/' \
-            --exclude '.expo-export-*/' \
-            --exclude '.verify-*/' \
-            --exclude 'dist-*/' \
-            --exclude 'ios/' \
-            --exclude 'android/' \
-            --exclude '.env*' \
-            --exclude '*.bak.*' \
-            --exclude '*.jks' \
-            --exclude '*.keystore' \
-            --exclude '*.p8' \
-            --exclude '*.p12' \
-            --exclude '*.mobileprovision' \
-            --exclude 'credentials/' \
-            --exclude 'credentials.json' \
-            --exclude '*service-account*.json' \
-            --exclude 'google-services.json' \
-            "$PRODUCTION_USER@$PRODUCTION_HOST:$MOBILE_SOURCE_PATH/" apps/mobile/
+          ssh -o BatchMode=yes -o IdentitiesOnly=yes \
+            "$MOBILE_BUILD_USER@$MOBILE_BUILD_HOST" \
+            > "$RUNNER_TEMP/petitannonces-mobile.tgz"
+          tar -xzf "$RUNNER_TEMP/petitannonces-mobile.tgz" -C apps/mobile
           test -f apps/mobile/package.json
           test -f apps/mobile/fastlane/Fastfile
+          test -f apps/mobile/scripts/ios-native-preflight.sh
 
       - uses: pnpm/action-setup@v4
         with:
