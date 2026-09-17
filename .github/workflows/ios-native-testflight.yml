@@ -38,10 +38,9 @@ jobs:
       IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
       MOBILE_BUILD_HOST: mail.petitannonces.fr
       MOBILE_BUILD_USER: petitannonces
-      MOBILE_SOURCE_PATH: /var/www/petitannonces/repository/apps/mobile
 
     steps:
-      - name: Configure private source SSH
+      - name: Configure restricted source SSH
         env:
           SSH_PRIVATE_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
         run: |
@@ -49,8 +48,6 @@ jobs:
           install -d -m 700 ~/.ssh
           printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          echo "Public key for restricted iOS build source access:"
-          ssh-keygen -y -f ~/.ssh/id_ed25519 | sed 's/$/ github-ios-build/'
           printf '%s ssh-ed25519 %s\n' \
             "$MOBILE_BUILD_HOST" \
             'AAAAC3NzaC1lZDI1NTE5AAAAICGApKU1t+cQj2iIJJmGn5jYpWTJ0zYBWgthc+rjEpqq' \
@@ -59,31 +56,15 @@ jobs:
 
       - name: Fetch private mobile source from build host
         run: |
-          ssh -o BatchMode=yes "$MOBILE_BUILD_USER@$MOBILE_BUILD_HOST" "test -f '$MOBILE_SOURCE_PATH/package.json'"
           rm -rf apps/mobile
           mkdir -p apps/mobile
-          rsync -az --delete \
-            --exclude 'node_modules/' \
-            --exclude '.expo/' \
-            --exclude '.expo-export-*/' \
-            --exclude '.verify-*/' \
-            --exclude 'dist-*/' \
-            --exclude 'ios/' \
-            --exclude 'android/' \
-            --exclude '.env*' \
-            --exclude '*.bak.*' \
-            --exclude '*.jks' \
-            --exclude '*.keystore' \
-            --exclude '*.p8' \
-            --exclude '*.p12' \
-            --exclude '*.mobileprovision' \
-            --exclude 'credentials/' \
-            --exclude 'credentials.json' \
-            --exclude '*service-account*.json' \
-            --exclude 'google-services.json' \
-            "$MOBILE_BUILD_USER@$MOBILE_BUILD_HOST:$MOBILE_SOURCE_PATH/" apps/mobile/
+          ssh -o BatchMode=yes -o IdentitiesOnly=yes \
+            "$MOBILE_BUILD_USER@$MOBILE_BUILD_HOST" \
+            > "$RUNNER_TEMP/petitannonces-mobile.tgz"
+          tar -xzf "$RUNNER_TEMP/petitannonces-mobile.tgz" -C apps/mobile
           test -f apps/mobile/package.json
           test -f apps/mobile/fastlane/Fastfile
+          test -f apps/mobile/scripts/ios-native-preflight.sh
 
       - uses: pnpm/action-setup@v4
         with:
@@ -125,7 +106,7 @@ jobs:
           echo "workspace=$WORKSPACE scheme=$SCHEME"
 
       - name: Unsigned native build smoke test
-        if: ${{ inputs.upload_to_testflight == false }}
+        if: ${{ github.event_name == 'push' || inputs.upload_to_testflight == false }}
         working-directory: apps/mobile
         run: |
           xcodebuild \
@@ -138,32 +119,32 @@ jobs:
             build
 
       - name: Guard TestFlight publishing
-        if: ${{ inputs.upload_to_testflight && vars.IOS_TESTFLIGHT_ENABLED != 'true' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.upload_to_testflight && vars.IOS_TESTFLIGHT_ENABLED != 'true' }}
         run: |
           echo "TestFlight publishing is locked. Set repository variable IOS_TESTFLIGHT_ENABLED=true after Apple Developer access is restored." >&2
           exit 1
 
       - name: Verify TestFlight signing prerequisites
-        if: ${{ inputs.upload_to_testflight }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.upload_to_testflight }}
         working-directory: apps/mobile
         run: bash scripts/ios-native-preflight.sh --signing
 
       - name: Install signing assets
-        if: ${{ inputs.upload_to_testflight }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.upload_to_testflight }}
         working-directory: apps/mobile
         run: bash scripts/install-ios-signing-assets.sh
 
       - uses: ruby/setup-ruby@v1
-        if: ${{ inputs.upload_to_testflight }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.upload_to_testflight }}
         with:
           ruby-version: '3.3'
 
       - name: Install Fastlane
-        if: ${{ inputs.upload_to_testflight }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.upload_to_testflight }}
         working-directory: apps/mobile
         run: bundle install --jobs 4 --retry 3
 
       - name: Build IPA and upload to TestFlight
-        if: ${{ inputs.upload_to_testflight }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.upload_to_testflight }}
         working-directory: apps/mobile
         run: bundle exec fastlane ios testflight
