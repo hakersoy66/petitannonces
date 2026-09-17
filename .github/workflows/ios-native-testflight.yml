@@ -1,6 +1,10 @@
 name: iOS Native / TestFlight (No EAS)
 
 on:
+  push:
+    branches: [ios-native-smoke]
+    paths:
+      - ".github/workflows/ios-native-testflight.yml"
   workflow_dispatch:
     inputs:
       upload_to_testflight:
