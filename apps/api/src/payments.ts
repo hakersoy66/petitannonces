@@ -43,6 +43,21 @@ function verifyWebhookSignature(rawBody: string, signature: string) {
 
 type OrderRow = { id:string;orderNumber:string;buyerId:string;sellerId:string;currency:string;totalAmountMinor:number;sellerNetMinor:number;status:string;paymentProvider:string|null };
 type PaymentRow = { id:string;provider:string;amountMinor:number;currency:string;status:string };
+type ProtectionRow = { confirmationStatus:string;endsAt:Date|null;payoutEligibleAt:Date|null };
+type ActiveDisputeRow = { id:string;status:string };
+
+async function payoutEligibility(orderId:string) {
+  const protectionRows = await prisma.$queryRawUnsafe<ProtectionRow[]>(`SELECT "confirmationStatus","endsAt","payoutEligibleAt" FROM "BuyerProtectionWindow" WHERE "orderId"=$1 LIMIT 1`, orderId);
+  const protection = protectionRows[0];
+  if (!protection || !protection.endsAt || !protection.payoutEligibleAt) return { eligible:false as const, error:"payout_schedule_missing" };
+  if (protection.confirmationStatus === "DISPUTED") return { eligible:false as const, error:"payout_blocked_by_dispute" };
+  const disputeRows = await prisma.$queryRawUnsafe<ActiveDisputeRow[]>(`SELECT "id","status" FROM "MarketplaceDispute" WHERE "orderId"=$1 AND "status" NOT IN ('RESOLVED_BUYER','RESOLVED_SELLER','CLOSED') LIMIT 1`, orderId);
+  if (disputeRows[0]) return { eligible:false as const, error:"payout_blocked_by_dispute" };
+  const now = new Date();
+  if (now < new Date(protection.endsAt)) return { eligible:false as const, error:"buyer_protection_active", availableAt:new Date(protection.payoutEligibleAt).toISOString() };
+  if (now < new Date(protection.payoutEligibleAt)) return { eligible:false as const, error:"payout_not_yet_available", availableAt:new Date(protection.payoutEligibleAt).toISOString() };
+  return { eligible:true as const, availableAt:new Date(protection.payoutEligibleAt) };
+}
 
 export async function registerPaymentRoutes(app: FastifyInstance) {
   app.post("/checkout/quote", async (request, reply) => {
@@ -113,10 +128,17 @@ export async function registerPaymentRoutes(app: FastifyInstance) {
     const params = z.object({ id: z.string().min(1) }).safeParse(request.params); const body = z.object({ idempotencyKey: z.string().min(12).max(120) }).safeParse(request.body);
     if (!params.success || !body.success) return reply.code(400).send({ error: "invalid_request" });
     const orders = await prisma.$queryRawUnsafe<OrderRow[]>(`SELECT "id","orderNumber","buyerId","sellerId","currency","totalAmountMinor","sellerNetMinor","status","paymentProvider" FROM "MarketplaceOrder" WHERE "id"=$1 LIMIT 1`, params.data.id); const order = orders[0];
-    if (!order) return reply.code(404).send({ error: "order_not_found" }); if (order.sellerId !== user.id) return reply.code(403).send({ error: "seller_only" }); if (!["DELIVERED","COMPLETED"].includes(order.status)) return reply.code(409).send({ error: "payout_not_available" });
+    if (!order) return reply.code(404).send({ error: "order_not_found" });
+    if (order.sellerId !== user.id) return reply.code(403).send({ error: "seller_only" });
+    if (!["DELIVERED","COMPLETED"].includes(order.status)) return reply.code(409).send({ error: "payout_not_available" });
+    const eligibility = await payoutEligibility(order.id);
+    if (!eligibility.eligible) return reply.code(409).send({ error: eligibility.error, availableAt: "availableAt" in eligibility ? eligibility.availableAt : undefined });
     const providerPayout = await providerRequest("/payouts", { orderId: order.id, sellerId: order.sellerId, amountMinor: order.sellerNetMinor, currency: order.currency }, body.data.idempotencyKey); const payoutId = randomUUID();
-    try { await prisma.$executeRawUnsafe(`INSERT INTO "MarketplacePayout" ("id","orderId","sellerId","providerPayoutId","amountMinor","currency","status","idempotencyKey","availableAt") VALUES ($1,$2,$3,$4,$5,$6,'PROCESSING',$7,CURRENT_TIMESTAMP)`, payoutId, order.id, order.sellerId, String(providerPayout.id ?? `mock_${payoutId}`), order.sellerNetMinor, order.currency, body.data.idempotencyKey); await prisma.$executeRawUnsafe(`INSERT INTO "FinancialLedgerEntry" ("id","orderId","type","amountMinor","currency","reference") VALUES ($1,$2,'PAYOUT',$3,$4,$5)`, randomUUID(), order.id, -order.sellerNetMinor, order.currency, payoutId); } catch { return reply.code(409).send({ error: "payout_already_exists" }); }
-    return reply.code(202).send({ payout: { id: payoutId, amountMinor: order.sellerNetMinor, currency: order.currency, status: "PROCESSING" } });
+    try {
+      await prisma.$executeRawUnsafe(`INSERT INTO "MarketplacePayout" ("id","orderId","sellerId","providerPayoutId","amountMinor","currency","status","idempotencyKey","availableAt") VALUES ($1,$2,$3,$4,$5,$6,'PROCESSING',$7,$8)`, payoutId, order.id, order.sellerId, String(providerPayout.id ?? `mock_${payoutId}`), order.sellerNetMinor, order.currency, body.data.idempotencyKey, eligibility.availableAt);
+      await prisma.$executeRawUnsafe(`INSERT INTO "FinancialLedgerEntry" ("id","orderId","type","amountMinor","currency","reference") VALUES ($1,$2,'PAYOUT',$3,$4,$5)`, randomUUID(), order.id, -order.sellerNetMinor, order.currency, payoutId);
+    } catch { return reply.code(409).send({ error: "payout_already_exists" }); }
+    return reply.code(202).send({ payout: { id: payoutId, amountMinor: order.sellerNetMinor, currency: order.currency, status: "PROCESSING", availableAt: eligibility.availableAt.toISOString() } });
   });
 
   app.post("/payments/webhooks/:provider", async (request, reply) => {
