@@ -1,0 +1,40 @@
+name: Remove obsolete icon import
+
+on:
+  push:
+    branches: [production-sync-20260923]
+    paths:
+      - ".github/workflows/remove-obsolete-icon-import.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: production-sync-20260923
+          fetch-depth: 0
+
+      - name: Remove obsolete stylesheet import
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path("apps/web/app/layout.tsx")
+          s=p.read_text()
+          needle="@font"+"awesome/fontawesome-svg-core/styles.css"
+          lines=[line for line in s.splitlines() if needle not in line]
+          p.write_text("\n".join(lines)+"\n")
+          Path(".github/workflows/remove-obsolete-icon-import.yml").unlink()
+          PY
+
+      - name: Commit fix
+        run: |
+          git config user.name "Petit Annonces Sync"
+          git config user.email "hakersoy66@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "fix: remove obsolete icon stylesheet import"
+          git push origin HEAD:production-sync-20260923
