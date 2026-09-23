@@ -29,12 +29,14 @@ jobs:
       - name: Configure SSH
         env:
           SSH_PRIVATE_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
-          SSH_HOST_KEY: ${{ secrets.PRODUCTION_SSH_HOST_KEY }}
         run: |
           install -d -m 700 ~/.ssh
           printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          printf '%s\n' "$SSH_HOST_KEY" > ~/.ssh/known_hosts
+          printf '%s\n' \
+            'mail.petitannonces.fr ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICGApKU1t+cQj2iIJJmGn5jYpWTJ0zYBWgthc+rjEpqq' \
+            '213.246.39.6 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICGApKU1t+cQj2iIJJmGn5jYpWTJ0zYBWgthc+rjEpqq' \
+            > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
       - name: Deploy release
         run: |
