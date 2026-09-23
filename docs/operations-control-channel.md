@@ -20,3 +20,4 @@ Remote Desktop Commander is an optional break-glass terminal path when its devic
 ## SentinelX
 
 SentinelX is no longer part of the Petit Annonces production control path.
+Production synchronization is validated through the isolated `production-sync-20260923` branch before any merge to `main`.
