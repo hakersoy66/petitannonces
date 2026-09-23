@@ -1,30 +1,11 @@
 import type { Metadata } from "next";
-import { ListingWizard } from "../../components/listing-wizard";
-import { SiteHeader } from "../../components/site-header";
+import { ListingCreateEntry } from "../../components/listing-create-entry";
 import styles from "./page.module.css";
 
-export const metadata: Metadata = {
-  title: "Déposer une annonce | Petit Annonces",
-  description: "Créez une annonce étape par étape sur Petit Annonces.",
-};
+export const metadata:Metadata={title:"Déposer une annonce | Petit Annonces",description:"Créez une annonce étape par étape sur Petit Annonces."};
+type Props={searchParams:Promise<{listingId?:string;mode?:string;resumeStep?:string;category?:string}>};
 
-type Props = { searchParams: Promise<{ listingId?: string }> };
-
-export default async function CreateListingPage({ searchParams }: Props) {
-  const { listingId } = await searchParams;
-  return (
-    <div className={styles.page}>
-      <SiteHeader />
-      <main className={styles.main}>
-        <div className={styles.shell}>
-          <div className={styles.heading}>
-            <p className={styles.eyebrow}>Nouvelle annonce</p>
-            <h1>Publiez votre annonce étape par étape.</h1>
-            <p>Choisissez une catégorie, décrivez votre annonce, ajoutez vos photos, configurez le prix puis vérifiez avant envoi en modération.</p>
-          </div>
-          <ListingWizard initialListingId={listingId} />
-        </div>
-      </main>
-    </div>
-  );
+export default async function CreateListingPage({searchParams}:Props){
+ const {listingId,mode,resumeStep,category}=await searchParams;
+ return <div className={styles.page}><main className={styles.main}><div className={styles.shell}><ListingCreateEntry initialListingId={listingId} initialMode={mode} initialResumeStep={resumeStep?Number(resumeStep):undefined} initialCategorySlug={category}/></div></main></div>;
 }
