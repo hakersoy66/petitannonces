@@ -1,0 +1,12 @@
+import type { Metadata } from "next";
+import { notFound, permanentRedirect } from "next/navigation";
+import { LongtailListingPage, moneyRange, seoApi, type LongtailData } from "../../../lib/seo-longtail";
+
+export const revalidate=120;
+type Props={params:Promise<{make:string}>};
+type Meta={make:string;model:null;total:number;minPrice:number|null;maxPrice:number|null};
+function redirectLegacyMake(make:string){const targets:Record<string,string>={motos:"/categorie/motos","engins-de-chantier":"/categorie/materiel-btp-chantier"};const target=targets[make];if(target)permanentRedirect(target)}
+async function meta(make:string):Promise<Meta|null>{const r=await fetch(`${seoApi()}/seo/vehicle/${encodeURIComponent(make)}`,{next:{revalidate:300}});if(!r.ok)return null;return r.json()}
+async function data(m:Meta):Promise<LongtailData>{const q=new URLSearchParams({category:"vehicules",make:m.make,limit:"24",sort:"recent"});const r=await fetch(`${seoApi()}/search?${q}`,{next:{revalidate:120}});return r.ok?r.json():{total:0,items:[]}}
+export async function generateMetadata({params}:Props):Promise<Metadata>{const{make}=await params;redirectLegacyMake(make);const m=await meta(make);if(!m)return{title:"Véhicules d’occasion | Petit Annonces",robots:{index:false,follow:true}};const title=`${m.make} d’occasion : petites annonces en France | Petit Annonces`;const description=`Découvrez ${m.total} annonce${m.total>1?"s":""} de véhicules ${m.make} d’occasion actuellement publiée${m.total>1?"s":""} en France${moneyRange(m.minPrice,m.maxPrice)?`, avec des prix observés de ${moneyRange(m.minPrice,m.maxPrice)}`:""}.`;return{title:{absolute:title},description,alternates:{canonical:`/vehicules/${make}`},robots:{index:m.total>=3,follow:true},openGraph:{type:"website",url:`/vehicules/${make}`,title,description}}}
+export default async function Page({params}:Props){const{make}=await params;redirectLegacyMake(make);const m=await meta(make);if(!m)notFound();const d=await data(m);return <LongtailListingPage eyebrow="Véhicules d’occasion" title={`${m.make} d’occasion : petites annonces`} description={`Comparez les annonces ${m.make} disponibles sur Petit Annonces. ${m.total} véhicule${m.total>1?"s sont":" est"} actuellement publié${m.total>1?"s":""}${moneyRange(m.minPrice,m.maxPrice)?`, avec des prix observés de ${moneyRange(m.minPrice,m.maxPrice)}`:""}.`} data={d} backHref="/categorie/vehicules" backLabel="Véhicules" canonicalPath={`/vehicules/${make}`}/>}
