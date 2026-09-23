@@ -7,8 +7,26 @@ NGINX=/etc/nginx/sites-available/petitannonces-bootstrap
 APP_USER=petitannonces
 cd "$ROOT"
 
+DEPLOY_SHA="${1:?missing deploy SHA}"
+
+# Refuse to overwrite tracked live edits. Untracked runtime/build files are
+# intentionally ignored because the production tree keeps blue/green outputs.
+if ! git diff --quiet --ignore-submodules -- || ! git diff --cached --quiet --ignore-submodules --; then
+  echo "Tracked production changes detected; refusing automated deploy." >&2
+  git status --short --untracked-files=no >&2
+  exit 1
+fi
+
+# Fetch and validate the exact commit that passed CI before touching production.
+git fetch --quiet --no-tags origin "$DEPLOY_SHA"
+git cat-file -e "$DEPLOY_SHA^{commit}"
+
 # A verified PostgreSQL backup is mandatory before each production release.
 sudo bash "$ROOT/scripts/backup-database.sh" >/dev/null
+
+# Make the server source tree match the exact CI-tested commit.
+git reset --hard "$DEPLOY_SHA"
+sudo -u "$APP_USER" pnpm install --frozen-lockfile
 
 active=$(cat "$STATE" 2>/dev/null || echo green)
 if [ "$active" = green ]; then
