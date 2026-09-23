@@ -175,3 +175,5 @@ export function registerVacationIcalRoutes(app:FastifyInstance){
 export function startVacationIcalSyncWorker(log?:{info:(value:unknown,message?:string)=>void;error:(value:unknown,message?:string)=>void}){
   const run=async()=>{try{const rows=await prisma.$queryRawUnsafe<Array<{id:string}>>(`SELECT "id" FROM "VacationCalendarSource" WHERE "enabled"=TRUE AND ("lastSyncAt" IS NULL OR "lastSyncAt"<NOW()-INTERVAL '30 minutes') ORDER BY COALESCE("lastSyncAt",TO_TIMESTAMP(0)) ASC LIMIT 40`);for(const row of rows){const result=await syncVacationCalendarSource(row.id);if(!result.ok)log?.error({sourceId:row.id,error:result.error},"vacation iCal sync failed")}if(rows.length)log?.info({sources:rows.length},"vacation iCal sync completed")}catch(error){log?.error({error},"vacation iCal sync worker failed")}};const first=setTimeout(()=>void run(),45_000);first.unref();const timer=setInterval(()=>void run(),SYNC_INTERVAL_MS);timer.unref();return timer;
 }
+
+[executed on device: mail.petitannonces.fr (b9fdfe5f-3df4-4e4a-a34e-5aa72c2ab64d)]
