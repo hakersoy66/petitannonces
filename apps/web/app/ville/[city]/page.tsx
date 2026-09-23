@@ -47,3 +47,5 @@ export default async function CityPage({params}:Props){
     <section style={{marginTop:30,padding:22,borderRadius:20,background:"white",border:"1px solid #e7e7ef"}}><h2>Publier gratuitement une annonce à {d.city}</h2><p>La publication est gratuite. Ajoutez des photos claires, un prix réaliste et une description précise pour aider les acheteurs locaux à trouver votre annonce.</p><a href="/deposer-annonce-gratuite" style={{display:"inline-flex",padding:"11px 15px",borderRadius:12,background:"#5b4cf0",color:"white",textDecoration:"none",fontWeight:900}}>Déposer une annonce gratuite</a></section>
   </main></div>
 }
+
+[executed on device: mail.petitannonces.fr (b9fdfe5f-3df4-4e4a-a34e-5aa72c2ab64d)]

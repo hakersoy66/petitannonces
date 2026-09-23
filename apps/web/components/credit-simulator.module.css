@@ -1,14 +1,39 @@
-.card{margin:0 18px 22px;padding:22px;border:1px solid #dedaf0;border-radius:20px;background:linear-gradient(135deg,#fbfaff 0%,#f5f2ff 58%,#f2fbf7 100%);box-shadow:0 12px 34px rgba(48,39,108,.07)}
-.head,.head>div{display:flex;align-items:center;justify-content:space-between;gap:12px}.head>div{justify-content:flex-start}
-.icon{width:44px;height:44px;border-radius:14px;background:#fff;color:var(--primary);display:grid;place-items:center;border:1px solid #e4e0fa}
-.head small{display:block;color:#6f6b86;font-size:11px;font-weight:850}.head h3{margin:4px 0 0;font-size:22px}
-.rate{padding:8px 11px;border-radius:999px;background:#201d3b;color:#fff;font-size:13px;font-weight:900}
-.lead{margin:14px 0 0;color:#565466;font-size:14px;line-height:1.7}
-.controls{margin-top:18px;padding:18px;border-radius:15px;background:#fff;border:1px solid #e7e3f2}
-.durationHead{display:flex;justify-content:space-between;font-size:13px}.controls input{width:100%;margin:13px 0 10px}
-.presets{display:flex;flex-wrap:wrap;gap:8px}.presets button{height:36px;padding:0 12px;border:1px solid #ddd9e9;border-radius:10px;background:#fff}
-.presets button.active{border-color:#bdb5ff;background:#edeaff;color:#493dca}
-.results{display:grid;grid-template-columns:1.3fr repeat(3,1fr);gap:12px;margin-top:15px}.results>div{padding:16px;border-radius:14px;background:#fff;border:1px solid #e8e5ef}
-.results span{display:block;color:#777486;font-size:11px}.results b{display:block;margin-top:6px;font-size:17px}.primary{background:#1d1b33!important;color:#fff}.primary strong{display:block;font-size:29px}
-.note{display:flex;gap:10px;margin-top:16px;color:#676477}.note p{margin:0;font-size:11px;line-height:1.65}
-@media(max-width:760px){.card{margin:0 12px 16px;padding:19px}.results{grid-template-columns:1fr 1fr}.primary{grid-column:1/-1}.presets{display:grid;grid-template-columns:repeat(4,1fr)}}
+.card{margin:0 18px 22px;padding:22px;border:1px solid #dedaf0;border-radius:20px;background:linear-gradient(135deg,#fbfaff 0%,#f5f2ff 58%,#f2fbf7 100%);box-shadow:0 12px 34px rgba(48,39,108,.07)}.head,.head>div{display:flex;align-items:center;justify-content:space-between;gap:12px}.head>div{justify-content:flex-start}.icon{width:44px;height:44px;border-radius:14px;background:#fff;color:var(--primary);display:grid;place-items:center;border:1px solid #e4e0fa;box-shadow:0 7px 18px rgba(65,51,154,.08)}.icon svg{font-size:17px}.head small{display:block;color:#6f6b86;font-size:10px;font-weight:850;text-transform:uppercase;letter-spacing:.08em}.head h3{margin:4px 0 0;font-size:20px;letter-spacing:-.025em}.rate{padding:7px 10px;border-radius:999px;background:#201d3b;color:#fff;font-size:12px;font-weight:900}.lead{margin:14px 0 0;max-width:760px;color:#666477;font-size:12.5px;line-height:1.65}.controls{margin-top:18px;padding:16px;border-radius:15px;background:rgba(255,255,255,.78);border:1px solid #e7e3f2}.durationHead{display:flex;align-items:center;justify-content:space-between;gap:12px;color:#585669;font-size:12px}.durationHead strong{color:#252334;font-size:14px}.controls input[type=range]{width:100%;margin:13px 0 10px;accent-color:var(--primary)}.presets{display:flex;flex-wrap:wrap;gap:7px}.presets button{height:31px;padding:0 10px;border:1px solid #ddd9e9;border-radius:9px;background:#fff;color:#5f5d70;font-size:10.5px;font-weight:780;cursor:pointer}.presets button.active{border-color:#bdb5ff;background:#edeaff;color:#493dca}.results{display:grid;grid-template-columns:1.3fr repeat(3,1fr);gap:10px;margin-top:12px}.results>div{padding:14px;border-radius:14px;background:#fff;border:1px solid #e8e5ef}.results span{display:block;color:#777486;font-size:10px}.results b{display:block;margin-top:6px;font-size:15px;color:#2d2b3a}.results .primary{background:#1d1b33;color:#fff;border:0}.results .primary span{color:#bbb7cf}.results .primary strong{display:block;margin-top:5px;font-size:25px;letter-spacing:-.04em}.results .primary small{margin-left:4px;font-size:10px;color:#c9c6d7}.note{display:flex;align-items:flex-start;gap:9px;margin-top:14px;color:#777486}.note>svg{flex:0 0 13px;margin-top:3px;color:var(--primary);font-size:12px}.note p{margin:0;font-size:9.8px;line-height:1.55}.note a{color:var(--primary);font-weight:800;text-decoration:underline;text-underline-offset:2px}@media(max-width:760px){.card{margin:0 12px 16px;padding:16px;border-radius:17px}.head h3{font-size:17px}.icon{width:39px;height:39px}.lead{font-size:11.5px}.results{grid-template-columns:1fr 1fr}.results .primary{grid-column:1/-1}.presets{display:grid;grid-template-columns:repeat(4,1fr)}.presets button{padding:0 5px}.note p{font-size:9.2px}}
+
+
+/* 2026-09-05 financing readability */
+.card{padding:25px!important}
+.head small{font-size:11.5px!important;letter-spacing:.07em!important}
+.head h3{font-size:22px!important;line-height:1.2!important}
+.rate{font-size:13px!important;padding:8px 11px!important}
+.lead{font-size:14px!important;line-height:1.7!important;color:#565466!important}
+.controls{padding:18px!important}
+.durationHead{font-size:13.5px!important}
+.durationHead strong{font-size:16px!important}
+.presets{gap:8px!important}
+.presets button{height:36px!important;padding:0 12px!important;font-size:12.5px!important;border-radius:10px!important}
+.results{gap:12px!important;margin-top:15px!important}
+.results>div{padding:16px!important}
+.results span{font-size:11.5px!important;line-height:1.35!important}
+.results b{font-size:17px!important;line-height:1.3!important}
+.results .primary strong{font-size:29px!important}
+.results .primary small{font-size:11.5px!important}
+.note{gap:10px!important;margin-top:16px!important}
+.note>svg{font-size:14px!important;flex-basis:15px!important}
+.note p{font-size:11.5px!important;line-height:1.65!important;color:#676477!important}
+@media(max-width:760px){
+ .card{padding:19px!important}
+ .head h3{font-size:20px!important}
+ .head small{font-size:10.5px!important}
+ .rate{font-size:12px!important}
+ .lead{font-size:13.2px!important;line-height:1.65!important}
+ .durationHead{font-size:12.5px!important}
+ .durationHead strong{font-size:15px!important}
+ .presets button{height:38px!important;font-size:11.5px!important}
+ .results span{font-size:10.8px!important}
+ .results b{font-size:15.5px!important}
+ .results .primary strong{font-size:27px!important}
+ .note p{font-size:10.8px!important;line-height:1.6!important}
+}
+
+[executed on device: mail.petitannonces.fr (b9fdfe5f-3df4-4e4a-a34e-5aa72c2ab64d)]
