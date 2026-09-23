@@ -128,8 +128,8 @@ CREATE INDEX "GrowthEvent_campaign_occurredAt_idx" ON "GrowthEvent"("campaign","
 
 INSERT INTO "PromotionProduct" ("id","code","type","name","description","priceMinor","currency","durationHours","creditCost") VALUES
 ('promo_urgent','URGENT_7D','URGENT','Urgent','Badge Urgent pendant 7 jours',299,'EUR',168,1),
-('promo_featured','FEATURED_7D','FEATURED','À la une','Mise en avant dans les résultats pendant 7 jours',699,'EUR',168,3),
-('promo_bump','BUMP_NOW','BUMP','Remonter','Remonte l’annonce en tête des résultats',199,'EUR',1,1),
-('promo_sponsored','SPONSORED_7D','SPONSORED','Sponsorisé','Visibilité sponsorisée pendant 7 jours',999,'EUR',168,5),
+('promo_featured','FEATURED_7D','FEATURED','À la une','Mise en avant prioritaire en 3e ou 6e position dans les résultats pendant 7 jours',699,'EUR',168,3),
+('promo_bump','BUMP_NOW','BUMP','Remonter','Replace l’annonce dans un emplacement prioritaire en 3e ou 6e position pendant 1 heure',199,'EUR',1,1),
+('promo_sponsored','SPONSORED_7D','SPONSORED','Sponsorisé','Visibilité sponsorisée dans les emplacements prioritaires en 3e ou 6e position pendant 7 jours',999,'EUR',168,5),
 ('promo_gallery','GALLERY_7D','GALLERY','Galerie','Format galerie premium pendant 7 jours',499,'EUR',168,2)
 ON CONFLICT ("code") DO NOTHING;
