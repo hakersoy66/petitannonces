@@ -1,0 +1,128 @@
+{
+  "expo": {
+    "name": "Petit Annonces",
+    "slug": "petit-annonces",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "petitannonces",
+    "userInterfaceStyle": "light",
+    "icon": "./assets/images/icon-production.png",
+    "ios": {
+      "bundleIdentifier": "fr.petitannonces.app",
+      "supportsTablet": true,
+      "associatedDomains": [
+        "applinks:petitannonces.fr",
+        "applinks:www.petitannonces.fr"
+      ],
+      "privacyManifests": {
+        "NSPrivacyTracking": false,
+        "NSPrivacyTrackingDomains": [],
+        "NSPrivacyAccessedAPITypes": [
+          {
+            "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryUserDefaults",
+            "NSPrivacyAccessedAPITypeReasons": ["CA92.1"]
+          },
+          {
+            "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryFileTimestamp",
+            "NSPrivacyAccessedAPITypeReasons": ["C617.1"]
+          }
+        ],
+        "NSPrivacyCollectedDataTypes": []
+      },
+      "icon": "./assets/images/icon-production.png",
+      "infoPlist": {
+        "CFBundleDevelopmentRegion": "fr",
+        "CFBundleLocalizations": [
+          "fr"
+        ],
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "fr.petitannonces.petitannoncesapp",
+      "adaptiveIcon": {
+        "backgroundColor": "#5b4cf0",
+        "foregroundImage": "./assets/images/adaptive-icon-production.png"
+      },
+      "predictiveBackGestureEnabled": true,
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "petitannonces.fr"
+            },
+            {
+              "scheme": "https",
+              "host": "www.petitannonces.fr"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ],
+      "blockedPermissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
+    "plugins": [
+      "./plugins/with-related-apps.cjs",
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#5b4cf0",
+          "image": "./assets/images/splash-native-safe.png",
+          "imageWidth": 220,
+          "resizeMode": "contain"
+        }
+      ],
+      [
+        "expo-secure-store",
+        {
+          "faceIDPermission": "Autoriser Petit Annonces à utiliser Face ID pour protéger l’accès aux informations sécurisées de votre compte."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/android-icon-monochrome.png",
+          "color": "#5b4cf0",
+          "defaultChannel": "pa-general-v3"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Petit Annonces utilise vos photos uniquement pour illustrer les annonces que vous publiez.",
+          "cameraPermission": "Petit Annonces utilise l’appareil photo uniquement lorsque vous choisissez de prendre une photo pour une annonce.",
+          "microphonePermission": false
+        }
+      ],
+      "expo-font",
+      "expo-image",
+      "expo-web-browser"
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    },
+    "extra": {
+      "apiUrl": "https://petitannonces.fr/api",
+      "privacyUrl": "https://petitannonces.fr/confidentialite",
+      "termsUrl": "https://petitannonces.fr/conditions-generales",
+      "supportUrl": "https://petitannonces.fr/assistance",
+      "accountDeletionUrl": "https://petitannonces.fr/supprimer-mon-compte",
+      "appVariant": "production",
+      "router": {},
+      "eas": {
+        "projectId": "17797b08-4168-451a-a557-248dd35ed25a"
+      }
+    },
+    "owner": "petitannon"
+  }
+}

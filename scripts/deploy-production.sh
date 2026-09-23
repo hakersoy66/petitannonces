@@ -1,113 +1,123 @@
 #!/usr/bin/env bash
 set -euo pipefail
+ROOT=/var/www/petitannonces/repository
+ENV=/var/www/petitannonces/shared/.env
+STATE=/var/www/petitannonces/shared/active-color
+NGINX=/etc/nginx/sites-available/petitannonces-bootstrap
+APP_USER=petitannonces
+cd "$ROOT"
 
-SHA="${1:-}"
-if [[ -z "$SHA" ]]; then echo "usage: deploy-production.sh <git-sha>" >&2; exit 2; fi
+# A verified PostgreSQL backup is mandatory before each production release.
+sudo bash "$ROOT/scripts/backup-database.sh" >/dev/null
 
-BASE="${PA_DEPLOY_BASE:-/var/www/petitannonces}"
-SOURCE="$BASE/source"
-RELEASES="$BASE/releases"
-SHARED="$BASE/shared"
-BACKUPS="$BASE/backups"
-REPO_URL="${PA_REPO_URL:-https://github.com/hakersoy66/petitannonces.git}"
-RELEASE="$RELEASES/$SHA"
-CURRENT="$BASE/current"
-PREVIOUS=""
-
-for cmd in git pnpm pm2 curl pg_dump psql sha256sum python3; do command -v "$cmd" >/dev/null || { echo "Missing command: $cmd" >&2; exit 3; }; done
-mkdir -p "$RELEASES" "$SHARED" "$BACKUPS"
-[[ -f "$SHARED/.env" ]] || { echo "Missing $SHARED/.env" >&2; exit 4; }
-
-if [[ -L "$CURRENT" ]]; then PREVIOUS="$(readlink -f "$CURRENT")"; fi
-
-if [[ ! -d "$SOURCE/.git" ]]; then
-  git clone --filter=blob:none "$REPO_URL" "$SOURCE"
-fi
-
-git -C "$SOURCE" fetch --prune origin main
-git -C "$SOURCE" cat-file -e "$SHA^{commit}"
-
-if [[ -e "$RELEASE" ]]; then
-  git -C "$SOURCE" worktree remove --force "$RELEASE" 2>/dev/null || rm -rf "$RELEASE"
-fi
-git -C "$SOURCE" worktree add --detach "$RELEASE" "$SHA"
-ln -sfn "$SHARED/.env" "$RELEASE/.env"
-
-set -a
-# shellcheck disable=SC1090
-source "$SHARED/.env"
-set +a
-: "${DATABASE_URL:?DATABASE_URL must exist in shared .env}"
-
-cd "$RELEASE"
-corepack enable >/dev/null 2>&1 || true
-if [[ -f pnpm-lock.yaml ]]; then
-  pnpm install --frozen-lockfile
+active=$(cat "$STATE" 2>/dev/null || echo green)
+if [ "$active" = green ]; then
+  next=blue; web_port=3000; admin_port=3001; api_port=4000
 else
-  echo "WARNING: pnpm-lock.yaml missing; installing with --no-frozen-lockfile." >&2
-  pnpm install --no-frozen-lockfile
+  next=green; web_port=3200; admin_port=3101; api_port=4100
 fi
-pnpm build
 
-test -d apps/web/.next
-test -d apps/admin/.next
-test -f apps/api/dist/index.js
-test -f packages/database/dist/src/index.js
+# Build the inactive color into isolated Next.js output directories.
+# This is critical for Server Actions: the active color must never have its
+# .next files replaced while it is still serving open browser sessions.
+WEB_DIST=".next-${next}"
+ADMIN_DIST=".next-${next}"
 
-# shellcheck disable=SC1091
-source scripts/lib/database-url.sh
-PG_DATABASE_URL="$(pg_url_from_prisma "$DATABASE_URL")"
+# Clean only the inactive color output. Active color output remains untouched.
+sudo rm -rf "$ROOT/apps/web/$WEB_DIST" "$ROOT/apps/admin/$ADMIN_DIST"
+chown -R "$APP_USER:$APP_USER" "$ROOT/apps/web" "$ROOT/apps/admin" "$ROOT/apps/api/dist" 2>/dev/null || true
 
-backup="$BACKUPS/pre-${SHA}-$(date -u +%Y%m%dT%H%M%SZ).dump"
-pg_dump "$PG_DATABASE_URL" --format=custom --no-owner --no-acl --file="$backup"
+# Build while the active color continues serving traffic.
+sudo -u "$APP_USER" pnpm --filter @pa/api build
+sudo -u "$APP_USER" env NEXT_DIST_DIR="$WEB_DIST" pnpm --filter @pa/web build
+sudo -u "$APP_USER" env NEXT_DIST_DIR="$ADMIN_DIST" pnpm --filter @pa/admin build
 
-bash scripts/apply-sql-migrations.sh
-
-# Keep catalog/category data present on fresh production databases.
-# The Prisma seed uses upsert operations and is safe to run repeatedly.
-pnpm --filter @pa/database db:seed
-
-restart_release_apps() {
-  # PM2's startOrReload preserves the real cwd behind a symlink. Because
-  # /current points at a new immutable release after every deployment, a
-  # reload can leave Next.js serving the previous release. Recreate the
-  # processes so cwd is resolved from the new /current target every time.
-  pm2 delete petitannonces-web petitannonces-admin petitannonces-api >/dev/null 2>&1 || true
-  pm2 start "$CURRENT/infra/pm2/ecosystem.config.cjs" --update-env
-  pm2 save
-}
-
-ln -sfn "$RELEASE" "$CURRENT"
-export APP_VERSION="$SHA"
-restart_release_apps
-
-healthy=false
-for _ in $(seq 1 20); do
-  api_ok=false
-  web_ok=false
-  if curl --fail --silent --max-time 3 http://127.0.0.1:4000/health/ready >/dev/null; then api_ok=true; fi
-  if curl --fail --silent --max-time 3 http://127.0.0.1:3000/ >/dev/null; then web_ok=true; fi
-  if [[ "$api_ok" == "true" && "$web_ok" == "true" ]]; then healthy=true; break; fi
-  sleep 2
-done
-
-if [[ "$healthy" != "true" ]]; then
-  echo "Health check failed for $SHA; rolling application symlink back." >&2
-  if [[ -n "$PREVIOUS" && -d "$PREVIOUS" ]]; then
-    ln -sfn "$PREVIOUS" "$CURRENT"
-    export APP_VERSION="$(basename "$PREVIOUS")"
-    restart_release_apps
+# Keep recent immutable Next.js assets from the active release available in the new release.
+# Open tabs/PWAs can still request an older hashed chunk for a few minutes after a deploy.
+# Only static assets are merged; server manifests and Server Action metadata stay isolated per color.
+ACTIVE_WEB_DIST=".next-${active}"
+ACTIVE_ADMIN_DIST=".next-${active}"
+for pair in "web:$ACTIVE_WEB_DIST:$WEB_DIST" "admin:$ACTIVE_ADMIN_DIST:$ADMIN_DIST"; do
+  IFS=: read -r app old_dist new_dist <<< "$pair"
+  old_static="$ROOT/apps/$app/$old_dist/static"
+  new_static="$ROOT/apps/$app/$new_dist/static"
+  if [ -d "$old_static" ]; then
+    sudo -u "$APP_USER" mkdir -p "$new_static"
+    sudo -u "$APP_USER" cp -a --update=none "$old_static/." "$new_static/"
+    # Bound disk growth while keeping a generous compatibility window for stale tabs/PWAs.
+    find "$new_static" -type f -mtime +7 -delete 2>/dev/null || true
   fi
-  exit 10
-fi
-
-printf '%s\n' "$SHA" > "$SHARED/last-successful-release"
-find "$BACKUPS" -type f -name '*.dump' -mtime +14 -delete || true
-
-mapfile -t old_releases < <(find "$RELEASES" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' | sort -nr | tail -n +6 | cut -d' ' -f2-)
-for old in "${old_releases[@]}"; do
-  [[ "$(readlink -f "$CURRENT")" == "$old" ]] && continue
-  git -C "$SOURCE" worktree remove --force "$old" 2>/dev/null || rm -rf "$old"
 done
 
-echo "Deployment successful: $SHA"
+# Recreate only the inactive color on its own ports.
+for svc in web admin api; do sudo -u "$APP_USER" pm2 delete "pa-${svc}-${next}" >/dev/null 2>&1 || true; done
+sudo -u "$APP_USER" bash -lc "cd '$ROOT'; set -a; . '$ENV'; set +a; TZ='Europe/Paris' NEXT_DIST_DIR='$WEB_DIST' API_INTERNAL_URL='http://127.0.0.1:$api_port' PORT='$web_port' pm2 start pnpm --name 'pa-web-$next' -- --filter @pa/web start >/dev/null; TZ='Europe/Paris' NEXT_DIST_DIR='$ADMIN_DIST' API_INTERNAL_URL='http://127.0.0.1:$api_port' PORT='$admin_port' pm2 start pnpm --name 'pa-admin-$next' -- --filter @pa/admin start >/dev/null; TZ='Europe/Paris' APP_COLOR='$next' WEB_PORT='$web_port' ADMIN_PORT='$admin_port' API_PORT='$api_port' pm2 start pnpm --name 'pa-api-$next' -- --filter @pa/api start >/dev/null"
+
+# Do not switch traffic until all three services are healthy.
+ready=0
+for i in $(seq 1 45); do
+  if curl -fsS --max-time 2 "http://127.0.0.1:${web_port}/deposer-une-annonce" >/dev/null 2>&1 \
+    && curl -fsS --max-time 2 "http://127.0.0.1:${admin_port}/" >/dev/null 2>&1 \
+    && curl -fsS --max-time 2 "http://127.0.0.1:${api_port}/health/ready" >/dev/null 2>&1; then ready=1; break; fi
+  sleep 1
+done
+if [ "$ready" != 1 ]; then
+  for svc in web admin api; do sudo -u "$APP_USER" pm2 delete "pa-${svc}-${next}" >/dev/null 2>&1 || true; done
+  echo "New release failed health checks; active release was left untouched." >&2
+  exit 1
+fi
+
+# Atomically change nginx upstream ports while the old color still serves.
+sudo python3 - "$NGINX" "$web_port" "$admin_port" "$api_port" <<'PY'
+from pathlib import Path
+import re,sys
+p=Path(sys.argv[1]); web,admin,api=sys.argv[2:]
+s=p.read_text()
+s=re.sub(r'upstream pa_boot_web \{ server 127\.0\.0\.1:\d+; \}',f'upstream pa_boot_web {{ server 127.0.0.1:{web}; }}',s)
+s=re.sub(r'upstream pa_boot_admin \{ server 127\.0\.0\.1:\d+; \}',f'upstream pa_boot_admin {{ server 127.0.0.1:{admin}; }}',s)
+s=re.sub(r'upstream pa_boot_api \{ server 127\.0\.0\.1:\d+; \}',f'upstream pa_boot_api {{ server 127.0.0.1:{api}; }}',s)
+p.write_text(s)
+PY
+sudo nginx -t
+
+# Capture the currently-serving nginx workers. After reload, established
+# keep-alive connections can remain on these workers and still reference the
+# old upstream ports. Never retire the old app color until those workers exit.
+nginx_master_pid=$(cat /run/nginx.pid 2>/dev/null || true)
+old_nginx_workers=""
+if [ -n "$nginx_master_pid" ]; then old_nginx_workers=$(pgrep -P "$nginx_master_pid" 2>/dev/null || true); fi
+sudo systemctl reload nginx
+
+# Verify public traffic before considering the switch successful.
+for i in $(seq 1 20); do
+  if curl -kfsS --max-time 3 https://petitannonces.fr/deposer-une-annonce >/dev/null && curl -kfsS --max-time 3 https://petitannonces.fr/healthz >/dev/null; then break; fi
+  sleep 1
+done
+curl -kfsS --max-time 3 https://petitannonces.fr/deposer-une-annonce >/dev/null
+curl -kfsS --max-time 3 https://petitannonces.fr/healthz >/dev/null
+
+printf "%s\n" "$next" | sudo tee "$STATE" >/dev/null
+sudo chown "$APP_USER:$APP_USER" "$STATE"
+
+# Gracefully drain nginx workers that still hold the old upstream config.
+retire_old=1
+if [ -n "$old_nginx_workers" ]; then
+  retire_old=0
+  for i in $(seq 1 90); do
+    still_alive=0
+    for pid in $old_nginx_workers; do
+      if kill -0 "$pid" 2>/dev/null; then still_alive=1; break; fi
+    done
+    if [ "$still_alive" = 0 ]; then retire_old=1; break; fi
+    sleep 1
+  done
+fi
+if [ "$retire_old" = 1 ]; then
+  for svc in web admin api; do sudo -u "$APP_USER" pm2 delete "pa-${svc}-${active}" >/dev/null 2>&1 || true; done
+else
+  echo "Old nginx workers are still draining; keeping pa-*- $active processes alive to avoid 503s." >&2
+fi
+# Keep only the two color-specific builds; remove the legacy shared .next after migration.
+rm -rf "$ROOT/apps/web/.next" "$ROOT/apps/admin/.next" 2>/dev/null || true
+sudo -u "$APP_USER" pm2 save >/dev/null
+printf 'Deployment complete: %s -> %s\n' "$active" "$next"

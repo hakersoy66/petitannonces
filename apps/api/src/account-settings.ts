@@ -6,7 +6,8 @@ import { z } from "zod";
 
 const SESSION_COOKIE = "pa_session";
 function sha256(value:string){return createHash("sha256").update(value).digest("hex");}
-async function requireUserWithSession(request:FastifyRequest,reply:FastifyReply){const token=request.cookies[SESSION_COOKIE];if(!token){reply.code(401).send({error:"unauthenticated"});return null;}const session=await prisma.session.findUnique({where:{tokenHash:sha256(token)},include:{user:{include:{profile:true}}}});if(!session||session.revokedAt||session.expiresAt<=new Date()||session.user.status!=="ACTIVE"){reply.code(401).send({error:"unauthenticated"});return null;}return{session,user:session.user};}
+function requestToken(request:FastifyRequest){const auth=typeof request.headers.authorization==="string"?request.headers.authorization.trim():"";const bearer=/^Bearer\s+(.+)$/i.exec(auth)?.[1]?.trim()||null;return bearer??request.cookies[SESSION_COOKIE]??null;}
+async function requireUserWithSession(request:FastifyRequest,reply:FastifyReply){const token=requestToken(request);if(!token){reply.code(401).send({error:"unauthenticated"});return null;}const session=await prisma.session.findUnique({where:{tokenHash:sha256(token)},include:{user:{include:{profile:true}}}});if(!session||session.revokedAt||session.expiresAt<=new Date()||session.user.status!=="ACTIVE"){reply.code(401).send({error:"unauthenticated"});return null;}return{session,user:session.user};}
 
 const preferencesSchema=z.object({
   inAppMessages:z.boolean(),inAppOffers:z.boolean(),inAppListingUpdates:z.boolean(),

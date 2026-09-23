@@ -1,0 +1,6 @@
+{
+  "users": {"table":"fl_accounts","id":"ID","email":"Mail","displayName":"Display_name","firstName":"First_name","lastName":"Last_name","phone":"Phone","createdAt":"Date","kind":"Type"},
+  "categories": {"table":"fl_categories","id":"ID","name":"name","parentId":"Parent_ID","slug":"Path"},
+  "listings": {"table":"fl_listings","id":"ID","sellerId":"Account_ID","categoryId":"Category_ID","title":"Title","description":"description","price":"price","city":"City","postalCode":"Zip","region":"State","createdAt":"Date","publishedAt":"Pay_date","status":"Status"},
+  "media": {"table":"fl_listing_photos","id":"ID","listingId":"Listing_ID","source":"Photo","sortOrder":"Position","isCover":"Type"}
+}

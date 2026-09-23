@@ -1,0 +1,1 @@
+import AttributeClient from "./attribute-client";export const metadata={title:"Champs de catégorie"};export default function AttributePage(){return <AttributeClient/>}

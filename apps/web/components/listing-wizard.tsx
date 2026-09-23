@@ -1,134 +1,218 @@
 "use client";
-
-import { FormEvent, useEffect, useMemo, useState } from "react";
-import { ListingCommerceForm } from "./listing-commerce-form";
+import { FormEvent,useEffect,useMemo,useRef,useState } from "react";
+import { useRouter } from "next/navigation";
+import { ListingCommerceForm, type ListingCommerceFormHandle } from "./listing-commerce-form";
 import { ListingPhotoUploader } from "./listing-photo-uploader";
 import { ListingPublicationReview } from "./listing-publication-review";
+import { ListingRealEstateForm } from "./listing-real-estate-form";
+import { ListingVacationAvailability } from "./listing-vacation-availability";
+import { ListingVisibilityStep } from "./listing-visibility-step";
+import { AppIcon } from "./app-icon";
 import styles from "./listing-wizard.module.css";
+import { navigateApp } from "../lib/app-navigation";
 
-type Category = { id:string; name:string; slug:string; domain:string; children?:Category[] };
-type CategoryTreeResponse = { categories: Category[] };
-type DraftResponse = { listing: { id:string; category:{ id:string; name:string; slug:string; domain:string } } };
-type VehicleFields = { make:string; model:string; version:string; modelYear:string; fuel:string; mileageKm:string };
+type Category={id:string;name:string;slug:string;domain:string;children?:Category[]};
+type AttrOption={id:string;label:string;value:string};
+type Attr={id:string;key:string;label:string;type:string;required:boolean;unit?:string|null;options:AttrOption[]};
+type DraftPayload={importInfo?:{sourceUrl:string|null;sourceType:string;createdAt:string}|null;listing:{id:string;title:string|null;description:string|null;city?:string|null;postalCode?:string|null;draftSavedAt?:string|null;category:Category;attributes:Array<{attributeId:string;key:string;value:unknown}>;vehicle?:Record<string,unknown>|null;histovecUrl?:string|null}};
+const steps=["Catégorie","Photos","Détails","Prix","Visibilité","Publication"];
+const REAL_ESTATE_DEDICATED_KEYS=new Set(["propertyType","surface","rooms","bedrooms","floor","furnished","dpe","ges"]);
+const api=()=> (process.env.NEXT_PUBLIC_API_URL??"/api").replace(/\/$/,"");
+const VEHICLE_TITLE_BRANDS=["ABARTH","ALFA ROMEO","AUDI","BMW","CITROEN","CITROËN","DACIA","FIAT","FORD","HONDA","HYUNDAI","JEEP","KIA","LAND ROVER","MAZDA","MERCEDES","MERCEDES-BENZ","MINI","MITSUBISHI","NISSAN","OPEL","PEUGEOT","PORSCHE","RENAULT","SEAT","SKODA","SUZUKI","TESLA","TOYOTA","VOLKSWAGEN","VOLVO"];
+function normalizedVehicleText(value:unknown){return String(value??"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toUpperCase().replace(/[^A-Z0-9]+/g," ").trim()}
+function titleVehicleBrand(value:string){const normalized=normalizedVehicleText(value);return VEHICLE_TITLE_BRANDS.find(brand=>normalized.includes(normalizedVehicleText(brand)))??null}
 
-const STEPS = ["Catégorie", "Détails", "Photos", "Prix & livraison", "Vérification"];
-const api = () => (process.env.NEXT_PUBLIC_API_URL ?? "/api").replace(/\/$/, "");
-const emptyVehicle:VehicleFields={make:"",model:"",version:"",modelYear:"",fuel:"",mileageKm:""};
-
-function descendants(category: Category) {
-  const out: Category[] = [];
-  const walk = (items: Category[] = []) => items.forEach((item) => {
-    out.push(item);
-    if (item.children?.length) walk(item.children);
-  });
-  walk(category.children);
-  return out;
+function locate(cats:Category[],id:string):{root:Category;branch:Category|null;item:Category}|null{
+ for(const root of cats){
+  if(root.id===id)return{root,branch:null,item:root};
+  for(const child of root.children??[]){
+   if(child.id===id)return{root,branch:child,item:child};
+   for(const leaf of child.children??[])if(leaf.id===id)return{root,branch:child,item:leaf};
+  }
+ }
+ return null;
 }
 
-export function ListingWizard({ initialListingId }: { initialListingId?: string }) {
-  const [step,setStep]=useState(initialListingId?2:0);
-  const [categories,setCategories]=useState<Category[]>([]);
-  const [root,setRoot]=useState<Category|null>(null);
-  const [selected,setSelected]=useState<Category|null>(null);
-  const [listingId,setListingId]=useState(initialListingId??"");
-  const [title,setTitle]=useState("");
-  const [description,setDescription]=useState("");
-  const [busy,setBusy]=useState(false);
-  const [loadingCategories,setLoadingCategories]=useState(true);
-  const [error,setError]=useState("");
-  const [plate,setPlate]=useState("");
-  const [plateMessage,setPlateMessage]=useState("");
-  const [vehicle,setVehicle]=useState<VehicleFields>(emptyVehicle);
-
-  useEffect(()=>{
-    setLoadingCategories(true);
-    fetch(`${api()}/categories/tree`,{credentials:"include"})
-      .then(async r=>{if(!r.ok) throw new Error("categories_failed"); return r.json() as Promise<CategoryTreeResponse>})
-      .then(p=>{setCategories(p.categories);setError("")})
-      .catch(()=>setError("Impossible de charger les catégories. Réessayez dans quelques instants."))
-      .finally(()=>setLoadingCategories(false));
-  },[]);
-
-  const subcategories=useMemo(()=>root?descendants(root):[],[root]);
-
-  function chooseRoot(category:Category){
-    setRoot(category);
-    setSelected(category.children?.length ? null : category);
-    setError("");
+export function ListingWizard({initialListingId,initialResumeStep,initialCategorySlug}:{initialListingId?:string;initialResumeStep?:number;initialCategorySlug?:string}){
+ const router=useRouter();
+ const stepMenuRef=useRef<HTMLDivElement|null>(null);
+ const commerceFormRef=useRef<ListingCommerceFormHandle|null>(null);
+ const[step,setStep]=useState(initialListingId?(Number.isInteger(initialResumeStep)&&initialResumeStep!>=0&&initialResumeStep!<=5?initialResumeStep!:2):0),[slideDir,setSlideDir]=useState<"forward"|"back">("forward"),[listingId,setListingId]=useState(initialListingId??""),[categories,setCategories]=useState<Category[]>([]),[rootId,setRootId]=useState(""),[branchId,setBranchId]=useState(""),[categoryId,setCategoryId]=useState(""),[title,setTitle]=useState(""),[description,setDescription]=useState(""),[city,setCity]=useState(""),[postalCode,setPostalCode]=useState(""),[attrs,setAttrs]=useState<Attr[]>([]),[values,setValues]=useState<Record<string,unknown>>({}),[busy,setBusy]=useState(false),[aiBusy,setAiBusy]=useState(false),[message,setMessage]=useState(""),[plate,setPlate]=useState(""),[plateMessage,setPlateMessage]=useState(""),[plateBusy,setPlateBusy]=useState(false),[plateVehicle,setPlateVehicle]=useState<Record<string,unknown>|null>(null),[plateState,setPlateState]=useState<"idle"|"loading"|"success"|"error">("idle"),[histovecUrl,setHistovecUrl]=useState(""),[photoState,setPhotoState]=useState<{readyCount:number;uploading:boolean;coverUrl:string|null}>({readyCount:0,uploading:false,coverUrl:null}),[commerceSaved,setCommerceSaved]=useState(false),[realEstateSaved,setRealEstateSaved]=useState(false),[cityOptions,setCityOptions]=useState<string[]>([]),[locationLookup,setLocationLookup]=useState<"idle"|"loading"|"found"|"multiple"|"missing">("idle"),[importInfo,setImportInfo]=useState<DraftPayload["importInfo"]>(null),[importedAttrIds,setImportedAttrIds]=useState<Set<string>>(new Set()),[,setAutosaveStatus]=useState<"idle"|"saving"|"saved"|"error">("idle"),[editContext,setEditContext]=useState<{previousStatus:string;originalListingId?:string;isolatedEdit?:boolean;moderation?:{reasonCode:string|null;statement:string|null;decidedAt:string|null}|null}|null>(null),[hydrated,setHydrated]=useState(!initialListingId);
+ const[transientDraft,setTransientDraft]=useState(false);
+ const[promotionCode,setPromotionCode]=useState(""),[promotionName,setPromotionName]=useState("Sans option");
+ const[categoryAttempted,setCategoryAttempted]=useState(false),[photoAttempted,setPhotoAttempted]=useState(false),[detailsAttempted,setDetailsAttempted]=useState(false);
+ function scrollToValidationError(){window.setTimeout(()=>document.querySelector<HTMLElement>("[data-validation-error='true']")?.scrollIntoView({behavior:"smooth",block:"center"}),40)}
+ useEffect(()=>{(async()=>{
+  const [me,catRes]=await Promise.all([fetch(`${api()}/auth/me`,{credentials:"include"}),fetch(`${api()}/categories/tree`)]);if(me.status===401){navigateApp(router,`/connexion?next=${encodeURIComponent(location.pathname+location.search)}`,{replace:true});return}
+  const cats=catRes.ok?((await catRes.json()).categories??[]):[];setCategories(cats);
+  if(!initialListingId&&initialCategorySlug){const requestedRoot=cats.find((category:Category)=>category.slug===initialCategorySlug);if(requestedRoot)setRootId(requestedRoot.id)}
+  if(initialListingId){
+   const editRes=await fetch(`${api()}/listings/${encodeURIComponent(initialListingId)}/edit`,{method:"POST",credentials:"include"});
+   const editPayload=await editRes.json().catch(()=>({}));
+   if(editRes.status===409&&editPayload.error==="listing_under_moderation"){navigateApp(router,"/mon-compte/annonces?editing=moderation",{replace:true});return}
+   if(!editRes.ok)throw new Error("listing_not_editable");
+   const effectiveId=String(editPayload.workingListingId??initialListingId);const isolatedEdit=Boolean(editPayload.isolatedEdit&&effectiveId!==initialListingId);setListingId(effectiveId);
+   setEditContext({previousStatus:String(editPayload.previousStatus??"DRAFT"),originalListingId:String(editPayload.originalListingId??initialListingId),isolatedEdit,moderation:editPayload.moderation??null});
+   const draftRes=await fetch(`${api()}/listings/${encodeURIComponent(effectiveId)}/draft`,{credentials:"include"});
+   if(!draftRes.ok)throw new Error("draft_not_found");
+   const payload=await draftRes.json() as DraftPayload;setImportInfo(payload.importInfo??null);const d=payload.listing;setTransientDraft(isolatedEdit?false:!d.draftSavedAt&&!payload.importInfo);setTitle(d.title??"");setDescription(d.description??"");setCity(d.city??"");setPostalCode(d.postalCode??"");setHistovecUrl(d.histovecUrl??"");setCategoryId(d.category.id);const found=locate(cats,d.category.id);if(found){setRootId(found.root.id);setBranchId(found.branch?.id??"");}
+   const definitions=await loadAttrs(d.category.slug);const restored:Record<string,unknown>=Object.fromEntries(d.attributes.map(a=>[a.attributeId,a.value]));if(payload.importInfo)setImportedAttrIds(new Set(d.attributes.map(a=>a.attributeId)));
+   if(d.vehicle){const vehicleByKey:Record<string,unknown>={brand:d.vehicle.make,model:d.vehicle.model,firstRegistration:typeof d.vehicle.firstRegistrationDate==="string"?d.vehicle.firstRegistrationDate.slice(0,10):undefined,mileage:d.vehicle.mileageKm,fuel:d.vehicle.fuel,gearbox:d.vehicle.transmission,fiscalPower:d.vehicle.fiscalPowerCv,powerKw:d.vehicle.powerKw,doors:d.vehicle.doors,seats:d.vehicle.seats,color:d.vehicle.color,bodyStyle:d.vehicle.bodyType};for(const definition of definitions)if((restored[definition.id]===undefined||restored[definition.id]===null||restored[definition.id]==="")&&vehicleByKey[definition.key]!==undefined&&vehicleByKey[definition.key]!==null)restored[definition.id]=vehicleByKey[definition.key];}
+   setValues(restored);
+   try{
+    const checkRes=await fetch(`${api()}/listings/${encodeURIComponent(effectiveId)}/publication-check`,{credentials:"include",cache:"no-store"});
+    if(checkRes.ok){const check=await checkRes.json() as {ready?:boolean;issues?:{errors?:Array<{step?:number}>}};const errorSteps=(check.issues?.errors??[]).map(x=>Number(x.step)).filter(x=>Number.isInteger(x)&&x>=0&&x<=5);const requested=Number(initialResumeStep);setStep(Number.isInteger(requested)&&requested>=0&&requested<=5?requested:(check.ready?4:(errorSteps.length?Math.min(...errorSteps):2)));}
+   }catch{}
+   setHydrated(true);
+  } else setHydrated(true);
+ })().catch(()=>{setHydrated(true);setMessage("Impossible de charger les informations enregistrées de l’annonce.")})},[initialListingId,initialResumeStep,initialCategorySlug]);
+ 
+ function goStep(target:number){setSlideDir(target>=step?"forward":"back");setStep(target)}
+ useEffect(()=>{const current=stepMenuRef.current?.querySelector<HTMLElement>("[data-current='true']");current?.scrollIntoView({behavior:"smooth",block:"nearest",inline:"center"})},[step]);
+ const root=useMemo(()=>categories.find(c=>c.id===rootId),[categories,rootId]);
+ const branch=useMemo(()=>root?.children?.find(c=>c.id===branchId),[root,branchId]);
+ const selected=useMemo(()=>locate(categories,categoryId)?.item,[categories,categoryId]);
+ const isVacation=root?.slug==="vacances";
+ const photoOptional=["JOB","SERVICE"].includes(selected?.domain??"");
+ useEffect(()=>{
+  if(selected?.domain==="REAL_ESTATE")return;
+  const clean=postalCode.replace(/\D/g,"").slice(0,5);
+  if(postalCode!==clean){setPostalCode(clean);return}
+  if(clean.length!==5){setCityOptions([]);setLocationLookup("idle");return}
+  let cancelled=false;
+  const timer=window.setTimeout(async()=>{
+   setLocationLookup("loading");
+   try{const r=await fetch(`${api()}/locations/postal-code/${encodeURIComponent(clean)}`);const p=await r.json().catch(()=>({cities:[]}));if(cancelled)return;const names=Array.isArray(p.cities)?p.cities.map((x:{name?:string})=>String(x.name??"").trim()).filter(Boolean):[];setCityOptions(names);if(names.length===1){setCity(names[0]!);setLocationLookup("found")}else if(names.length>1){if(!names.includes(city))setCity(names[0]!);setLocationLookup("multiple")}else setLocationLookup("missing")}catch{if(!cancelled){setCityOptions([]);setLocationLookup("missing")}}
+  },280);
+  return()=>{cancelled=true;window.clearTimeout(timer)};
+ },[postalCode,selected?.domain]);
+ useEffect(()=>{
+  if(!hydrated)return;
+  const timer=window.setTimeout(async()=>{
+   setAutosaveStatus("saving");
+   let localSaved=false;
+   try{
+    const key=`pa-listing-local:${listingId||"new"}`;
+    localStorage.setItem(key,JSON.stringify({savedAt:Date.now(),title,description,city,postalCode,categoryId,rootId,branchId,values}));
+    localSaved=true;
+   }catch{}
+   if(!listingId){setAutosaveStatus(localSaved?"saved":"error");return}
+   try{
+    const definitions=selected?.domain==="REAL_ESTATE"?attrs.filter(a=>!REAL_ESTATE_DEDICATED_KEYS.has(a.key)):attrs;
+    const attributes=definitions.map(a=>({attributeId:a.id,value:values[a.id]??null}));
+    const response=await fetch(`${api()}/listings/${encodeURIComponent(listingId)}/autosave`,{method:"PATCH",credentials:"include",headers:{"content-type":"application/json"},body:JSON.stringify({title,description,...(selected?.domain!=="REAL_ESTATE"?{city,postalCode}:{}),attributes})});
+    setAutosaveStatus(response.ok?"saved":localSaved?"error":"error");
+   }catch{setAutosaveStatus("error")}
+  },900);
+  return()=>window.clearTimeout(timer);
+ },[listingId,hydrated,title,description,city,postalCode,categoryId,rootId,branchId,values,attrs,selected?.domain]);
+ useEffect(()=>{
+  if(!listingId||!transientDraft)return;
+  const discard=()=>{void fetch(`${api()}/listings/${encodeURIComponent(listingId)}/discard-transient`,{method:"POST",credentials:"include",keepalive:true}).catch(()=>undefined)};
+  window.addEventListener("pagehide",discard);
+  return()=>window.removeEventListener("pagehide",discard);
+ },[listingId,transientDraft]);
+ useEffect(()=>{
+  if(!listingId||!editContext?.isolatedEdit)return;
+  const discard=()=>{void fetch(`${api()}/listings/${encodeURIComponent(listingId)}/edit/discard`,{method:"POST",credentials:"include",keepalive:true}).catch(()=>undefined)};
+  window.addEventListener("pagehide",discard);
+  return()=>window.removeEventListener("pagehide",discard);
+ },[listingId,editContext?.isolatedEdit]);
+ const visibleAttrs=useMemo(()=>selected?.domain==="REAL_ESTATE"?attrs.filter(a=>!REAL_ESTATE_DEDICATED_KEYS.has(a.key)):attrs,[attrs,selected?.domain]);
+ const filledRequired=useMemo(()=>visibleAttrs.filter(a=>a.required).filter(a=>{const v=values[a.id];return Array.isArray(v)?v.length>0:v!==undefined&&v!==""&&v!==null}).length,[attrs,values]);
+ const missingRequired=useMemo(()=>visibleAttrs.filter(a=>a.required&&(Array.isArray(values[a.id])?!(values[a.id] as unknown[]).length:values[a.id]===undefined||values[a.id]===""||values[a.id]===null)),[visibleAttrs,values]);
+ const requiredCount=visibleAttrs.filter(a=>a.required).length;
+ const locationQualityReady=selected?.domain==="REAL_ESTATE"?realEstateSaved:Boolean(city.trim()&&postalCode.trim());
+ const photoPoints=["JOB","SERVICE"].includes(selected?.domain??"")?20:photoState.readyCount>=5?20:photoState.readyCount>=3?16:photoState.readyCount>=1?9:0;
+ const quality=Math.min(100,(categoryId?15:0)+(title.trim().length>=20?15:title.trim().length>=10?11:title.trim().length>=5?6:0)+photoPoints+(requiredCount===0?15:Math.round(15*(filledRequired/Math.max(1,requiredCount))))+(description.trim().length>=300?20:description.trim().length>=160?17:description.trim().length>=80?13:description.trim().length>=20?7:0)+(locationQualityReady?10:0)+(commerceSaved?5:0));
+ const progress=Math.round(((step+1)/6)*100);
+ async function loadAttrs(slug:string){const r=await fetch(`${api()}/categories/${encodeURIComponent(slug)}/attributes`,{credentials:"include"});if(r.ok){const definitions=((await r.json()).category?.attributes??[]) as Attr[];setAttrs(definitions);return definitions}setAttrs([]);return [] as Attr[]}
+ async function createTransientDraft(){let id=listingId;if(id)return id;const r=await fetch(`${api()}/listings/drafts`,{method:"POST",credentials:"include",headers:{"content-type":"application/json"},body:JSON.stringify({categoryId})});const p=await r.json().catch(()=>({}));if(!r.ok||!p.listing?.id)throw new Error("draft_create_failed");id=String(p.listing.id);setListingId(id);setTransientDraft(true);setHydrated(true);setAutosaveStatus("saved");try{localStorage.removeItem("pa-listing-local:new")}catch{}history.replaceState(null,"",`/deposer-une-annonce?listingId=${encodeURIComponent(id)}`);return id}
+ async function saveTitle(id:string){const b=await fetch(`${api()}/listings/${encodeURIComponent(id)}/basics`,{method:"PATCH",credentials:"include",headers:{"content-type":"application/json"},body:JSON.stringify({title:title.trim()})});if(!b.ok)throw new Error("title_save_failed")}
+ async function persistCategory(id:string){const r=await fetch(`${api()}/listings/${encodeURIComponent(id)}/category`,{method:"PATCH",credentials:"include",headers:{"content-type":"application/json"},body:JSON.stringify({categoryId})});const p=await r.json().catch(()=>({}));if(!r.ok)throw new Error("category_save_failed");return Boolean(p.categoryChanged)}
+ async function restoreValues(id:string,definitions:Attr[]){const r=await fetch(`${api()}/listings/${encodeURIComponent(id)}/draft`,{credentials:"include",cache:"no-store"});if(!r.ok)return;const p=await r.json() as DraftPayload;const d=p.listing;const restored:Record<string,unknown>=Object.fromEntries(d.attributes.map(a=>[a.attributeId,a.value]));if(d.vehicle){const vehicleByKey:Record<string,unknown>={brand:d.vehicle.make,model:d.vehicle.model,firstRegistration:typeof d.vehicle.firstRegistrationDate==="string"?d.vehicle.firstRegistrationDate.slice(0,10):undefined,mileage:d.vehicle.mileageKm,fuel:d.vehicle.fuel,gearbox:d.vehicle.transmission,fiscalPower:d.vehicle.fiscalPowerCv,powerKw:d.vehicle.powerKw,doors:d.vehicle.doors,seats:d.vehicle.seats,color:d.vehicle.color,bodyStyle:d.vehicle.bodyType};for(const definition of definitions)if((restored[definition.id]===undefined||restored[definition.id]===null||restored[definition.id]==="")&&vehicleByKey[definition.key]!==undefined&&vehicleByKey[definition.key]!==null)restored[definition.id]=vehicleByKey[definition.key];}setValues(restored)}
+ async function saveForLater(){setMessage("");setCategoryAttempted(true);if(!categoryId){setMessage("Choisissez une catégorie précise.");scrollToValidationError();return}if(title.trim().length<5){setMessage("Le titre doit contenir au moins 5 caractères.");scrollToValidationError();return}setBusy(true);try{const id=await createTransientDraft();await persistCategory(id);await saveTitle(id);const r=await fetch(`${api()}/listings/${encodeURIComponent(id)}/save-draft`,{method:"POST",credentials:"include"});const p=await r.json().catch(()=>({})) as {error?:string;message?:string;redirect?:string};if(!r.ok){if(p.error==="listing_content_policy_violation"||p.error==="account_security_hold"){setMessage(p.message??"Cette annonce contient un contenu interdit ou des coordonnées directes.");navigateApp(router,p.redirect??"/compte-suspendu",{replace:true});return}throw new Error("draft_save_failed")}setTransientDraft(false);setMessage("Brouillon enregistré.");navigateApp(router,"/mon-compte/annonces?status=DRAFT")}catch{setMessage("Impossible d’enregistrer ce brouillon pour le moment.")}finally{setBusy(false)}}
+ async function saveCategory(e:FormEvent){e.preventDefault();setMessage("");setCategoryAttempted(true);if(!rootId||((root?.children?.length??0)>0&&!branchId)||(branch?.children?.length&&!categoryId)||!categoryId){setMessage(branch?.children?.length?"Choisissez le type précis de l’annonce.":"Choisissez une catégorie.");scrollToValidationError();return}if(title.trim().length<5){setMessage("Le titre doit contenir au moins 5 caractères.");scrollToValidationError();return}setBusy(true);try{const id=await createTransientDraft();const changed=await persistCategory(id);await saveTitle(id);if(selected){const definitions=await loadAttrs(selected.slug);if(changed)await restoreValues(id,definitions)}setCategoryAttempted(false);goStep(1)}catch{setMessage("Impossible de continuer. Réessayez.")}finally{setBusy(false)}}
+ async function generateDescription(){if(!categoryId||title.trim().length<3)return setMessage("Renseignez d’abord la catégorie et le titre.");setAiBusy(true);setMessage("");try{const attributes=visibleAttrs.map(a=>({label:a.label,value:values[a.id]})).filter(x=>x.value!==undefined&&x.value!==""&&x.value!==null&&!Array.isArray(x.value)).map(x=>({label:x.label,value:x.value as string|number|boolean}));const r=await fetch(`${api()}/listings/ai-description`,{method:"POST",credentials:"include",headers:{"content-type":"application/json"},body:JSON.stringify({categoryId,title:title.trim(),attributes})});const p=await r.json();if(!r.ok||!p.description)throw 0;setDescription(String(p.description));setMessage(p.mode==="ai"?"Description générée avec l’IA. Relisez-la avant de continuer.":"Description proposée à partir de vos informations. Relisez-la avant de continuer.")}catch{setMessage("La description assistée n’est pas disponible pour le moment.")}finally{setAiBusy(false)}}
+ async function saveDetails(){
+  if(!listingId)return;
+  setMessage("");setDetailsAttempted(true);
+  if(selected?.domain==="REAL_ESTATE"&&!realEstateSaved){setMessage("Enregistrez d’abord les informations du bien et le DPE.");scrollToValidationError();return}
+  if(selected?.domain!=="REAL_ESTATE"){
+   const cleanPostal=postalCode.replace(/\D/g,"").slice(0,5);
+   if(city.trim().length<2){setMessage("Indiquez une ville valide.");scrollToValidationError();return}
+   if(!/^\d{5}$/.test(cleanPostal)){setMessage("Le code postal doit contenir exactement 5 chiffres.");scrollToValidationError();return}
+   if(locationLookup==="missing"){setMessage("Ce code postal n’a pas été reconnu. Vérifiez-le avant de continuer.");scrollToValidationError();return}
+   if(cleanPostal!==postalCode)setPostalCode(cleanPostal);
   }
-
-  function chooseCategory(category:Category){
-    setSelected(category);
-    setError("");
+  const missing=visibleAttrs.filter(a=>a.required&&(Array.isArray(values[a.id])?!(values[a.id] as unknown[]).length:values[a.id]===undefined||values[a.id]===""||values[a.id]===null));
+  if(missing.length){setMessage(`Complétez : ${missing.map(a=>a.label).join(", ")}.`);scrollToValidationError();return}
+  if(description.trim().length<20){setMessage("La description doit contenir au moins 20 caractères.");scrollToValidationError();return}
+  setBusy(true);
+  try{
+   const payload=visibleAttrs.filter(a=>values[a.id]!==undefined&&values[a.id]!==""&&values[a.id]!==null&&(!Array.isArray(values[a.id])||(values[a.id] as unknown[]).length>0)).map(a=>({attributeId:a.id,value:values[a.id]}));
+   if(payload.length){
+    const r=await fetch(`${api()}/listings/${encodeURIComponent(listingId)}/attributes`,{method:"PUT",credentials:"include",headers:{"content-type":"application/json"},body:JSON.stringify({values:payload})});
+    if(!r.ok){const p=await r.json().catch(()=>({}));const code=String(p.error??"");if(code==="invalid_attribute_option")throw new Error("attribute_option");if(code==="invalid_number_attribute")throw new Error("attribute_number");throw new Error("attributes_save_failed")}
+   }
+   if(selected?.domain==="VEHICLE"){
+    const keyed=Object.fromEntries(attrs.map(a=>[a.key,values[a.id]]));const num=(v:unknown)=>v===undefined||v===""?undefined:Number(v);
+    const vehicle={make:keyed.brand?String(keyed.brand):undefined,model:keyed.model?String(keyed.model):undefined,firstRegistrationDate:keyed.firstRegistration?String(keyed.firstRegistration):undefined,mileageKm:num(keyed.mileage),fuel:keyed.fuel?String(keyed.fuel):undefined,transmission:keyed.gearbox?String(keyed.gearbox):undefined,fiscalPowerCv:num(keyed.fiscalPower),powerKw:num(keyed.powerKw),doors:num(keyed.doors),seats:num(keyed.seats),color:keyed.color?String(keyed.color):undefined,bodyType:keyed.bodyStyle?String(keyed.bodyStyle):undefined};
+    const vr=await fetch(`${api()}/listings/${encodeURIComponent(listingId)}/vehicle`,{method:"PUT",credentials:"include",headers:{"content-type":"application/json"},body:JSON.stringify(vehicle)});
+    if(!vr.ok)throw new Error("vehicle_save_failed");
+    const hr=await fetch(`${api()}/listings/${encodeURIComponent(listingId)}/vehicle/histovec`,{method:"PUT",credentials:"include",headers:{"content-type":"application/json"},body:JSON.stringify({url:histovecUrl.trim()||null})});
+    if(!hr.ok){const hp=await hr.json().catch(()=>({}));if(hp.error==="invalid_histovec_url")throw new Error("histovec_url_invalid");throw new Error("histovec_save_failed")}
+   }
+   const basicsPayload={description:description.trim(),...(selected?.domain!=="REAL_ESTATE"?{city:city.trim(),postalCode:postalCode.replace(/\D/g,"").slice(0,5)}:{})};
+   const b=await fetch(`${api()}/listings/${encodeURIComponent(listingId)}/basics`,{method:"PATCH",credentials:"include",headers:{"content-type":"application/json"},body:JSON.stringify(basicsPayload)});
+   if(!b.ok){const p=await b.json().catch(()=>({}));if(b.status===400&&p.error==="invalid_request")throw new Error("location_invalid");if(b.status===404)throw new Error("draft_not_found");throw new Error("basics_save_failed")}
+   setMessage("");setDetailsAttempted(false);goStep(3);
+  }catch(error){
+   const code=error instanceof Error?error.message:"details_save_failed";
+   setMessage(code==="attribute_option"?"Une caractéristique sélectionnée n’est plus valide. Choisissez-la de nouveau.":code==="attribute_number"?"Vérifiez les champs numériques de l’annonce.":code==="vehicle_save_failed"?"Les informations du véhicule n’ont pas pu être enregistrées. Vérifiez les champs puis réessayez.":code==="histovec_url_invalid"?"Le lien HistoVec doit provenir du site officiel histovec.interieur.gouv.fr.":code==="histovec_save_failed"?"Le lien HistoVec n’a pas pu être enregistré. Réessayez.":code==="location_invalid"?"La ville ou le code postal n’est pas valide. Vérifiez la localisation puis réessayez.":code==="draft_not_found"?"Ce brouillon n’est plus disponible. Revenez à Mes annonces puis rouvrez-le.":"Impossible d’enregistrer les détails. Vérifiez les champs signalés puis réessayez.");
+  }finally{setBusy(false)}
+ }
+ async function saveCommerceAndReview(){
+  setMessage("");
+  if(!commerceFormRef.current)return setMessage("Le formulaire de prix n’est pas encore prêt. Réessayez.");
+  setBusy(true);
+  try{
+   const ok=await commerceFormRef.current.save();
+   if(!ok){setMessage("Vérifiez les champs rouges dans Prix & livraison avant de continuer.");scrollToValidationError();return}
+   setCommerceSaved(true);
+   goStep(4);
+  }finally{setBusy(false)}
+ }
+ async function lookupPlate(){if(!listingId||!plate.trim()||plateBusy)return;const normalized=plate.toUpperCase().replace(/[^A-Z0-9]/g,"");const formatted=normalized.length===7?`${normalized.slice(0,2)}-${normalized.slice(2,5)}-${normalized.slice(5)}`:plate.toUpperCase();setPlate(formatted);setPlateBusy(true);setPlateState("loading");setPlateVehicle(null);setPlateMessage("Identification du véhicule en cours…");try{const r=await fetch(`${api()}/listings/${listingId}/vehicle/from-plate`,{method:"POST",credentials:"include",headers:{"content-type":"application/json"},body:JSON.stringify({registrationPlate:formatted})});const p=await r.json().catch(()=>({}));if(r.ok){const v=p.vehicle??{};const expectedBrand=titleVehicleBrand(title);const actualBrand=normalizedVehicleText(v.make);if(expectedBrand&&actualBrand){const expected=normalizedVehicleText(expectedBrand);if(!actualBrand.includes(expected)&&!expected.includes(actualBrand)){setPlateState("error");setPlateVehicle(v);setPlateMessage(`La plaque correspond à « ${String(v.make??"un autre véhicule")} ${String(v.model??"").trim()} », alors que le titre indique « ${expectedBrand} ». Vérifiez la plaque avant d’utiliser ces données.`);return}}const byKey:Record<string,unknown>={...(p.wizardAttributes??{}),brand:v.make,model:v.model,firstRegistration:v.firstRegistrationDate?.slice?.(0,10),fuel:v.fuel,gearbox:v.transmission,fiscalPower:v.fiscalPowerCv,powerKw:v.powerKw,doors:v.doors!=null?String(v.doors):undefined,seats:v.seats,color:v.color,bodyStyle:v.bodyType};setValues(prev=>{const next={...prev};for(const a of attrs)if(byKey[a.key]!==undefined&&byKey[a.key]!==null)next[a.id]=byKey[a.key];return next});setPlateVehicle(v);setPlateState("success");setPlateMessage("Véhicule identifié. Les informations disponibles ont été préremplies. Vérifiez-les avant de continuer.")}else{setPlateState("error");setPlateVehicle(null);setPlateMessage((p.error==="invalid_request"||p.error==="invalid_registration_plate")?"Format de plaque invalide. Exemple : AB-123-CD.":p.error==="vehicle_not_found"?"Aucun véhicule trouvé pour cette plaque. Vérifiez la saisie ou remplissez manuellement.":p.error==="vehicle_provider_rate_limited"?"Le service plaque est momentanément très sollicité. Réessayez dans quelques instants.":p.error==="vehicle_provider_subscription_expired"?"L’abonnement du service d’identification véhicule doit être renouvelé. Vous pouvez continuer manuellement.":p.error==="vehicle_provider_auth_failed"?"Le service plaque nécessite une mise à jour de configuration.":p.error==="vehicle_data_provider_not_configured"?"Le service plaque n’est pas encore configuré. Remplissez les champs manuellement.":"Service plaque momentanément indisponible. Vous pouvez continuer manuellement.")}}finally{setPlateBusy(false)}}
+ function importedBadge(id?:string){return importInfo&&(!id||importedAttrIds.has(id))?<small className={styles.importBadge}>Importé</small>:null}
+ function updateAttr(id:string,value:unknown){setImportedAttrIds(prev=>{const next=new Set(prev);next.delete(id);return next});setValues(x=>({...x,[id]:value}))}
+ function attr(a:Attr){
+  const v=values[a.id];const empty=Array.isArray(v)?v.length===0:v===undefined||v===""||v===null;const invalid=Boolean(detailsAttempted&&a.required&&empty);
+  const help=invalid?<small className={styles.validationText}>Ce champ est obligatoire.</small>:null;
+  if(a.type==="BOOLEAN")return <label className={`${styles.check} ${invalid?styles.validationError:""}`} data-validation-error={invalid?"true":undefined} key={a.id}><input type="checkbox" checked={Boolean(v)} onChange={e=>updateAttr(a.id,e.target.checked)}/><span>{a.label}{importedBadge(a.id)}{help}</span></label>;
+  if(a.type==="MULTISELECT"){
+   const current=Array.isArray(v)?v.map(String):[];
+   return <fieldset className={`${styles.multiField} ${invalid?styles.validationError:""}`} data-validation-error={invalid?"true":undefined} key={a.id}><legend>{a.label}{a.required?" *":""}{importedBadge(a.id)}</legend><div className={styles.multiOptions}>{a.options.map(o=>{const checked=current.includes(o.value);return <label className={`${styles.optionChip} ${checked?styles.optionChecked:""}`} key={o.id}><input type="checkbox" checked={checked} onChange={e=>{setImportedAttrIds(prevSet=>{const next=new Set(prevSet);next.delete(a.id);return next});setValues(x=>{const prev=Array.isArray(x[a.id])?(x[a.id] as unknown[]).map(String):[];const next=e.target.checked?[...new Set([...prev,o.value])]:prev.filter(item=>item!==o.value);return {...x,[a.id]:next}})}}/><span><AppIcon name={checked?"circle-check":"plus"}/>{o.label}</span></label>})}</div>{help}</fieldset>;
   }
+  if(a.type==="SELECT")return <label className={`${styles.field} ${invalid?styles.validationError:""}`} data-validation-error={invalid?"true":undefined} key={a.id}><span>{a.label}{a.required?" *":""}{importedBadge(a.id)}</span><select value={String(v??"")} onChange={e=>updateAttr(a.id,e.target.value)}><option value="">Sélectionner</option>{a.options.map(o=><option key={o.id} value={o.value}>{o.label}</option>)}</select>{help}</label>;
+  return <label className={`${styles.field} ${invalid?styles.validationError:""}`} data-validation-error={invalid?"true":undefined} key={a.id}><span>{a.label}{a.required?" *":""}{importedBadge(a.id)}</span><input type={a.type==="NUMBER"?"number":a.type==="DATE"?"date":"text"} value={String(v??"")} onChange={e=>updateAttr(a.id,a.type==="NUMBER"?(e.target.value===""?"":Number(e.target.value)):e.target.value)}/>{help}</label>;
+ }
 
-  async function createDraft(){
-    if(!selected) return;
-    setBusy(true);setError("");
-    try{
-      const r=await fetch(`${api()}/listings/drafts`,{method:"POST",credentials:"include",headers:{"content-type":"application/json"},body:JSON.stringify({categoryId:selected.id})});
-      if(r.status===401){window.location.href=`/connexion?next=${encodeURIComponent("/deposer-une-annonce")}`;return}
-      const p=await r.json().catch(()=>({}));
-      if(!r.ok) throw new Error(p.error??"draft_failed");
-      const data=p as DraftResponse;setListingId(data.listing.id);setStep(1);
-      window.history.replaceState(null,"",`/deposer-une-annonce?listingId=${encodeURIComponent(data.listing.id)}`);
-    }catch{setError("Impossible de créer le brouillon. Vérifiez votre connexion puis réessayez.")}finally{setBusy(false)}
-  }
-
-  async function saveBasics(e:FormEvent){
-    e.preventDefault(); if(!listingId)return;
-    setBusy(true);setError("");
-    try{
-      const r=await fetch(`${api()}/listings/${encodeURIComponent(listingId)}/basics`,{method:"PATCH",credentials:"include",headers:{"content-type":"application/json"},body:JSON.stringify({title,description})});
-      const p=await r.json().catch(()=>({}));if(!r.ok)throw new Error(p.error??"basics_failed");
-      if(selected?.domain==="VEHICLE"){
-        const payload={make:vehicle.make.trim()||null,model:vehicle.model.trim()||null,version:vehicle.version.trim()||null,modelYear:vehicle.modelYear?Number(vehicle.modelYear):null,fuel:vehicle.fuel.trim()||null,mileageKm:vehicle.mileageKm?Number(vehicle.mileageKm):null};
-        const vr=await fetch(`${api()}/listings/${encodeURIComponent(listingId)}/vehicle`,{method:"PUT",credentials:"include",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});
-        if(!vr.ok) throw new Error("vehicle_save_failed");
-      }
-      setStep(2);
-    }catch{setError("Impossible d’enregistrer les détails. Vérifiez le titre, la description et les informations du véhicule.")}finally{setBusy(false)}
-  }
-
-  async function lookupPlate(){
-    if(!listingId||!plate.trim())return;setBusy(true);setPlateMessage("");
-    try{
-      const r=await fetch(`${api()}/listings/${encodeURIComponent(listingId)}/vehicle/from-plate`,{method:"POST",credentials:"include",headers:{"content-type":"application/json"},body:JSON.stringify({registrationPlate:plate})});
-      const p=await r.json().catch(()=>({}));
-      if(!r.ok){const code=p.error;throw new Error(code??"vehicle_lookup_failed")}
-      const v=(p.vehicle??{}) as Record<string,unknown>;
-      setVehicle(current=>({...current,make:typeof v.make==="string"?v.make:current.make,model:typeof v.model==="string"?v.model:current.model,version:typeof v.version==="string"?v.version:current.version,modelYear:typeof v.modelYear==="number"?String(v.modelYear):current.modelYear,fuel:typeof v.fuel==="string"?v.fuel:current.fuel}));
-      setPlateMessage("Véhicule identifié. Vérifiez les informations pré-remplies ci-dessous.");
-    }catch(err){const code=err instanceof Error?err.message:"vehicle_lookup_failed";setPlateMessage(code==="vehicle_data_provider_not_configured"?"Identification automatique indisponible pour le moment. Renseignez le véhicule manuellement ci-dessous.":code==="vehicle_not_found"?"Aucun véhicule trouvé. Vous pouvez saisir les informations manuellement.":code==="invalid_registration_plate"?"Format de plaque invalide.":"Recherche de plaque indisponible. Vous pouvez continuer manuellement.")}finally{setBusy(false)}
-  }
-
-  const setVehicleField=(key:keyof VehicleFields)=>(value:string)=>setVehicle(current=>({...current,[key]:value}));
-
-  return <div className={styles.wizard}>
-    <ol className={styles.steps}>{STEPS.map((label,i)=><li key={label} className={i===step?styles.current:i<step?styles.done:""}><span>{i<step?"✓":i+1}</span><b>{label}</b></li>)}</ol>
-    {error&&<div className={styles.error}>{error}</div>}
-
-    {step===0&&<section className={styles.panel}>
-      <div className={styles.head}><span>Étape 1 sur 5</span><h2>Choisissez une catégorie</h2><p>Sélectionnez d’abord une grande catégorie, puis la catégorie la plus précise.</p></div>
-      {loadingCategories?<div className={styles.loading}>Chargement des catégories…</div>:<>
-        <div className={styles.rootGrid}>{categories.map(c=><button type="button" key={c.id} className={root?.id===c.id?styles.selectedRoot:""} onClick={()=>chooseRoot(c)}><strong>{c.name}</strong><small>{c.children?.length??0} sous-catégorie{(c.children?.length??0)>1?"s":""}</small></button>)}</div>
-        {root&&root.children?.length?<div className={styles.subcategoryBlock}><div className={styles.subcategoryTitle}><strong>{root.name}</strong><span>Choisissez la catégorie précise</span></div><div className={styles.categoryGrid}>{subcategories.map(c=><button type="button" key={c.id} className={selected?.id===c.id?styles.selected:""} onClick={()=>chooseCategory(c)}><strong>{c.name}</strong><small>{c.domain}</small>{selected?.id===c.id&&<i>✓</i>}</button>)}</div></div>:null}
-      </>}
-      <div className={styles.nav}><span>{selected?`Sélection : ${selected.name}`:"Choisissez une catégorie pour continuer"}</span><button type="button" disabled={!selected||busy} onClick={()=>void createDraft()}>{busy?"Création…":"Continuer"}</button></div>
-    </section>}
-
-    {step===1&&<section className={styles.panel}>
-      <div className={styles.head}><span>Étape 2 sur 5</span><h2>Décrivez votre annonce</h2><p>Un titre clair et une description détaillée améliorent la confiance et la visibilité.</p></div>
-      <form className={styles.form} onSubmit={saveBasics}><label>Titre<input value={title} onChange={e=>setTitle(e.target.value)} minLength={5} maxLength={120} required placeholder="Ex. iPhone 15 Pro 256 Go"/></label><label>Description<textarea value={description} onChange={e=>setDescription(e.target.value)} minLength={20} maxLength={12000} required placeholder="Décrivez l’état, les caractéristiques et les informations utiles…"/></label>
-      {selected?.domain==="VEHICLE"&&<div className={styles.plateBox}><div><strong>Identifier avec la plaque</strong><p>La plaque n’est jamais affichée publiquement. Si le service automatique n’est pas disponible, vous pouvez continuer manuellement.</p></div><div className={styles.plateRow}><input value={plate} onChange={e=>setPlate(e.target.value.toUpperCase())} placeholder="AB-123-CD" aria-label="Plaque d'immatriculation"/><button type="button" onClick={()=>void lookupPlate()} disabled={busy||plate.trim().length<5}>Identifier</button></div>{plateMessage&&<small>{plateMessage}</small>}
-      <div className={styles.vehicleFields}><label>Marque<input value={vehicle.make} onChange={e=>setVehicleField("make")(e.target.value)} placeholder="Peugeot"/></label><label>Modèle<input value={vehicle.model} onChange={e=>setVehicleField("model")(e.target.value)} placeholder="3008"/></label><label>Version<input value={vehicle.version} onChange={e=>setVehicleField("version")(e.target.value)} placeholder="GT Hybrid"/></label><label>Année<input type="number" min="1900" max="2100" inputMode="numeric" value={vehicle.modelYear} onChange={e=>setVehicleField("modelYear")(e.target.value)} placeholder="2024"/></label><label>Énergie<input value={vehicle.fuel} onChange={e=>setVehicleField("fuel")(e.target.value)} placeholder="Essence, Diesel, Électrique…"/></label><label>Kilométrage<input type="number" min="0" max="5000000" inputMode="numeric" value={vehicle.mileageKm} onChange={e=>setVehicleField("mileageKm")(e.target.value)} placeholder="18400"/></label></div></div>}
-      <div className={styles.nav}><button type="button" className={styles.back} onClick={()=>setStep(0)}>Retour</button><button disabled={busy}>{busy?"Enregistrement…":"Continuer"}</button></div></form>
-    </section>}
-
-    {step===2&&<section className={styles.panel}><div className={styles.head}><span>Étape 3 sur 5</span><h2>Ajoutez vos photos</h2><p>Choisissez plusieurs photos depuis la galerie. La caméra reste disponible via le sélecteur du téléphone, sans ouverture forcée.</p></div><ListingPhotoUploader listingId={listingId}/><div className={styles.nav}><button type="button" className={styles.back} onClick={()=>setStep(1)}>Retour</button><button type="button" onClick={()=>setStep(3)}>Continuer</button></div></section>}
-
-    {step===3&&<section className={styles.panel}><div className={styles.head}><span>Étape 4 sur 5</span><h2>Prix et modes de remise</h2><p>Configurez votre prix, la remise en main propre et les options de livraison.</p></div><ListingCommerceForm listingId={listingId}/><div className={styles.nav}><button type="button" className={styles.back} onClick={()=>setStep(2)}>Retour</button><button type="button" onClick={()=>setStep(4)}>Continuer</button></div></section>}
-
-    {step===4&&<section className={styles.panel} id="verification"><div className={styles.head}><span>Étape 5 sur 5</span><h2>Vérifiez puis envoyez en modération</h2><p>Contrôlez les informations avant publication.</p></div><ListingPublicationReview listingId={listingId}/><div className={styles.nav}><button type="button" className={styles.back} onClick={()=>setStep(3)}>Retour</button><a href="/mon-compte/annonces">Mes annonces</a></div></section>}
-  </div>;
+ return <div className={styles.wrapper}>
+  {message&&<div className={styles.notice}><AppIcon name="info"/><span>{message}</span></div>}
+  {editContext&&editContext.previousStatus!=="DRAFT"&&<div className={styles.editBanner}><AppIcon name="info"/><div><strong>{editContext.previousStatus==="SUSPENDED"?"Annonce à corriger":editContext.previousStatus==="PUBLISHED"?"Modification d’une annonce publiée":"Modification de l’annonce"}</strong><span>{editContext.moderation?.statement??(editContext.previousStatus==="PUBLISHED"?"Votre annonce reste active pendant toute la modification. Rien ne sera appliqué ni ajouté aux brouillons tant que vous n’aurez pas validé la dernière étape.":"Les changements restent isolés pendant l’édition et ne seront appliqués qu’après votre validation finale.")}</span></div></div>}
+  <nav className={styles.stepMenu} aria-label="Étapes de création de l’annonce">
+   <div className={styles.stepMenuTrack} ref={stepMenuRef}>
+    {steps.map((label,index)=>{const done=index<step,current=index===step,locked=index>step;return <button key={label} type="button" data-current={current?"true":"false"} aria-current={current?"step":undefined} disabled={locked} onClick={()=>{if(done)goStep(index)}} className={`${styles.stepMenuItem} ${done?styles.stepMenuDone:""} ${current?styles.stepMenuCurrent:""}`}><span className={styles.stepMenuNumber}>{done?<AppIcon name="circle-check"/>:index+1}</span><span className={styles.stepMenuLabel}><small>Étape {index+1}</small><b>{label}</b></span>{index<steps.length-1&&<span className={styles.stepMenuConnector} aria-hidden="true"/>}</button>})}
+   </div>
+  </nav>
+  <div className={styles.workspace}><div className={styles.mainColumn}><div key={step} className={`${styles.stepSlide} ${slideDir==="forward"?styles.slideForward:styles.slideBack}`}>
+   {step===0&&<form className={styles.card} onSubmit={saveCategory}><div className={styles.cardHead}><div><span className={styles.kicker}>Étape 1 sur 6</span><h2>Commençons par l’essentiel</h2><p>Choisissez la catégorie et donnez un titre clair à votre annonce.</p></div><span className={styles.headIcon}><AppIcon name="list"/></span></div><div className={styles.grid2}><label className={`${styles.field} ${categoryAttempted&&!rootId?styles.validationError:""}`} data-validation-error={categoryAttempted&&!rootId?"true":undefined}><span>Catégorie principale *</span><select value={rootId} onChange={e=>{setRootId(e.target.value);setBranchId("");setCategoryId("");setAttrs([]);setValues({});setCommerceSaved(false);setRealEstateSaved(false)}}><option value="">Choisir</option>{categories.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select>{categoryAttempted&&!rootId&&<small className={styles.validationText}>Choisissez une catégorie principale.</small>}</label><label className={`${styles.field} ${categoryAttempted&&Boolean(root?.children?.length)&&!branchId?styles.validationError:""}`} data-validation-error={categoryAttempted&&Boolean(root?.children?.length)&&!branchId?"true":undefined}><span>Sous-catégorie *</span><select disabled={!root} value={branchId} onChange={e=>{const next=e.target.value;const candidate=root?.children?.find(c=>c.id===next);setBranchId(next);setCategoryId(candidate?.children?.length?"":next);setAttrs([]);setValues({});setCommerceSaved(false);setRealEstateSaved(false)}}><option value="">Choisir</option>{root?.children?.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select>{categoryAttempted&&Boolean(root?.children?.length)&&!branchId&&<small className={styles.validationText}>Choisissez une sous-catégorie.</small>}</label>{branch?.children?.length?<label className={`${styles.field} ${categoryAttempted&&!categoryId?styles.validationError:""}`} data-validation-error={categoryAttempted&&!categoryId?"true":undefined}><span>Type précis *</span><select value={categoryId} onChange={e=>{setCategoryId(e.target.value);setAttrs([]);setValues({});setCommerceSaved(false);setRealEstateSaved(false)}}><option value="">Choisir</option><option value={branch.id}>Autre / {branch.name}</option>{branch.children.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select>{categoryAttempted&&!categoryId&&<small className={styles.validationText}>Choisissez le type précis ou « Autre ».</small>}<small>Choisissez le type précis lorsqu’il correspond à votre annonce, sinon gardez la catégorie générale.</small></label>:null}</div><label className={`${styles.field} ${categoryAttempted&&title.trim().length<5?styles.validationError:""}`} data-validation-error={categoryAttempted&&title.trim().length<5?"true":undefined}><span>Titre de l’annonce *</span><div className={styles.inputCounter}><input value={title} maxLength={120} placeholder="Ex. Ford C-Max 2012 Titanium" onChange={e=>setTitle(e.target.value)}/><small>{title.length}/120</small></div>{categoryAttempted&&title.trim().length<5&&<small className={styles.validationText}>Le titre doit contenir au moins 5 caractères.</small>}</label><div className={styles.footer}><div className={styles.footerActionStack}><button disabled={busy}>{busy?"Enregistrement…":"Suivant : Photos"}<AppIcon name="arrow-right"/></button>{!editContext?.isolatedEdit&&<button type="button" className={styles.saveLater} disabled={busy} onClick={()=>void saveForLater()}>Enregistrer pour plus tard</button>}</div></div></form>}
+   {step===1&&<section className={`${styles.card} ${photoAttempted&&!photoOptional&&photoState.readyCount<1?styles.sectionValidationError:""}`} data-validation-error={photoAttempted&&!photoOptional&&photoState.readyCount<1?"true":undefined}><div className={styles.cardHead}><div><span className={styles.kicker}>Étape 2 sur 6</span><h2>{photoOptional?"Ajoutez des photos si utile":"Ajoutez de belles photos"}</h2><p>{photoOptional?"Pour les services et les offres d’emploi, les photos sont facultatives. Ajoutez-en seulement si elles apportent une information utile.":"Des photos nettes et variées augmentent la confiance et la visibilité."}</p></div><span className={styles.headIcon}><AppIcon name="camera"/></span></div><ListingPhotoUploader listingId={listingId} onStateChange={setPhotoState}/>{!photoOptional&&photoState.readyCount<1&&<div className={photoAttempted?styles.stepRequirementError:styles.stepRequirement}><AppIcon name="camera"/>{photoAttempted?"Photo obligatoire : ajoutez au moins une photo pour continuer.":"Ajoutez au moins une photo avant de continuer."}</div>}{photoOptional&&photoState.readyCount<1&&<div className={styles.stepRequirement}><AppIcon name="info"/>Photos facultatives pour cette catégorie — vous pouvez continuer sans photo.</div>}<div className={styles.footer}><button type="button" className={styles.secondary} onClick={()=>goStep(0)}><AppIcon name="arrow-left"/>Précédent</button><div className={styles.footerActionStack}><button type="button" disabled={photoState.uploading} onClick={()=>{if(!photoOptional&&photoState.readyCount<1){setPhotoAttempted(true);setMessage("Ajoutez au moins une photo avant de continuer.");scrollToValidationError();return}setPhotoAttempted(false);setMessage("");goStep(2)}}>{photoState.uploading?"Envoi des photos…":"Suivant : Détails"}<AppIcon name="arrow-right"/></button>{!editContext?.isolatedEdit&&transientDraft&&<button type="button" className={styles.saveLater} disabled={busy} onClick={()=>void saveForLater()}>Enregistrer pour plus tard</button>}</div></div></section>}
+   {step===2&&<section className={styles.card}>{importInfo&&<div className={styles.importBanner}><AppIcon name="sparkles"/><div><strong>Annonce importée</strong><span>Les données préremplies sont modifiables. Vos changements remplacent toujours les valeurs importées.</span></div></div>}<div className={styles.cardHead}><div><span className={styles.kicker}>Étape 3 sur 6</span><h2>Détails de l’annonce</h2><p>Complétez les informations utiles pour que les acheteurs comprennent immédiatement votre offre.</p></div><span className={styles.headIcon}><AppIcon name={selected?.domain==="VEHICLE"?"car":"list"}/></span></div>{selected?.domain==="VEHICLE"&&<div className={`${styles.plate} ${plateState==="success"?styles.plateSuccess:plateState==="error"?styles.plateError:""}`}><div className={styles.plateHead}><span className={styles.plateIcon}><AppIcon name="car"/></span><div><b>Identifier avec la plaque française</b><small>Renseignez la plaque pour préremplir automatiquement les caractéristiques disponibles.</small></div><span className={styles.plateSecure}><AppIcon name="shield"/> sécurisé</span></div><div className={styles.plateForm}><div className={styles.plateInputWrap}><span>FR</span><input value={plate} inputMode="text" autoCapitalize="characters" autoCorrect="off" spellCheck={false} maxLength={12} onChange={e=>{const raw=e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g,"");setPlate(raw);setPlateMessage("");setPlateVehicle(null);setPlateState("idle")}} placeholder="AB-123-CD"/></div><button type="button" onClick={lookupPlate} disabled={plateBusy||plate.trim().length<5}>{plateBusy?<><span className={styles.plateSpinner}/>Recherche…</>:<><AppIcon name="search"/>Identifier</>}</button></div>{plateBusy&&<div className={styles.plateScanning}><i/><span>Recherche des caractéristiques véhicule disponibles…</span></div>}{plateMessage&&<div className={`${styles.plateMessage} ${plateState==="success"?styles.plateMessageSuccess:plateState==="error"?styles.plateMessageError:""}`}><AppIcon name={plateState==="success"?"circle-check":"info"}/><span>{plateMessage}</span></div>}{plateState==="success"&&plateVehicle&&<div className={styles.vehiclePreview}><div className={styles.vehiclePreviewTop}><div className={styles.vehicleMark}><AppIcon name="car"/></div><div><small>Véhicule identifié</small><strong>{String(plateVehicle.make??"Véhicule")} {String(plateVehicle.model??"")}</strong>{Boolean(plateVehicle.version)&&<span>{String(plateVehicle.version)}</span>}</div><span className={styles.verifiedPill}><AppIcon name="circle-check"/> Vérifié</span></div><div className={styles.vehicleFacts}>{Boolean(plateVehicle.firstRegistrationDate)&&<div><small>1re immatriculation</small><b>{new Date(String(plateVehicle.firstRegistrationDate)).toLocaleDateString("fr-FR")}</b></div>}{Boolean(plateVehicle.fuel)&&<div><small>Énergie</small><b>{String(plateVehicle.fuel)}</b></div>}{Boolean(plateVehicle.transmission)&&<div><small>Boîte</small><b>{String(plateVehicle.transmission)}</b></div>}{plateVehicle.fiscalPowerCv!=null&&<div><small>Puissance fiscale</small><b>{String(plateVehicle.fiscalPowerCv)} CV</b></div>}{plateVehicle.powerKw!=null&&<div><small>Puissance</small><b>{String(plateVehicle.powerKw)} kW</b></div>}{Boolean(plateVehicle.bodyType)&&<div><small>Carrosserie</small><b>{String(plateVehicle.bodyType)}</b></div>}</div><small className={styles.vehiclePreviewHint}>Vérifiez les informations avant de poursuivre. Vous pouvez modifier chaque champ manuellement.</small></div>}</div>}{selected?.domain==="VEHICLE"&&<div className={styles.histovecField}><div className={styles.histovecHead}><span><AppIcon name="shield"/></span><div><strong>Rapport HistoVec officiel <em>Facultatif</em></strong><small>Si vous avez généré un rapport HistoVec, collez ici le lien officiel partagé avec l’acheteur.</small></div></div><label><span>Lien de partage HistoVec</span><input type="url" inputMode="url" autoCapitalize="none" autoCorrect="off" spellCheck={false} value={histovecUrl} onChange={e=>setHistovecUrl(e.target.value)} placeholder="https://histovec.interieur.gouv.fr/histovec/..."/><small>Seuls les liens officiels histovec.interieur.gouv.fr sont acceptés. Vous pouvez laisser ce champ vide.</small></label></div>}{selected?.domain==="REAL_ESTATE"&&listingId&&<div className={detailsAttempted&&!realEstateSaved?styles.sectionValidationError:""} data-validation-error={detailsAttempted&&!realEstateSaved?"true":undefined}><ListingRealEstateForm listingId={listingId} onSaved={()=>setRealEstateSaved(true)} onDirty={()=>setRealEstateSaved(false)}/>{detailsAttempted&&!realEstateSaved&&<div className={styles.validationBlockText}>Complétez puis enregistrez les informations du bien et le DPE.</div>}</div>}{selected?.domain==="REAL_ESTATE"&&visibleAttrs.length>0&&<div className={styles.extraHeading}><span>Équipements & confort</span><p>Ajoutez uniquement les caractéristiques complémentaires du bien.</p></div>}{missingRequired.length>0&&<div className={styles.missingImport}><AppIcon name="info"/><div><strong>À compléter avant de continuer</strong><span>{missingRequired.map(a=>a.label).join(" · ")}</span></div></div>}<div className={styles.attrGrid}>{visibleAttrs.length?visibleAttrs.map(attr):<p className={styles.emptyFields}>Aucune caractéristique supplémentaire requise.</p>}</div>{isVacation&&listingId&&<ListingVacationAvailability listingId={listingId}/>} {selected?.domain!=="REAL_ESTATE"&&<div className={styles.locationEditor}><div className={styles.extraHeading}><span>Localisation de l’annonce</span><p>La carte publique affiche une position approximative basée sur la ville et le code postal, jamais votre adresse personnelle.</p></div><div className={styles.grid2}><label className={`${styles.field} ${detailsAttempted&&(!/^\d{5}$/.test(postalCode)||locationLookup==="missing")?styles.validationError:""}`} data-validation-error={detailsAttempted&&(!/^\d{5}$/.test(postalCode)||locationLookup==="missing")?"true":undefined}><span>Code postal *</span><input inputMode="numeric" pattern="[0-9]*" maxLength={5} value={postalCode} placeholder="Ex. 42000" onChange={e=>setPostalCode(e.target.value.replace(/\D/g,"").slice(0,5))}/>{locationLookup==="loading"&&<small className={styles.lookupHint}>Recherche de la ville…</small>}{locationLookup==="found"&&<small className={styles.lookupSuccess}><AppIcon name="circle-check"/>Ville détectée automatiquement</small>}{locationLookup==="missing"&&postalCode.length===5&&<small className={styles.lookupError}>Code postal introuvable. Vérifiez les 5 chiffres.</small>}{detailsAttempted&&!/^\d{5}$/.test(postalCode)&&<small className={styles.validationText}>Renseignez un code postal français à 5 chiffres.</small>}</label><label className={`${styles.field} ${detailsAttempted&&city.trim().length<2?styles.validationError:""}`} data-validation-error={detailsAttempted&&city.trim().length<2?"true":undefined}><span>Ville *</span>{cityOptions.length>1?<select value={city} onChange={e=>setCity(e.target.value)}>{cityOptions.map(name=><option key={name} value={name}>{name}</option>)}</select>:<input maxLength={120} value={city} placeholder="La ville apparaît automatiquement" onChange={e=>setCity(e.target.value)}/>} {locationLookup==="multiple"&&<small className={styles.lookupHint}>Plusieurs communes utilisent ce code postal : choisissez la vôtre.</small>}{detailsAttempted&&city.trim().length<2&&<small className={styles.validationText}>Indiquez la ville.</small>}</label></div></div>}<div className={`${styles.descriptionSection} ${detailsAttempted&&description.trim().length<20?styles.validationError:""}`} data-validation-error={detailsAttempted&&description.trim().length<20?"true":undefined}><div className={styles.descriptionHead}><div><h3>Description {importInfo&&description?importedBadge():null}</h3><span>Conseillé : 80 mots minimum</span></div><button type="button" className={styles.aiButton} onClick={generateDescription} disabled={aiBusy}><AppIcon name="wand"/>{aiBusy?"Génération…":"Remplir avec l’IA"}</button></div><div className={styles.aiHint}><AppIcon name="sparkles"/>L’assistant utilise uniquement les informations renseignées dans cette annonce.</div><textarea rows={8} value={description} maxLength={12000} placeholder="Décrivez l’état, les caractéristiques, les équipements et les informations utiles…" onChange={e=>setDescription(e.target.value)}/><small className={styles.charCount}>{description.length}/12000 caractères</small>{detailsAttempted&&description.trim().length<20&&<small className={styles.validationText}>La description doit contenir au moins 20 caractères.</small>}</div><div className={styles.footer}><button type="button" className={styles.secondary} onClick={()=>goStep(1)}><AppIcon name="arrow-left"/>Précédent</button><div className={styles.footerActionStack}><button type="button" disabled={busy} onClick={saveDetails}>{busy?"Enregistrement…":"Suivant : Prix"}<AppIcon name="arrow-right"/></button>{!editContext?.isolatedEdit&&transientDraft&&<button type="button" className={styles.saveLater} disabled={busy} onClick={()=>void saveForLater()}>Enregistrer pour plus tard</button>}</div></div></section>}
+   {step===3&&<section className={styles.card}><div className={styles.cardHead}><div><span className={styles.kicker}>Étape 4 sur 6</span><h2>{isVacation?"Tarif du séjour":"Prix & livraison"}</h2><p>{isVacation?"Indiquez votre prix par nuit. Il sera enregistré automatiquement lorsque vous continuerez.":"Définissez votre prix et les modes de remise disponibles. Le prix sera enregistré automatiquement lorsque vous continuerez."}</p></div><span className={styles.headIcon}><AppIcon name={isVacation?"calendar":"credit-card"}/></span></div><ListingCommerceForm ref={commerceFormRef} listingId={listingId} onSaved={()=>setCommerceSaved(true)} onDirty={()=>setCommerceSaved(false)}/><div className={styles.footer}><button type="button" className={styles.secondary} disabled={busy} onClick={()=>goStep(2)}><AppIcon name="arrow-left"/>Précédent</button><div className={styles.footerActionStack}><button type="button" disabled={busy} onClick={()=>void saveCommerceAndReview()}>{busy?"Enregistrement…":"Suivant : Visibilité"}<AppIcon name="arrow-right"/></button>{!editContext?.isolatedEdit&&transientDraft&&<button type="button" className={styles.saveLater} disabled={busy} onClick={()=>void saveForLater()}>Enregistrer pour plus tard</button>}</div></div></section>}
+   {step===4&&<ListingVisibilityStep listingId={listingId} selectedCode={promotionCode} onSelect={(code,name)=>{setPromotionCode(code);setPromotionName(name)}} onBack={()=>goStep(3)} onContinue={()=>goStep(5)}/>}
+   {step===5&&<section className={styles.card}><div className={styles.cardHead}><div><span className={styles.kicker}>Étape 6 sur 6</span><h2>Vérification & publication</h2><p>Un dernier contrôle avant l’envoi en modération.</p></div><span className={styles.headIcon}><AppIcon name="shield"/></span></div><ListingPublicationReview listingId={listingId} promotionCode={promotionCode} promotionName={promotionName} onFixStep={(target)=>{setMessage("");goStep(target);window.scrollTo({top:0,behavior:"smooth"})}}/><div className={styles.footer}><button type="button" className={styles.secondary} onClick={()=>goStep(4)}><AppIcon name="arrow-left"/>Précédent</button></div></section>}
+  </div></div><aside className={styles.assistantColumn}><section className={styles.scoreCard}><div className={styles.scoreHead}><div><span>Qualité de votre annonce</span><strong>{quality}<small>/100</small></strong></div><em>{quality>=80?"Excellent":quality>=60?"Bien":"À compléter"}</em></div><div className={styles.scoreBar}><i style={{width:`${quality}%`}}/></div><ul><li className={categoryId?styles.ok:""}><AppIcon name={categoryId?"circle-check":"info"}/>Catégorie sélectionnée</li><li className={title.trim().length>=10?styles.ok:""}><AppIcon name={title.trim().length>=10?"circle-check":"info"}/>Titre précis et lisible</li><li className={(["JOB","SERVICE"].includes(selected?.domain??"")||photoState.readyCount>=3)?styles.ok:""}><AppIcon name={(["JOB","SERVICE"].includes(selected?.domain??"")||photoState.readyCount>=3)?"circle-check":"info"}/>{["JOB","SERVICE"].includes(selected?.domain??"")?"Photos optionnelles":"Au moins 3 photos conseillées"}</li><li className={(requiredCount===0||filledRequired===requiredCount)?styles.ok:""}><AppIcon name={(requiredCount===0||filledRequired===requiredCount)?"circle-check":"info"}/>Caractéristiques obligatoires complètes</li><li className={description.trim().length>=80?styles.ok:""}><AppIcon name={description.trim().length>=80?"circle-check":"info"}/>Description suffisamment détaillée</li><li className={locationQualityReady?styles.ok:""}><AppIcon name={locationQualityReady?"circle-check":"info"}/>Localisation complète</li><li className={commerceSaved?styles.ok:""}><AppIcon name={commerceSaved?"circle-check":"info"}/>Prix et remise enregistrés</li></ul></section><section className={styles.progressCard}><span>Progression</span><strong>{progress}% <small>complété</small></strong><div><i style={{width:`${progress}%`}}/></div><small>Étape {step+1} sur 6</small></section><section className={styles.previewCard}><div className={styles.previewHead}><span>Aperçu de votre annonce</span><AppIcon name="image"/></div><div className={styles.previewImage}>{photoState.coverUrl?<img src={photoState.coverUrl} alt="Aperçu de la photo de couverture"/>:<AppIcon name={selected?.domain==="VEHICLE"?"car":"image"}/>}</div><h3>{title.trim()||"Votre titre apparaîtra ici"}</h3><p>{selected?.name??"Catégorie à choisir"}</p><small>{description.trim()?`${description.trim().slice(0,110)}${description.trim().length>110?"…":""}`:"La description de votre annonce apparaîtra ici."}</small></section><section className={styles.safeCard}><AppIcon name="shield"/><div><strong>Publiez en toute sérénité</strong><p>Votre annonce sera contrôlée avant sa mise en ligne publique.</p></div></section></aside></div>
+ </div>;
 }

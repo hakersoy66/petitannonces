@@ -1,7 +1,5 @@
 import type { Metadata } from "next";
+import "./admin.css";
+export const metadata: Metadata = { title: { default:"Petit Annonces Admin", template:"%s | Petit Annonces Admin" }, robots:{index:false,follow:false} };
+export default function AdminLayout({children}:{children:React.ReactNode}){return <html lang="fr"><body>{children}</body></html>}
 
-export const metadata: Metadata = { title: "Petit Annonces Admin" };
-
-export default function AdminLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="fr"><body style={{ margin: 0, fontFamily: "system-ui, sans-serif" }}>{children}</body></html>;
-}

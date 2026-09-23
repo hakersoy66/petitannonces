@@ -1,0 +1,2 @@
+ALTER TABLE "NotificationPreference"
+  ADD COLUMN IF NOT EXISTS "favorites" BOOLEAN NOT NULL DEFAULT TRUE;

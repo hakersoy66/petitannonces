@@ -2,8 +2,9 @@
 
 import { MouseEvent, useEffect, useState } from "react";
 import styles from "./favorite-button.module.css";
+import { AppIcon } from "./app-icon";
 
-const apiBase=()=> (process.env.NEXT_PUBLIC_API_URL??"http://127.0.0.1:4000").replace(/\/$/,"");
+const apiBase=()=> (process.env.NEXT_PUBLIC_API_URL??"/api").replace(/\/$/,"");
 let favoriteIds:Set<string>|null=null;
 let favoritesPromise:Promise<Set<string>|null>|null=null;
 
@@ -45,5 +46,5 @@ export function FavoriteButton({listingId,compact=false,className=""}:{listingId
   }finally{setBusy(false)}
  }
  const label=favorite?"Retirer des favoris":"Ajouter aux favoris";
- return <button type="button" className={`${styles.button} ${compact?styles.compact:""} ${favorite?styles.active:""} ${className}`.trim()} onClick={toggle} disabled={busy} aria-label={label} aria-pressed={favorite} title={label}><span aria-hidden="true">{favorite?"♥":"♡"}</span>{!compact&&<b>{ready?(favorite?"Dans mes favoris":"Ajouter aux favoris"):"Favoris"}</b>}</button>;
+ return <button type="button" className={`${styles.button} ${compact?styles.compact:""} ${favorite?styles.active:""} ${className}`.trim()} onClick={toggle} disabled={busy} aria-label={label} aria-pressed={favorite} title={label}><span aria-hidden="true"><AppIcon name="heart"/></span>{!compact&&<b>{ready?(favorite?"Dans mes favoris":"Ajouter aux favoris"):"Favoris"}</b>}</button>;
 }

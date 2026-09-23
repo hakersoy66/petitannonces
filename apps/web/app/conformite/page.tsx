@@ -1,35 +1,12 @@
-export const metadata = {
-  title: "Centre de conformité | Petit Annonces",
-  description: "Vos droits, la sécurité des produits, la fiscalité vendeurs et les mécanismes DSA sur Petit Annonces.",
-};
-
-const cards = [
-  ["Vie privée & RGPD", "Accès, export, rectification, opposition et suppression de vos données depuis votre compte."],
-  ["Cookies & CNIL", "Les traceurs non essentiels restent désactivés tant que vous ne les avez pas acceptés. Vos choix peuvent être modifiés à tout moment."],
-  ["DSA — contenu illicite", "Un mécanisme distinct permet de signaler un contenu potentiellement illicite, même sans compte, puis de suivre la décision."],
-  ["Sécurité des produits — GPSR", "Les annonces concernées peuvent contenir le fabricant, la personne responsable dans l’UE, l’identifiant produit et les avertissements de sécurité."],
-  ["Vendeurs professionnels", "Le statut professionnel est clairement distingué du particulier afin d’afficher les informations et droits consommateurs applicables."],
-  ["DAC7", "Lorsque les règles fiscales l’exigent, les informations d’identification et les montants annuels des vendeurs sont préparés pour le reporting réglementaire."],
-];
-
-export default function CompliancePage() {
-  return (
-    <main className="shell" style={{ paddingBlock: 56 }}>
-      <p style={{ color: "#5b4cf0", fontWeight: 900, textTransform: "uppercase", letterSpacing: ".1em", fontSize: 12 }}>Confiance & conformité</p>
-      <h1 style={{ marginTop: 12, fontSize: "clamp(2.4rem,5vw,4.7rem)", letterSpacing: "-.055em", lineHeight: 1 }}>Vos droits sont intégrés au produit.</h1>
-      <p style={{ maxWidth: 760, marginTop: 18, color: "#6c6c7d", lineHeight: 1.7 }}>Petit Annonces sépare les obligations de confidentialité, modération, sécurité produit, consommation et fiscalité pour conserver des décisions traçables et des parcours compréhensibles.</p>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))", gap: 16, marginTop: 34 }}>
-        {cards.map(([title, text]) => <section key={title} style={{ border: "1px solid #e7e7ee", borderRadius: 22, padding: 22, background: "#fff" }}><h2 style={{ fontSize: 18 }}>{title}</h2><p style={{ marginTop: 10, color: "#6c6c7d", lineHeight: 1.6 }}>{text}</p></section>)}
-      </div>
-      <section style={{ marginTop: 28, borderRadius: 24, padding: 26, background: "#17172b", color: "white" }}>
-        <h2>Documents et démarches</h2>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 16 }}>
-          <a href="/conditions-generales" style={{ padding: "11px 15px", borderRadius: 999, background: "white", color: "#17172b", fontWeight: 800 }}>Conditions générales</a>
-          <a href="/confidentialite" style={{ padding: "11px 15px", borderRadius: 999, background: "white", color: "#17172b", fontWeight: 800 }}>Confidentialité</a>
-          <a href="/cookies" style={{ padding: "11px 15px", borderRadius: 999, background: "white", color: "#17172b", fontWeight: 800 }}>Cookies</a>
-          <a href="/signaler-contenu-illicite" style={{ padding: "11px 15px", borderRadius: 999, background: "#5b4cf0", color: "white", fontWeight: 800 }}>Signaler un contenu illicite</a>
-        </div>
-      </section>
-    </main>
-  );
-}
+import {LegalPage} from "../../components/legal-page";
+export const metadata={title:{absolute:"Centre de conformité | Petit Annonces"},description:"Vos droits, la sécurité des produits, la fiscalité vendeurs et les mécanismes DSA sur Petit Annonces.",alternates:{canonical:"/conformite"}};
+export default function Page(){const sections=[
+{id:"dsa",title:"DSA — signaler un contenu potentiellement illicite",body:"Un formulaire distinct permet de signaler un contenu potentiellement illicite. Le signalement est traité séparément d'une demande de support classique afin de conserver une référence et une traçabilité adaptées.",bullets:["Le signalement doit être suffisamment précis pour permettre l'identification du contenu concerné.","Une décision peut conduire au maintien, à la restriction ou au retrait du contenu selon les éléments disponibles.","Lorsqu'un mécanisme de recours est applicable, les informations nécessaires sont fournies avec la décision." ]},
+{id:"moderation",title:"Modération et transparence",body:"Petit Annonces combine des contrôles automatisés et humains afin de détecter les annonces ou comportements contraires aux règles. Les mesures peuvent inclure une demande de correction, une limitation de visibilité, une suspension ou un retrait.",note:"Les décisions sensibles ne doivent pas être présentées comme entièrement automatisées lorsqu'une revue humaine est nécessaire."},
+{id:"gpsr",title:"Sécurité des produits — GPSR",body:"Pour les catégories concernées, une annonce peut devoir comporter des informations permettant d'identifier correctement le produit et les acteurs responsables de sa mise sur le marché, ainsi que les avertissements de sécurité pertinents.",bullets:["Fabricant ou opérateur économique responsable lorsque requis.","Référence ou identifiant permettant d'identifier le produit.","Informations de sécurité et avertissements accessibles au consommateur.","Retrait ou restriction des annonces présentant un risque ou une non-conformité identifiée." ]},
+{id:"pros",title:"Vendeurs professionnels et consommateurs",body:"Les comptes professionnels sont identifiés distinctement. Le SIRET peut être vérifié à partir d'une source publique afin de confirmer l'existence de l'entreprise et préremplir ses informations officielles.",bullets:["Identification claire du professionnel.","Informations précontractuelles adaptées à la vente professionnelle.","Respect des garanties légales et du droit de rétractation lorsque ceux-ci s'appliquent.","Boutique et annonces cohérentes avec l'activité déclarée." ]},
+{id:"dac7",title:"DAC7 et obligations fiscales",body:"Lorsque les seuils et conditions réglementaires sont réunis, une plateforme peut être tenue de collecter, vérifier et déclarer certaines informations relatives aux vendeurs et aux transactions. Petit Annonces doit limiter cette collecte aux informations nécessaires à l'obligation concernée.",note:"Une obligation de reporting ne signifie pas automatiquement qu'un utilisateur est imposable ; la situation fiscale dépend des règles applicables à chaque personne."},
+{id:"rgpd",title:"Vie privée et RGPD",body:"Les droits d'accès, rectification, effacement, opposition, limitation et portabilité sont traités selon leur applicabilité. Les demandes peuvent être initiées depuis le support et nécessiter une vérification d'identité lorsqu'elles portent sur des données sensibles."},
+{id:"cookies",title:"Cookies et consentement",body:"Les traceurs non essentiels restent désactivés avant consentement. L'interface doit permettre d'accepter ou de refuser avec un niveau de simplicité comparable et de retirer ensuite son consentement facilement."},
+{id:"securite",title:"Sécurité des comptes et transactions",body:"La plateforme applique des mesures destinées à réduire les risques de fraude, d'usurpation et de paiement abusif. Les utilisateurs doivent conserver leurs codes de connexion confidentiels et effectuer les étapes de paiement ou de versement uniquement dans les parcours officiels Petit Annonces."}
+];return <LegalPage eyebrow="Confiance & conformité" title="Centre de conformité" intro="Les mécanismes de protection, modération, sécurité produit, vie privée et obligations marketplace intégrés au fonctionnement de Petit Annonces." updated="7 septembre 2026" sections={sections}/>;}

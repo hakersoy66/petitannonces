@@ -1,0 +1,2 @@
+import HbxBookingDetailClient from "./hbx-booking-detail-client";
+export default async function HbxBookingDetailPage({params}:{params:Promise<{reference:string}>}){const {reference}=await params;return <HbxBookingDetailClient reference={reference}/>}

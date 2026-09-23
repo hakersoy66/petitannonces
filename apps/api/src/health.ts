@@ -37,7 +37,7 @@ export async function registerHealthRoutes(app: FastifyInstance) {
     timestamp: new Date().toISOString(),
   }));
 
-  app.get("/health/ready", async (_request, reply) => {
+  const readiness = async (_request: unknown, reply: any) => {
     const checks: Record<string, unknown> = {};
     let ready = true;
 
@@ -59,7 +59,8 @@ export async function registerHealthRoutes(app: FastifyInstance) {
       checks,
       timestamp: new Date().toISOString(),
     });
-  });
+  };
 
-  app.get("/health", async (_request, reply) => reply.redirect("/health/ready"));
+  app.get("/health/ready", readiness);
+  app.get("/health", readiness);
 }

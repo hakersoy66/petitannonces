@@ -66,6 +66,22 @@ const propertyBase: CatalogFilter[] = [
   { key: "ges", label: "Classe climat GES", type: "SELECT", options: ["A", "B", "C", "D", "E", "F", "G"], group: "energy" },
 ];
 
+const vacationBase: CatalogFilter[] = [
+  { key: "capacity", label: "Nombre de voyageurs", type: "NUMBER", unit: "personnes", required: true },
+  { key: "availableFrom", label: "Disponible du", type: "DATE", required: true },
+  { key: "availableTo", label: "Disponible jusqu’au", type: "DATE", required: true },
+  { key: "minimumNights", label: "Séjour minimum", type: "NUMBER", unit: "nuits", required: true },
+  { key: "bedrooms", label: "Chambres", type: "NUMBER" },
+  { key: "beds", label: "Couchages / lits", type: "NUMBER" },
+  { key: "bathrooms", label: "Salles de bain", type: "NUMBER" },
+  { key: "surface", label: "Surface", type: "NUMBER", unit: "m²" },
+  { key: "amenities", label: "Équipements", type: "MULTISELECT", options: ["Wi-Fi", "Parking", "Piscine", "Climatisation", "Cuisine", "Lave-linge", "Terrasse / balcon", "Vue mer", "Spa / jacuzzi", "Petit-déjeuner"] },
+  { key: "petsAllowed", label: "Animaux acceptés", type: "BOOLEAN" },
+  { key: "smokingAllowed", label: "Fumeurs acceptés", type: "BOOLEAN" },
+  { key: "accessible", label: "Accessible PMR", type: "BOOLEAN" },
+  { key: "cancellationPolicy", label: "Conditions d’annulation", type: "SELECT", options: ["Flexible", "Modérée", "Stricte"] },
+];
+
 export const catalog: CatalogCategory[] = [
   {
     name: "Véhicules", slug: "vehicules", icon: "🚗", domain: "VEHICLE", description: "Auto, moto, utilitaires et mobilité",
@@ -89,6 +105,17 @@ export const catalog: CatalogCategory[] = [
       { name: "Bureaux & commerces", slug: "bureaux-commerces", domain: "REAL_ESTATE", filters: propertyBase },
       { name: "Terrains", slug: "terrains", domain: "REAL_ESTATE", filters: [{ key: "surface", label: "Surface", type: "NUMBER", unit: "m²", required: true }, { key: "buildable", label: "Constructible", type: "BOOLEAN" }, { key: "serviced", label: "Viabilisé", type: "BOOLEAN" }] },
       { name: "Parkings & garages", slug: "parkings-garages", domain: "REAL_ESTATE", filters: [{ key: "type", label: "Type", type: "SELECT", options: ["Parking", "Box", "Garage"] }, { key: "covered", label: "Couvert", type: "BOOLEAN" }, { key: "secured", label: "Sécurisé", type: "BOOLEAN" }] },
+    ]
+  },
+  {
+    name: "Vacances", slug: "vacances", icon: "☀️", domain: "GENERAL", description: "Hôtels, appartements et hébergements de courte durée",
+    filters: vacationBase,
+    children: [
+      { name: "Hôtels & chambres", slug: "hotels-chambres", domain: "GENERAL", filters: [...vacationBase, { key: "roomType", label: "Type de chambre", type: "SELECT", options: ["Simple", "Double", "Familiale", "Suite"] }, { key: "starRating", label: "Classement", type: "NUMBER", unit: "étoiles" }, { key: "breakfastIncluded", label: "Petit-déjeuner inclus", type: "BOOLEAN" }] },
+      { name: "Appartements de vacances", slug: "appartements-vacances", domain: "GENERAL", filters: [...vacationBase, { key: "floor", label: "Étage", type: "NUMBER" }, { key: "elevator", label: "Ascenseur", type: "BOOLEAN" }, { key: "entirePlace", label: "Logement entier", type: "BOOLEAN" }] },
+      { name: "Maisons & villas", slug: "maisons-villas-vacances", domain: "GENERAL", filters: [...vacationBase, { key: "privatePool", label: "Piscine privée", type: "BOOLEAN" }, { key: "garden", label: "Jardin", type: "BOOLEAN" }] },
+      { name: "Gîtes & chambres d’hôtes", slug: "gites-chambres-hotes", domain: "GENERAL", filters: [...vacationBase, { key: "breakfastIncluded", label: "Petit-déjeuner inclus", type: "BOOLEAN" }] },
+      { name: "Campings & mobil-homes", slug: "campings-mobil-homes", domain: "GENERAL", filters: [...vacationBase, { key: "pitchType", label: "Type d’hébergement", type: "SELECT", options: ["Emplacement", "Mobil-home", "Chalet", "Tente / lodge"] }] },
     ]
   },
   {

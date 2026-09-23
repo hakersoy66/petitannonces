@@ -1,0 +1,1 @@
+import SupportTicketClient from "./support-ticket-client";export const metadata={title:"Répondre au ticket"};export default function Page(){return <SupportTicketClient/>}

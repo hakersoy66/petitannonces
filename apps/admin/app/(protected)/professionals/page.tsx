@@ -1,0 +1,1 @@
+import ProfessionalsClient from "./professionals-client";export const metadata={title:"Professionnels & vitrines"};export default function Page(){return <ProfessionalsClient/>}

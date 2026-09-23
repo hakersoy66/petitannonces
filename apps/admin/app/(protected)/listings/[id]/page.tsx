@@ -1,0 +1,1 @@
+import ListingDetailClient from "./listing-detail-client";export const metadata={title:"Détail annonce"};export default function Page(){return <ListingDetailClient/>}

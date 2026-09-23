@@ -1,0 +1,1 @@
+import IntegrationsClient from "./integrations-client";export const metadata={title:"Intégrations & API"};export default function IntegrationsPage(){return <IntegrationsClient/>}

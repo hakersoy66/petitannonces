@@ -6,7 +6,9 @@
     "dev": "tsx watch src/index.ts",
     "build": "rm -rf dist && tsc -p tsconfig.json",
     "start": "node dist/index.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "audit:marketplace": "tsx scripts/marketplace-e2e-audit.ts",
+    "test:marketplace-e2e": "tsx scripts/marketplace-e2e-sim.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.899.0",
@@ -16,6 +18,7 @@
     "@pa/database": "workspace:*",
     "fastify": "^5.6.0",
     "fastify-raw-body": "^6.0.1",
+    "sharp": "0.35.4",
     "web-push": "^3.6.7",
     "zod": "^4.1.0"
   },

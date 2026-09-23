@@ -10,3 +10,28 @@ coverage
 *.log
 .DS_Store
 packages/database/prisma/dev.db
+
+**/tsconfig.tsbuildinfo
+
+# Local/generated build artefacts
+**/.next/
+**/dist/
+**/*.tsbuildinfo
+packages/database/generated/
+
+# Operational/editor backup debris
+*.bak.*
+**/*.bak.*
+**/.tmp-*
+
+# Mobile Firebase / signing secrets
+apps/mobile/google-services.json
+apps/mobile/*service-account*.json
+apps/mobile/firebase-service-account*.json
+apps/mobile/credentials.json
+apps/mobile/credentials/
+# Mobile release artifacts / local publishing credentials
+apps/mobile/dist-android-production/
+apps/mobile/credentials.json
+apps/mobile/*.jks
+apps/mobile/*.keystore

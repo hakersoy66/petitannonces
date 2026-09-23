@@ -1,0 +1,38 @@
+CREATE TABLE IF NOT EXISTS "MarketplaceOrderRiskReview" (
+  "id" TEXT PRIMARY KEY,
+  "orderId" TEXT NOT NULL UNIQUE,
+  "buyerId" TEXT NOT NULL,
+  "sellerId" TEXT NOT NULL,
+  "buyerRiskScore" INTEGER NOT NULL DEFAULT 0,
+  "sellerRiskScore" INTEGER NOT NULL DEFAULT 0,
+  "orderRiskScore" INTEGER NOT NULL DEFAULT 0,
+  "buyerRiskLevel" "FraudRiskLevel" NOT NULL DEFAULT 'LOW',
+  "sellerRiskLevel" "FraudRiskLevel" NOT NULL DEFAULT 'LOW',
+  "signals" JSONB NOT NULL DEFAULT '[]'::jsonb,
+  "paymentGate" TEXT NOT NULL DEFAULT 'CLEAR',
+  "paymentResolution" TEXT,
+  "payoutGate" TEXT NOT NULL DEFAULT 'CLEAR',
+  "payoutResolution" TEXT,
+  "sellerCompletedSales" INTEGER NOT NULL DEFAULT 0,
+  "newSeller" BOOLEAN NOT NULL DEFAULT FALSE,
+  "highValue" BOOLEAN NOT NULL DEFAULT FALSE,
+  "reviewNote" TEXT,
+  "paymentReviewedByUserId" TEXT,
+  "paymentReviewedAt" TIMESTAMP(3),
+  "payoutReviewedByUserId" TEXT,
+  "payoutReviewedAt" TIMESTAMP(3),
+  "assessedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "MarketplaceOrderRiskReview_orderId_fkey" FOREIGN KEY ("orderId") REFERENCES "MarketplaceOrder"("id") ON DELETE CASCADE,
+  CONSTRAINT "MarketplaceOrderRiskReview_buyerId_fkey" FOREIGN KEY ("buyerId") REFERENCES "User"("id") ON DELETE CASCADE,
+  CONSTRAINT "MarketplaceOrderRiskReview_sellerId_fkey" FOREIGN KEY ("sellerId") REFERENCES "User"("id") ON DELETE CASCADE,
+  CONSTRAINT "MarketplaceOrderRiskReview_scores_check" CHECK ("buyerRiskScore" BETWEEN 0 AND 100 AND "sellerRiskScore" BETWEEN 0 AND 100 AND "orderRiskScore" BETWEEN 0 AND 100),
+  CONSTRAINT "MarketplaceOrderRiskReview_payment_gate_check" CHECK ("paymentGate" IN ('CLEAR','REVIEW')),
+  CONSTRAINT "MarketplaceOrderRiskReview_payout_gate_check" CHECK ("payoutGate" IN ('CLEAR','HOLD')),
+  CONSTRAINT "MarketplaceOrderRiskReview_payment_resolution_check" CHECK ("paymentResolution" IS NULL OR "paymentResolution" IN ('APPROVED','REJECTED')),
+  CONSTRAINT "MarketplaceOrderRiskReview_payout_resolution_check" CHECK ("payoutResolution" IS NULL OR "payoutResolution" IN ('APPROVED','REJECTED'))
+);
+CREATE INDEX IF NOT EXISTS "MarketplaceOrderRiskReview_payment_idx" ON "MarketplaceOrderRiskReview" ("paymentGate","paymentResolution","orderRiskScore" DESC);
+CREATE INDEX IF NOT EXISTS "MarketplaceOrderRiskReview_payout_idx" ON "MarketplaceOrderRiskReview" ("payoutGate","payoutResolution","orderRiskScore" DESC);
+CREATE INDEX IF NOT EXISTS "MarketplaceOrderRiskReview_seller_idx" ON "MarketplaceOrderRiskReview" ("sellerId","updatedAt" DESC);

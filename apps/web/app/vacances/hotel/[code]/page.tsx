@@ -1,0 +1,35 @@
+import type {Metadata} from "next";
+import {notFound} from "next/navigation";
+import {AppIcon} from "../../../../components/app-icon";
+import {HbxBookingPreview} from "./booking-preview-client";
+import styles from "../../page.module.css";
+
+type HotelDetail={code:number;name:string;destinationCode:string|null;city:string|null;countryCode:string|null;categoryCode:string|null;categoryName:string|null;stars:number|null;address:string|null;postalCode:string|null;description:string|null;images:Array<{url:string;typeCode:string|null;order:number}>;facilities:Array<{name:string;fee:boolean;amount:number|null;currency:string|null}>;phones:string[];latitude:number|null;longitude:number|null;checkIn:string|null;checkOut:string|null};
+type Rate={displayRate:number;netRate:number;sellingRate:number|null;maxRate:number|null;currency:string;priceSource:"sellingRate"|"net";hotelMandatory:boolean|null;roomName:string|null;boardName:string|null;rateClass:string|null;rateType:string|null;requiresCheckRate:boolean;paymentType:string|null;cancellationFrom:string|null;cancellationAmount:number|null;rateComments?:string|null;bookingToken?:string|null};
+type Prepared={ok:boolean;checked:boolean;bookingReady:boolean;hotelCode:number;stay:{checkIn:string;checkOut:string;guests:number};rate:Rate};
+type SP={city?:string;checkIn?:string;checkOut?:string;guests?:string;offer?:string};
+const api=()=> (process.env.API_INTERNAL_URL??process.env.NEXT_PUBLIC_API_URL??"http://127.0.0.1:4000").replace(/\/$/,"");
+
+async function hotel(code:string){try{const r=await fetch(`${api()}/vacances/hbx/hotel/${encodeURIComponent(code)}`,{next:{revalidate:3600}});if(!r.ok)return null;const p=await r.json() as{hotel?:HotelDetail};return p.hotel??null}catch{return null}}
+async function prepare(offer:string){try{const r=await fetch(`${api()}/vacances/hbx/prepare-rate`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({offerToken:offer}),cache:"no-store"});if(!r.ok)return null;return r.json() as Promise<Prepared>}catch{return null}}
+function money(v:number,c:string){return new Intl.NumberFormat("fr-FR",{style:"currency",currency:c}).format(v)}
+function date(v:string){try{return new Intl.DateTimeFormat("fr-FR",{dateStyle:"long"}).format(new Date(v+"T12:00:00"))}catch{return v}}
+
+export async function generateMetadata({params}:{params:Promise<{code:string}>}):Promise<Metadata>{const {code}=await params;const h=await hotel(code);return h?{title:`${h.name} | Petit Annonces Vacances`,description:h.description?.slice(0,155)??`Consultez ${h.name} et vérifiez les disponibilités sur Petit Annonces Vacances.`,robots:{index:false,follow:true}}:{title:"Hôtel | Petit Annonces Vacances",robots:{index:false,follow:false}}}
+
+export default async function HbxHotelPage({params,searchParams}:{params:Promise<{code:string}>;searchParams:Promise<SP>}) {
+ const [{code},sp]=await Promise.all([params,searchParams]);const [h,rate]=await Promise.all([hotel(code),sp.offer?prepare(sp.offer):Promise.resolve(null)]);if(!h)notFound();
+ const city=sp.city??h.city??"France";const gallery=h.images.slice(0,6);const stay=rate?.stay;const ready=Boolean(rate?.bookingReady&&rate.rate?.bookingToken);
+ return <div className={styles.page}><main>
+  <section className={styles.hotelDetailHero}><div className={styles.hotelDetailShell}><a className={styles.hotelBack} href={`/vacances?city=${encodeURIComponent(city)}`}><AppIcon name="chevron-left"/> Retour aux hôtels</a><div className={styles.hotelDetailHead}><div><span>Hôtel partenaire · HBX</span><h1>{h.name}</h1><p><AppIcon name="location"/>{[h.address,h.postalCode,h.city].filter(Boolean).join(" · ")}</p></div><div className={styles.hotelStars}>{h.stars?"★".repeat(h.stars):h.categoryName??"Hôtel"}</div></div>{gallery.length?<div className={styles.hotelGallery}>{gallery.map((img,i)=><figure key={img.url} className={i===0?styles.hotelGalleryMain:""}><img src={img.url} alt={i===0?h.name:`${h.name} - photo ${i+1}`} loading={i===0?"eager":"lazy"}/></figure>)}</div>:<div className={styles.hotelGalleryEmpty}>🏨</div>}</div></section>
+
+  <section className={styles.hotelDetailShell}><div className={styles.hotelDetailLayout}><div className={styles.hotelDetailMain}>
+   <section className={styles.hotelInfoCard}><div className={styles.hotelSectionTitle}><span>À propos</span><h2>{h.categoryName??"Hôtel"} à {h.city??city}</h2></div>{h.description?<p className={styles.hotelDescription}>{h.description}</p>:<p className={styles.hotelDescription}>Consultez les informations du séjour et vérifiez vos dates avant de poursuivre.</p>}</section>
+   {h.facilities.length>0&&<section className={styles.hotelInfoCard}><div className={styles.hotelSectionTitle}><span>Services</span><h2>Équipements de l’hôtel</h2></div><div className={styles.hotelFacilities}>{h.facilities.slice(0,16).map((f,i)=><div key={`${f.name}-${i}`}><AppIcon name="circle-check"/><span>{f.name}{f.fee?" · payant":""}</span></div>)}</div></section>}
+   {rate?.rate?.rateComments&&<section className={styles.hotelInfoCard}><div className={styles.hotelSectionTitle}><span>Conditions</span><h2>Informations importantes</h2></div><p className={styles.hotelDescription}>{rate.rate.rateComments}</p></section>}
+   {ready&&stay&&rate?.rate?.bookingToken&&<HbxBookingPreview bookingToken={rate.rate.bookingToken} guests={stay.guests} hotelName={h.name}/>}
+  </div>
+  <aside className={styles.hotelOfferCard}>{rate&&stay?<><span className={styles.hotelOfferBadge}>{rate.checked?"Tarif revérifié":"Tarif disponible"}</span><strong className={styles.hotelOfferPrice}>{money(rate.rate.displayRate,rate.rate.currency)}</strong><small>pour le séjour sélectionné</small><div className={styles.hotelStayFacts}><p><AppIcon name="calendar"/><span><b>Arrivée</b>{date(stay.checkIn)}</span></p><p><AppIcon name="calendar"/><span><b>Départ</b>{date(stay.checkOut)}</span></p><p><AppIcon name="user"/><span><b>Voyageurs</b>{stay.guests}</span></p></div><div className={styles.hotelRateFacts}>{rate.rate.roomName&&<p><b>Chambre</b><span>{rate.rate.roomName}</span></p>}{rate.rate.boardName&&<p><b>Formule</b><span>{rate.rate.boardName}</span></p>}<p><b>Tarif</b><span>{rate.rate.rateClass==="NRF"?"Non remboursable":"Conditions flexibles / standard"}</span></p>{rate.rate.cancellationFrom&&<p><b>Annulation</b><span>Frais applicables à partir du {date(rate.rate.cancellationFrom.slice(0,10))}</span></p>}</div>{ready?<a className={styles.hotelContinue} href="#voyageurs">Continuer avec les voyageurs <AppIcon name="arrow-right"/></a>:<div className={styles.hotelOfferWarning}>Ce tarif n’est plus disponible. Relancez une recherche pour obtenir une nouvelle offre.</div>}</>:<><span className={styles.hotelOfferBadge}>Vérifier les dates</span><h2>Choisissez votre séjour</h2><p>Sélectionnez une destination, vos dates et le nombre de voyageurs pour obtenir un tarif en temps réel.</p><a className={styles.hotelContinue} href={`/vacances?city=${encodeURIComponent(city)}`}>Rechercher les disponibilités <AppIcon name="arrow-right"/></a></>}</aside>
+  </div></section>
+ </main></div>
+}

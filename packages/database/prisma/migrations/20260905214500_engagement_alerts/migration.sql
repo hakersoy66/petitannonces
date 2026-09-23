@@ -1,0 +1,3 @@
+ALTER TABLE "FavoriteListing" ADD COLUMN IF NOT EXISTS "lastPriceMinor" INTEGER;
+ALTER TABLE "FavoriteListing" ADD COLUMN IF NOT EXISTS "lastPriceNotifiedMinor" INTEGER;
+ALTER TABLE "SavedSearch" ADD COLUMN IF NOT EXISTS "lastRunAt" TIMESTAMP(3);

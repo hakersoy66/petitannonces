@@ -1,32 +1,75 @@
 import type { Metadata } from "next";
+import { notFound } from "next/navigation";
+import { AppIcon } from "../../../../components/app-icon";
+import { MarketplaceListingCard } from "../../../../components/marketplace-listing-card";
+import type { ListingPromotion } from "../../../../lib/listing-promotions";
+
+export const revalidate=60;
 
 type Props = { params: Promise<{ category: string; city: string }> };
-
-function pretty(value: string) {
-  return decodeURIComponent(value).replace(/-/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
-}
-
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const { category, city } = await params;
-  const categoryName = pretty(category);
-  const cityName = pretty(city);
-  return {
-    title: `${categoryName} à ${cityName} - Annonces | Petit Annonces`,
-    description: `Découvrez les annonces ${categoryName.toLowerCase()} à ${cityName} sur Petit Annonces. Recherche locale, filtres et annonces récentes.`,
-    alternates: { canonical: `/c/${category}/${city}` },
+type Item={
+  id:string;slug:string|null;title:string|null;priceMinor:number|null;currency:string;city:string|null;imageUrl:string|null;
+  category:{name:string;slug:string;domain:string};
+  vehicle?:{modelYear?:number|null;mileageKm?:number|null;fuel?:string|null}|null;
+  property?:{surfaceM2?:number|null;rooms?:number|null;transactionType?:string|null}|null;
+  commerce?:{securePaymentEnabled?:boolean;shippingEnabled?:boolean};
+  sellerReputation?:{avatarUrl?:string|null;sellerName?:string|null;verified?:boolean;kind?:string;hasStore?:boolean;paymentReady?:boolean;reviewCount?:number;reviewAverage?:number|null;trust?:{reliableSeller?:boolean}};
+  promotions?:ListingPromotion[];
+};
+type Payload={total:number;items:Item[]};
+type LocalSeo={category?:{name:string;slug:string;domain?:string};title:string;description:string;canonicalPath:string;total:number;city:string;price?:{minMinor:number|null;maxMinor:number|null;currency:string};subcategories?:Array<{slug:string;name:string;count:number}>};
+type CityHub={total:number;indexable:boolean;slug:string};
+const apiBase=()=> (process.env.API_INTERNAL_URL??process.env.NEXT_PUBLIC_API_URL??"http://127.0.0.1:4000").replace(/\/$/,"");
+function pretty(value:string){return decodeURIComponent(value).replace(/-/g," ").replace(/\b\w/g,char=>char.toUpperCase())}
+function citySlug(value:string){return value.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"")}
+function safeJsonLd(value:unknown){return JSON.stringify(value).replace(/</g,"\\u003c")}
+function localSearchCopy(domain:string|undefined,categoryName:string,city:string,total:number){
+  const key=String(domain??"").toUpperCase();
+  const intros:Record<string,string>={
+    VEHICLE:`Parcourez ${total} annonce${total>1?"s":""} de véhicules d’occasion à ${city}. Comparez les prix, l’année, le kilométrage, la motorisation et les informations fournies par les vendeurs avant de vous déplacer.`,
+    REAL_ESTATE:`Consultez ${total} annonce${total>1?"s":""} immobilière${total>1?"s":""} à ${city}. Comparez les biens disponibles, leur prix, leur surface, le nombre de pièces et leur localisation pour cibler plus facilement votre recherche locale.`,
+    SERVICE:`Découvrez ${total} offre${total>1?"s":""} de services à ${city}. Comparez les prestations, les zones d’intervention et les informations des prestataires avant de demander des précisions ou un devis.`,
+    JOB:`Consultez ${total} offre${total>1?"s":""} d’emploi à ${city}. Vérifiez le métier, le lieu, les conditions et les informations de l’employeur avant de candidater.`,
+    ANIMAL:`Retrouvez ${total} annonce${total>1?"s":""} liées aux animaux à ${city}. Consultez attentivement les informations publiées et privilégiez des échanges conformes à la réglementation et au bien-être animal.`,
   };
+  const intro=intros[key]??`Retrouvez ${total} annonce${total>1?"s":""} ${categoryName.toLowerCase()} à ${city}. Comparez les offres locales, les prix, l’état et les informations publiées par les vendeurs avant de prendre contact.`;
+  const tips=key==="VEHICLE"?["Comparez kilométrage, année et motorisation.","Vérifiez l’entretien, les photos et les informations utiles.","Confirmez la disponibilité avant de vous déplacer."]:key==="REAL_ESTATE"?["Comparez prix, surface et nombre de pièces.","Vérifiez la localisation et les informations énergétiques applicables.","Utilisez les filtres pour préciser vente, location et type de bien."]:key==="SERVICE"?["Décrivez précisément votre besoin avant le contact.","Comparez plusieurs offres lorsqu’un devis est nécessaire.","Vérifiez la zone d’intervention et les conditions annoncées."]:["Comparez plusieurs annonces avant de vous décider.","Vérifiez les photos, la description et la localisation indiquée.","Échangez via Petit Annonces avant un déplacement ou un paiement."];
+  const faq=[{q:`Comment trouver ${categoryName.toLowerCase()} à ${city} ?`,a:`Cette page regroupe les annonces ${categoryName.toLowerCase()} actuellement publiées à ${city} et dans les sous-catégories correspondantes.`},{q:`Puis-je publier une annonce ${categoryName.toLowerCase()} à ${city} ?`,a:"Oui. Le dépôt d’annonce est accessible gratuitement depuis Petit Annonces, sous réserve des règles de publication et de modération de la plateforme."}];
+  return{intro,tips,faq};
 }
+async function localSeo(category:string,city:string){try{const r=await fetch(`${apiBase()}/seo/category/${encodeURIComponent(category)}/city/${encodeURIComponent(city)}`,{next:{revalidate:60}});if(!r.ok)return null;return r.json() as Promise<LocalSeo>}catch{return null}}
+async function listings(category:string,city:string):Promise<Payload>{try{const qs=new URLSearchParams({category,city,limit:"24",sort:"recent"});const r=await fetch(`${apiBase()}/search?${qs.toString()}`,{next:{revalidate:60}});if(!r.ok)return{total:0,items:[]};return r.json()}catch{return{total:0,items:[]}}}
+async function categoryCities(category:string){try{const r=await fetch(`${apiBase()}/seo/category/${encodeURIComponent(category)}/cities`,{next:{revalidate:300}});if(!r.ok)return[];const d=await r.json() as{cities?:Array<{city:string;count:number}>};return d.cities??[]}catch{return[]}}
+async function cityHub(city:string):Promise<CityHub|null>{try{const r=await fetch(`${apiBase()}/seo/city/${encodeURIComponent(citySlug(city))}`,{next:{revalidate:60}});if(!r.ok)return null;return r.json()}catch{return null}}
 
-export default async function CategoryCityPage({ params }: Props) {
-  const { category, city } = await params;
-  const categoryName = pretty(category);
-  const cityName = pretty(city);
-  return (
-    <main className="shell" style={{ padding: "32px 0 72px" }}>
-      <nav aria-label="Fil d’Ariane" style={{ color: "#6b7280", marginBottom: 16 }}>Accueil › {categoryName} › {cityName}</nav>
-      <h1>{categoryName} à {cityName}</h1>
-      <p style={{ color: "#6b7280", maxWidth: 760 }}>Retrouvez les annonces disponibles à {cityName}. Cette page SEO locale est reliée au moteur de recherche et aux filtres dynamiques Petit Annonces.</p>
-      <a className="button button-primary" href={`/recherche?category=${encodeURIComponent(category)}&city=${encodeURIComponent(cityName)}`}>Voir les annonces</a>
-    </main>
-  );
+export async function generateMetadata({params}:Props):Promise<Metadata>{const{category,city}=await params;const cityName=pretty(city);const seo=await localSeo(category,cityName);if(!seo)return{title:{absolute:"Annonces locales | Petit Annonces"},robots:{index:false,follow:true}};return{title:{absolute:seo.title},description:seo.description,alternates:{canonical:seo.canonicalPath},robots:{index:seo.total>=3,follow:true},openGraph:{type:"website",url:seo.canonicalPath,title:seo.title,description:seo.description}}}
+
+export default async function CategoryCityPage({params}:Props){
+  const{category,city}=await params;
+  const cityName=pretty(city);
+  const seo=await localSeo(category,cityName);
+  if(!seo)notFound();
+  const resolvedCity=seo.city||cityName;
+  const [data,cityOptions,hub]=await Promise.all([listings(category,resolvedCity),categoryCities(category),cityHub(resolvedCity)]);
+  const categoryName=seo.category?.name??seo.title.split(" à ")[0]??pretty(category);
+  const currentCitySlug=citySlug(resolvedCity);
+  const otherCities=cityOptions.filter(x=>x.count>=3&&citySlug(x.city)!==currentCitySlug).slice(0,8);
+  const localSubcategories=(seo.subcategories??[]).filter(x=>x.count>=3).slice(0,8);
+  const minPrice=seo.price?.minMinor??null,maxPrice=seo.price?.maxMinor??null;
+  const priceLabel=minPrice!==null&&maxPrice!==null?minPrice===maxPrice?`${(minPrice/100).toLocaleString("fr-FR",{maximumFractionDigits:2})} €`:`${(minPrice/100).toLocaleString("fr-FR",{maximumFractionDigits:2})} € – ${(maxPrice/100).toLocaleString("fr-FR",{maximumFractionDigits:2})} €`:null;
+  const localCopy=localSearchCopy(seo.category?.domain,categoryName,resolvedCity,data.total);
+  const breadcrumb={"@context":"https://schema.org","@type":"BreadcrumbList",itemListElement:[{"@type":"ListItem",position:1,name:"Accueil",item:"https://petitannonces.fr/"},{"@type":"ListItem",position:2,name:categoryName,item:`https://petitannonces.fr/categorie/${category}`},{"@type":"ListItem",position:3,name:resolvedCity,item:`https://petitannonces.fr/c/${category}/${city}`}]};
+  const itemList={"@context":"https://schema.org","@type":"ItemList",name:`${categoryName} à ${resolvedCity}`,url:`https://petitannonces.fr${seo.canonicalPath}`,numberOfItems:data.total,itemListElement:data.items.filter(item=>Boolean(item.slug)).map((item,index)=>({"@type":"ListItem",position:index+1,url:`https://petitannonces.fr/annonce/${item.slug}`,name:item.title??item.category.name}))};
+  const faqJsonLd={"@context":"https://schema.org","@type":"FAQPage",mainEntity:localCopy.faq.map(item=>({"@type":"Question",name:item.q,acceptedAnswer:{"@type":"Answer",text:item.a}}))};
+  const collectionJsonLd={"@context":"https://schema.org","@type":"CollectionPage",name:`Petites annonces ${categoryName.toLowerCase()} à ${resolvedCity}`,url:`https://petitannonces.fr${seo.canonicalPath}`,about:[{"@type":"Place",name:resolvedCity},{"@type":"Thing",name:categoryName}],mainEntity:itemList};
+  return <div style={{minHeight:"100vh",background:"#f8f8fb"}}><script type="application/ld+json" dangerouslySetInnerHTML={{__html:safeJsonLd(breadcrumb)}}/><script type="application/ld+json" dangerouslySetInnerHTML={{__html:safeJsonLd(itemList)}}/>{data.total>=3&&<><script type="application/ld+json" dangerouslySetInnerHTML={{__html:safeJsonLd(faqJsonLd)}}/><script type="application/ld+json" dangerouslySetInnerHTML={{__html:safeJsonLd(collectionJsonLd)}}/></>}<main style={{width:"min(1180px,calc(100% - 24px))",margin:"0 auto",padding:"24px 0 72px"}}>
+    <nav aria-label="Fil d’Ariane" style={{fontSize:12,color:"#747584",marginBottom:16}}><a href="/" style={{color:"#5b4cf0"}}>Accueil</a> › <a href={`/categorie/${category}`} style={{color:"#5b4cf0"}}>{categoryName}</a> › {resolvedCity}</nav>
+    <header style={{padding:"24px",borderRadius:22,background:"linear-gradient(135deg,#5b4cf0,#7569f6)",color:"white",marginBottom:18}}><span style={{fontSize:11,fontWeight:900,letterSpacing:1,textTransform:"uppercase",opacity:.82}}>Petites annonces locales</span><h1 style={{margin:"7px 0",fontSize:"clamp(28px,5vw,48px)",letterSpacing:"-.04em"}}>Petites annonces {categoryName.toLowerCase()} à {resolvedCity}</h1><p style={{margin:0,opacity:.9}}>{seo.description}</p></header>
+    <section style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap",marginBottom:14}}><div><strong>{data.total.toLocaleString("fr-FR")} annonce{data.total>1?"s":""}</strong><div style={{fontSize:12,color:"#858692",marginTop:3}}>Résultats récents dans cette catégorie et ses sous-catégories.</div></div><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{hub?.indexable&&<a href={`/ville/${hub.slug}`} style={{display:"inline-flex",alignItems:"center",gap:7,minHeight:42,padding:"0 14px",borderRadius:12,border:"1px solid #dfdcef",background:"white",color:"#5143d7",textDecoration:"none",fontWeight:850,fontSize:12}}><AppIcon name="location"/>Toutes les annonces à {resolvedCity}</a>}<a href={`/recherche?category=${encodeURIComponent(category)}&city=${encodeURIComponent(resolvedCity)}`} style={{display:"inline-flex",alignItems:"center",gap:7,minHeight:42,padding:"0 14px",borderRadius:12,background:"#5b4cf0",color:"white",textDecoration:"none",fontWeight:850,fontSize:12}}><AppIcon name="list"/>Filtres & tri</a></div></section>
+    {(priceLabel||localSubcategories.length>0)&&<section style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:12,marginBottom:18}}>{priceLabel&&<div style={{padding:16,border:"1px solid #e7e7ef",borderRadius:16,background:"white"}}><small style={{fontWeight:850,color:"#7b7c89"}}>PRIX OBSERVÉS</small><div style={{marginTop:5,fontSize:20,fontWeight:900,color:"#30313b"}}>{priceLabel}</div><div style={{marginTop:4,fontSize:12,color:"#858692"}}>Fourchette calculée à partir des annonces publiées actuellement.</div></div>}{localSubcategories.length>0&&<div style={{padding:16,border:"1px solid #e7e7ef",borderRadius:16,background:"white"}}><small style={{fontWeight:850,color:"#7b7c89"}}>SOUS-CATÉGORIES LES PLUS ACTIVES</small><div style={{display:"flex",gap:7,flexWrap:"wrap",marginTop:10}}>{localSubcategories.map(x=><a key={x.slug} href={`/c/${x.slug}/${currentCitySlug}`} style={{padding:"8px 10px",borderRadius:999,border:"1px solid #e4e4ec",background:"#fafafe",color:"#393a46",textDecoration:"none",fontWeight:800,fontSize:12}}>{x.name} <small style={{color:"#8a8b97"}}>({x.count})</small></a>)}</div></div>}</section>}
+    {!data.items.length?<section style={{padding:"38px 20px",border:"1px dashed #d9d9e3",borderRadius:18,background:"white",textAlign:"center",color:"#777887"}}><AppIcon name="search"/><h2 style={{color:"#343542"}}>Aucune annonce disponible pour le moment</h2><p>Élargissez votre recherche à toute la France ou revenez plus tard.</p><a href={`/categorie/${category}`} style={{color:"#5b4cf0",fontWeight:850}}>Voir toute la catégorie</a></section>:<section style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:12}}>{data.items.map(item=><MarketplaceListingCard key={item.id} item={item}/>)}</section>}
+    <section style={{marginTop:26,padding:20,border:"1px solid #e7e7ef",borderRadius:18,background:"white"}}><small style={{color:"#777887",fontWeight:850}}>RECHERCHE LOCALE</small><h2 style={{margin:"5px 0 8px",fontSize:21}}>Bien chercher {categoryName.toLowerCase()} à {resolvedCity}</h2><p style={{margin:0,color:"#60616d",lineHeight:1.65}}>{localCopy.intro}</p><ul style={{margin:"14px 0 0",paddingLeft:20,color:"#60616d",lineHeight:1.7}}>{localCopy.tips.map(tip=><li key={tip}>{tip}</li>)}</ul><div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:15}}><a href={`/categorie/${category}`} style={{padding:"9px 12px",border:"1px solid #e4e4ec",borderRadius:999,color:"#5143d7",textDecoration:"none",fontWeight:800,fontSize:12}}>Toutes les annonces {categoryName.toLowerCase()}</a>{hub?.indexable&&<a href={`/ville/${hub.slug}`} style={{padding:"9px 12px",border:"1px solid #e4e4ec",borderRadius:999,color:"#5143d7",textDecoration:"none",fontWeight:800,fontSize:12}}>Toutes les annonces à {resolvedCity}</a>}<a href="/deposer-annonce-gratuite" style={{padding:"9px 12px",borderRadius:999,background:"#5b4cf0",color:"white",textDecoration:"none",fontWeight:800,fontSize:12}}>Déposer une annonce gratuite</a></div></section>
+    {data.total>=3&&<section style={{marginTop:18,padding:20,border:"1px solid #e7e7ef",borderRadius:18,background:"white"}}><small style={{color:"#777887",fontWeight:850}}>QUESTIONS FRÉQUENTES</small><h2 style={{margin:"5px 0 12px",fontSize:21}}>{categoryName} à {resolvedCity}</h2><div style={{display:"grid",gap:12}}>{localCopy.faq.map(item=><details key={item.q} style={{border:"1px solid #ececf2",borderRadius:14,padding:"13px 14px",background:"#fbfbfe"}}><summary style={{cursor:"pointer",fontWeight:850,color:"#343542"}}>{item.q}</summary><p style={{margin:"9px 0 0",color:"#60616d",lineHeight:1.6}}>{item.a}</p></details>)}</div></section>}
+    {otherCities.length>0&&<section style={{marginTop:28,padding:20,border:"1px solid #e7e7ef",borderRadius:18,background:"white"}}><div style={{display:"flex",alignItems:"end",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}><div><small style={{color:"#797a87",fontWeight:800}}>Explorer ailleurs</small><h2 style={{margin:"4px 0 0",fontSize:21}}>Autres villes pour {categoryName.toLowerCase()}</h2></div><a href={`/categorie/${category}`} style={{color:"#5b4cf0",fontWeight:850,textDecoration:"none"}}>Toute la catégorie →</a></div><div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:14}}>{otherCities.map(x=><a key={x.city} href={`/c/${category}/${citySlug(x.city)}`} style={{padding:"9px 12px",border:"1px solid #e4e4ec",borderRadius:999,background:"#fafafe",textDecoration:"none",color:"#343542",fontWeight:800,fontSize:12}}>{x.city} <small style={{color:"#878895"}}>({x.count})</small></a>)}</div></section>}
+  </main></div>
 }

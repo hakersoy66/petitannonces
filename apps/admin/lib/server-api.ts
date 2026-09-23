@@ -1,0 +1,2 @@
+import { cookies } from "next/headers";
+export async function adminServerFetch<T>(path:string):Promise<T|null>{try{const store=await cookies();const token=store.get("pa_session")?.value;if(!token)return null;const base=process.env.API_INTERNAL_URL??"http://127.0.0.1:4000";const r=await fetch(`${base.replace(/\/$/,"")}${path}`,{headers:{cookie:`pa_session=${encodeURIComponent(token)}`},cache:"no-store"});if(!r.ok)return null;return await r.json() as T}catch{return null}}
