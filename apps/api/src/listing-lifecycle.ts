@@ -27,12 +27,12 @@ export async function notifyUpcomingListingExpirations(limit=500){
  const rows=await prisma.$queryRawUnsafe<ExpiryEventRow[]>(`SELECT l."id" AS "listingId",l."sellerId",l."title",lc."expiresAt",lc."freeRenewalUsed" FROM "ListingLifecycle" lc JOIN "Listing" l ON l."id"=lc."listingId" WHERE l."status"='PUBLISHED' AND lc."expiresAt">CURRENT_TIMESTAMP AND lc."expiresAt"<=CURRENT_TIMESTAMP+INTERVAL '7 days' AND NOT EXISTS (SELECT 1 FROM "ProfessionalSubscription" ps JOIN "ProfessionalPlan" pp ON pp."id"=ps."planId" WHERE ps."userId"=l."sellerId" AND ps."status" IN ('TRIALING','ACTIVE') AND pp."autoRenewListings"=TRUE AND pp."isActive"=TRUE AND (ps."currentPeriodEnd" IS NULL OR ps."currentPeriodEnd">CURRENT_TIMESTAMP) AND (ps."status"='ACTIVE' OR ps."trialEndsAt" IS NULL OR ps."trialEndsAt">CURRENT_TIMESTAMP)) ORDER BY lc."expiresAt" ASC LIMIT $1`,limit);
  const now=Date.now();let queued=0;
  for(const row of rows){
- const remaining=row.expiresAt.getTime()-now;
- const stage=remaining<=DAY_MS?"1d":remaining<=3*DAY_MS?"3d":"7d";
- const when=stage==="1d"?"dans moins de 24 heures":stage==="3d"?"dans moins de 3 jours":"dans moins de 7 jours";
- const body=row.freeRenewalUsed?`Votre annonce « ${row.title??"Sans titre"} » expire ${when}. Après expiration, une prolongation de 30 jours coûte 0,99 €.`:`Votre annonce « ${row.title??"Sans titre"} » expire ${when}. Votre première prolongation de 30 jours sera gratuite.`;
- await deliverUserEvent({userId:row.sellerId,eventKind:"LISTING",notificationKind:"LISTING",title:"Votre annonce arrive bientôt à expiration",body,actionUrl:"/mon-compte/annonces?status=PUBLISHED",metadata:{listingId:row.listingId,expiresAt:row.expiresAt.toISOString(),expiryStage:stage},dedupeKey:`listing-expiry-warning:${row.listingId}:${expiryCycleKey(row)}:${stage}`});
- queued++;
+  const remaining=row.expiresAt.getTime()-now;
+  const stage=remaining<=DAY_MS?"1d":remaining<=3*DAY_MS?"3d":"7d";
+  const when=stage==="1d"?"dans moins de 24 heures":stage==="3d"?"dans moins de 3 jours":"dans moins de 7 jours";
+  const body=row.freeRenewalUsed?`Votre annonce « ${row.title??"Sans titre"} » expire ${when}. Après expiration, une prolongation de 30 jours coûte 0,99 €.`:`Votre annonce « ${row.title??"Sans titre"} » expire ${when}. Votre première prolongation de 30 jours sera gratuite.`;
+  await deliverUserEvent({userId:row.sellerId,eventKind:"LISTING",notificationKind:"LISTING",title:"Votre annonce arrive bientôt à expiration",body,actionUrl:"/mon-compte/annonces?status=PUBLISHED",metadata:{listingId:row.listingId,expiresAt:row.expiresAt.toISOString(),expiryStage:stage},dedupeKey:`listing-expiry-warning:${row.listingId}:${expiryCycleKey(row)}:${stage}`});
+  queued++;
  }
  return queued;
 }
@@ -41,12 +41,12 @@ export async function autoRenewProfessionalListings(limit=500){
  const rows=await prisma.$queryRawUnsafe<ExpiryEventRow[]>(`SELECT l."id" AS "listingId",l."sellerId",l."title",lc."expiresAt",lc."freeRenewalUsed" FROM "ListingLifecycle" lc JOIN "Listing" l ON l."id"=lc."listingId" WHERE l."status"='PUBLISHED' AND lc."expiresAt"<=CURRENT_TIMESTAMP AND EXISTS (SELECT 1 FROM "ProfessionalSubscription" ps JOIN "ProfessionalPlan" pp ON pp."id"=ps."planId" WHERE ps."userId"=l."sellerId" AND ps."status" IN ('TRIALING','ACTIVE') AND pp."autoRenewListings"=TRUE AND pp."isActive"=TRUE AND (ps."currentPeriodEnd" IS NULL OR ps."currentPeriodEnd">CURRENT_TIMESTAMP) AND (ps."status"='ACTIVE' OR ps."trialEndsAt" IS NULL OR ps."trialEndsAt">CURRENT_TIMESTAMP)) ORDER BY lc."expiresAt" ASC LIMIT $1`,limit);
  let renewed=0;
  for(const row of rows){
- const updated=await prisma.$queryRawUnsafe<Array<{expiresAt:Date}>>(`UPDATE "ListingLifecycle" SET "expiresAt"=GREATEST("expiresAt",CURRENT_TIMESTAMP)+INTERVAL '30 days',"renewalCount"="renewalCount"+1,"lastRenewedAt"=CURRENT_TIMESTAMP,"updatedAt"=CURRENT_TIMESTAMP WHERE "listingId"=$1 AND "expiresAt"=$2 AND "expiresAt"<=CURRENT_TIMESTAMP RETURNING "expiresAt"`,row.listingId,row.expiresAt);
- if(!updated[0])continue;
- await prisma.listing.updateMany({where:{id:row.listingId,status:"PUBLISHED"},data:{publishedAt:new Date(),updatedAt:new Date()}});
- await deliverUserEvent({userId:row.sellerId,eventKind:"LISTING",notificationKind:"LISTING",title:"Annonce renouvelée automatiquement",body:`Votre annonce « ${row.title??"Sans titre"} » a été prolongée automatiquement de 30 jours grâce à votre formule Petit Annonces Pro.`,actionUrl:"/mon-compte/annonces?status=PUBLISHED",metadata:{listingId:row.listingId,automaticRenewal:true,expiresAt:updated[0].expiresAt.toISOString()},dedupeKey:`listing-pro-auto-renew:${row.listingId}:${row.expiresAt.toISOString()}`});
- await notifyListingIndexNow(row.listingId).catch(()=>undefined);
- renewed++;
+  const updated=await prisma.$queryRawUnsafe<Array<{expiresAt:Date}>>(`UPDATE "ListingLifecycle" SET "expiresAt"=GREATEST("expiresAt",CURRENT_TIMESTAMP)+INTERVAL '30 days',"renewalCount"="renewalCount"+1,"lastRenewedAt"=CURRENT_TIMESTAMP,"updatedAt"=CURRENT_TIMESTAMP WHERE "listingId"=$1 AND "expiresAt"=$2 AND "expiresAt"<=CURRENT_TIMESTAMP RETURNING "expiresAt"`,row.listingId,row.expiresAt);
+  if(!updated[0])continue;
+  await prisma.listing.updateMany({where:{id:row.listingId,status:"PUBLISHED"},data:{publishedAt:new Date(),updatedAt:new Date()}});
+  await deliverUserEvent({userId:row.sellerId,eventKind:"LISTING",notificationKind:"LISTING",title:"Annonce renouvelée automatiquement",body:`Votre annonce « ${row.title??"Sans titre"} » a été prolongée automatiquement de 30 jours grâce à votre formule Petit Annonces Pro.`,actionUrl:"/mon-compte/annonces?status=PUBLISHED",metadata:{listingId:row.listingId,automaticRenewal:true,expiresAt:updated[0].expiresAt.toISOString()},dedupeKey:`listing-pro-auto-renew:${row.listingId}:${row.expiresAt.toISOString()}`});
+  await notifyListingIndexNow(row.listingId).catch(()=>undefined);
+  renewed++;
  }
  return renewed;
 }
@@ -54,9 +54,9 @@ export async function autoRenewProfessionalListings(limit=500){
 export async function expireDueListings(limit=500){
  const rows=await prisma.$queryRawUnsafe<ExpiryEventRow[]>(`WITH due AS (SELECT lc."listingId" FROM "ListingLifecycle" lc JOIN "Listing" l0 ON l0."id"=lc."listingId" WHERE l0."status"='PUBLISHED' AND lc."expiresAt"<=CURRENT_TIMESTAMP ORDER BY lc."expiresAt" ASC LIMIT $1) UPDATE "Listing" l SET "status"='EXPIRED',"updatedAt"=CURRENT_TIMESTAMP FROM "ListingLifecycle" lc,due WHERE l."id"=due."listingId" AND lc."listingId"=l."id" AND l."status"='PUBLISHED' RETURNING l."id" AS "listingId",l."sellerId",l."title",lc."expiresAt",lc."freeRenewalUsed"`,limit);
  for(const row of rows){
- const body=row.freeRenewalUsed?`Votre annonce « ${row.title??"Sans titre"} » a expiré. Vous pouvez la prolonger de 30 jours pour 0,99 €.`:`Votre annonce « ${row.title??"Sans titre"} » a expiré. Votre première prolongation de 30 jours est gratuite.`;
- await deliverUserEvent({userId:row.sellerId,eventKind:"LISTING",notificationKind:"LISTING",title:"Votre annonce a expiré",body,actionUrl:"/mon-compte/annonces?status=EXPIRED",metadata:{listingId:row.listingId,expiresAt:row.expiresAt.toISOString(),expired:true},dedupeKey:`listing-expired:${row.listingId}:${expiryCycleKey(row)}`});
- await notifyListingIndexNow(row.listingId,true).catch(()=>undefined);
+  const body=row.freeRenewalUsed?`Votre annonce « ${row.title??"Sans titre"} » a expiré. Vous pouvez la prolonger de 30 jours pour 0,99 €.`:`Votre annonce « ${row.title??"Sans titre"} » a expiré. Votre première prolongation de 30 jours est gratuite.`;
+  await deliverUserEvent({userId:row.sellerId,eventKind:"LISTING",notificationKind:"LISTING",title:"Votre annonce a expiré",body,actionUrl:"/mon-compte/annonces?status=EXPIRED",metadata:{listingId:row.listingId,expiresAt:row.expiresAt.toISOString(),expired:true},dedupeKey:`listing-expired:${row.listingId}:${expiryCycleKey(row)}`});
+  await notifyListingIndexNow(row.listingId,true).catch(()=>undefined);
  }
  return rows.length;
 }

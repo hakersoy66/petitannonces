@@ -75,15 +75,15 @@ function isLegacyPage(page:string){
 async function resolvedLegacyRedirect(page:string){
  let current=page;let redirected=false;
  try{
- for(let hop=0;hop<4;hop++){
- const url=new URL(current);if(!["petitannonces.fr","www.petitannonces.fr"].includes(url.hostname))return false;
- const response=await fetch(url,{method:"HEAD",redirect:"manual",signal:AbortSignal.timeout(2500),headers:{"user-agent":"PetitAnnonces-SEO-Audit/1.0"}});
- if([301,302,307,308].includes(response.status)){
- const location=response.headers.get("location");if(!location)return false;
- current=new URL(location,url).toString();redirected=true;continue
- }
- return redirected&&response.status>=200&&response.status<400
- }
+  for(let hop=0;hop<4;hop++){
+   const url=new URL(current);if(!["petitannonces.fr","www.petitannonces.fr"].includes(url.hostname))return false;
+   const response=await fetch(url,{method:"HEAD",redirect:"manual",signal:AbortSignal.timeout(2500),headers:{"user-agent":"PetitAnnonces-SEO-Audit/1.0"}});
+   if([301,302,307,308].includes(response.status)){
+    const location=response.headers.get("location");if(!location)return false;
+    current=new URL(location,url).toString();redirected=true;continue
+   }
+   return redirected&&response.status>=200&&response.status<400
+  }
  }catch{}
  return false
 }
@@ -105,19 +105,19 @@ function queryOpportunity(row:{query:string;page:string;clicks:number;impression
 async function buildSeoOpportunities(_qrows:Array<{query:string;clicks:number;impressions:number;ctr:number;position:number}>,queryPageRows:Array<{query:string;page:string;clicks:number;impressions:number;ctr:number;position:number}>){
  const queryItemsByQuery=new Map<string,GscSeoOpportunity>();
  for(const row of queryPageRows){
- const item=queryOpportunity(row);if(!item)continue;const key=row.query.trim().toLowerCase();const previous=queryItemsByQuery.get(key);
- if(!previous||item.score>previous.score||(item.score===previous.score&&item.impressions>previous.impressions))queryItemsByQuery.set(key,item)
+  const item=queryOpportunity(row);if(!item)continue;const key=row.query.trim().toLowerCase();const previous=queryItemsByQuery.get(key);
+  if(!previous||item.score>previous.score||(item.score===previous.score&&item.impressions>previous.impressions))queryItemsByQuery.set(key,item)
  }
  const items:GscSeoOpportunity[]=[...queryItemsByQuery.values()];
  const byQuery=new Map<string,Array<(typeof queryPageRows)[number]>>();
  for(const row of queryPageRows){if(!row.query||row.query.toLowerCase().startsWith("site:")||isLegacyPage(row.page))continue;const key=row.query.trim().toLowerCase();const list=byQuery.get(key)??[];list.push(row);byQuery.set(key,list)}
  for(const rows of byQuery.values()){
- const pageMap=new Map<string,{page:string;impressions:number;clicks:number;weightedPosition:number}>();
- for(const row of rows){const key=pagePath(row.page);const current=pageMap.get(key)??{page:row.page,impressions:0,clicks:0,weightedPosition:0};current.weightedPosition+=row.position*row.impressions;current.impressions+=row.impressions;current.clicks+=row.clicks;pageMap.set(key,current)}
- const pages=[...pageMap.values()].filter(x=>x.impressions>=2).sort((a,b)=>b.impressions-a.impressions);const totalImpressions=pages.reduce((s,x)=>s+x.impressions,0);if(pages.length<2||totalImpressions<8)continue;
- const dominantShare=pages[0]!.impressions/totalImpressions;const bestPosition=Math.min(...pages.map(x=>x.weightedPosition/x.impressions));if(dominantShare>=.80||bestPosition>45)continue;
- const row=rows[0]!;const avgPosition=pages.reduce((s,x)=>s+x.weightedPosition,0)/totalImpressions;const clicks=pages.reduce((s,x)=>s+x.clicks,0);const score=Math.min(100,Math.round(42+Math.min(24,totalImpressions)+(1-dominantShare)*28+(bestPosition<=20?10:0)));
- items.push({id:`cannibal-${cleanId(row.query)}`,type:"CANNIBALIZATION",priority:priority(score),score,query:row.query,page:pages[0]!.page,competingPages:pages.slice(0,4).map(x=>x.page),clicks,impressions:totalImpressions,ctr:totalImpressions?clicks/totalImpressions*100:0,position:avgPosition,estimatedExtraClicks:0,title:"Plusieurs URL se concurrencent",reason:`${pages.length} pages visibles pour la même requête · la page principale ne concentre que ${Math.round(dominantShare*100)} % des impressions`,action:"Choisir une URL cible, renforcer ses liens internes et ses signaux sémantiques. Rediriger ou canonicaliser uniquement les variantes réellement obsolètes; conserver les pages locales distinctes lorsqu’elles répondent à des intentions différentes."});
+  const pageMap=new Map<string,{page:string;impressions:number;clicks:number;weightedPosition:number}>();
+  for(const row of rows){const key=pagePath(row.page);const current=pageMap.get(key)??{page:row.page,impressions:0,clicks:0,weightedPosition:0};current.weightedPosition+=row.position*row.impressions;current.impressions+=row.impressions;current.clicks+=row.clicks;pageMap.set(key,current)}
+  const pages=[...pageMap.values()].filter(x=>x.impressions>=2).sort((a,b)=>b.impressions-a.impressions);const totalImpressions=pages.reduce((s,x)=>s+x.impressions,0);if(pages.length<2||totalImpressions<8)continue;
+  const dominantShare=pages[0]!.impressions/totalImpressions;const bestPosition=Math.min(...pages.map(x=>x.weightedPosition/x.impressions));if(dominantShare>=.80||bestPosition>45)continue;
+  const row=rows[0]!;const avgPosition=pages.reduce((s,x)=>s+x.weightedPosition,0)/totalImpressions;const clicks=pages.reduce((s,x)=>s+x.clicks,0);const score=Math.min(100,Math.round(42+Math.min(24,totalImpressions)+(1-dominantShare)*28+(bestPosition<=20?10:0)));
+  items.push({id:`cannibal-${cleanId(row.query)}`,type:"CANNIBALIZATION",priority:priority(score),score,query:row.query,page:pages[0]!.page,competingPages:pages.slice(0,4).map(x=>x.page),clicks,impressions:totalImpressions,ctr:totalImpressions?clicks/totalImpressions*100:0,position:avgPosition,estimatedExtraClicks:0,title:"Plusieurs URL se concurrencent",reason:`${pages.length} pages visibles pour la même requête · la page principale ne concentre que ${Math.round(dominantShare*100)} % des impressions`,action:"Choisir une URL cible, renforcer ses liens internes et ses signaux sémantiques. Rediriger ou canonicaliser uniquement les variantes réellement obsolètes; conserver les pages locales distinctes lorsqu’elles répondent à des intentions différentes."});
  }
  const legacyByPage=new Map<string,{page:string;clicks:number;impressions:number;weightedPosition:number;queries:Set<string>}>();
  for(const row of queryPageRows){if(!isLegacyPage(row.page))continue;const current=legacyByPage.get(row.page)??{page:row.page,clicks:0,impressions:0,weightedPosition:0,queries:new Set<string>()};current.clicks+=row.clicks;current.impressions+=row.impressions;current.weightedPosition+=row.position*row.impressions;if(!row.query.toLowerCase().startsWith("site:"))current.queries.add(row.query);legacyByPage.set(row.page,current)}
@@ -125,9 +125,9 @@ async function buildSeoOpportunities(_qrows:Array<{query:string;clicks:number;im
  const redirectChecks=await Promise.all(legacyCandidates.map(async row=>({row,resolved:await resolvedLegacyRedirect(row.page)})));
  let resolvedRedirects=0;
  for(const {row,resolved} of redirectChecks){
- if(resolved){resolvedRedirects++;continue}
- const path=pagePath(row.page);const http=row.page.startsWith("http://");const score=Math.min(100,(http?82:72)+Math.min(16,row.impressions));
- items.push({id:`legacy-${cleanId(row.page)}`,type:"LEGACY_URL",priority:priority(score),score,query:[...row.queries][0]??null,page:row.page,competingPages:[],clicks:row.clicks,impressions:row.impressions,ctr:row.impressions?row.clicks/row.impressions*100:0,position:row.impressions?row.weightedPosition/row.impressions:0,estimatedExtraClicks:0,title:http?"Ancienne URL HTTP non résolue":"Ancienne route sans destination canonique",reason:`${path} · ${row.impressions} impression(s) détectée(s)`,action:http?"Vérifier la redirection HTTPS et sa destination finale. Une URL technique ne reste prioritaire que si la chaîne n’aboutit pas à une page canonique valide.":"Créer une redirection permanente uniquement si une page moderne équivalente existe. Sinon conserver un 404/410 propre et retirer tous les liens internes vers cette ancienne URL."});
+  if(resolved){resolvedRedirects++;continue}
+  const path=pagePath(row.page);const http=row.page.startsWith("http://");const score=Math.min(100,(http?82:72)+Math.min(16,row.impressions));
+  items.push({id:`legacy-${cleanId(row.page)}`,type:"LEGACY_URL",priority:priority(score),score,query:[...row.queries][0]??null,page:row.page,competingPages:[],clicks:row.clicks,impressions:row.impressions,ctr:row.impressions?row.clicks/row.impressions*100:0,position:row.impressions?row.weightedPosition/row.impressions:0,estimatedExtraClicks:0,title:http?"Ancienne URL HTTP non résolue":"Ancienne route sans destination canonique",reason:`${path} · ${row.impressions} impression(s) détectée(s)`,action:http?"Vérifier la redirection HTTPS et sa destination finale. Une URL technique ne reste prioritaire que si la chaîne n’aboutit pas à une page canonique valide.":"Créer une redirection permanente uniquement si une page moderne équivalente existe. Sinon conserver un 404/410 propre et retirer tous les liens internes vers cette ancienne URL."});
  }
  const typeOrder:Record<GscSeoOpportunityType,number>={LEGACY_URL:0,CTR_GAP:1,QUICK_WIN:2,CANNIBALIZATION:3,CONTENT_GAP:4};
  const sorted=items.sort((a,b)=>b.score-a.score||typeOrder[a.type]-typeOrder[b.type]||b.impressions-a.impressions);
@@ -142,18 +142,18 @@ export async function getGscSummary(days=28):Promise<GscSummary>{
  const emptyCounts={high:0,medium:0,low:0,quickWins:0,ctrGaps:0,contentGaps:0,cannibalization:0,legacyUrls:0,resolvedRedirects:0};
  const base:GscSummary={connected:false,siteUrl:siteUrl(),serviceAccountEmail:email,errorCode:null,errorMessage:null,settledThrough:null,performance:{days:d,clicks:0,impressions:0,ctr:0,position:0},topQueries:[],topPages:[],opportunities:[],seoOpportunities:[],opportunityCounts:emptyCounts,source:"GSC_API"};
  try{
- const end=new Date();end.setUTCDate(end.getUTCDate()-2);const start=new Date(end);start.setUTCDate(start.getUTCDate()-(d-1));const common={startDate:iso(start),endDate:iso(end),dataState:"final"};
- const [summary,queries,pages,queryPages]=await Promise.all([
- query({...common,rowLimit:1}),
- query({...common,dimensions:["query"],rowLimit:500,startRow:0}),
- query({...common,dimensions:["page"],rowLimit:500,startRow:0}),
- query({...common,dimensions:["query","page"],aggregationType:"auto",rowLimit:1000,startRow:0}),
- ]);
- const qrows=((queries.rows??[]) as GscRow[]).map(r=>({query:String(r.keys?.[0]??""),...metric(r)})).filter(r=>r.query);
- const prows=((pages.rows??[]) as GscRow[]).map(r=>({page:String(r.keys?.[0]??""),...metric(r)})).filter(r=>r.page);
- const queryPageRows=((queryPages.rows??[]) as GscRow[]).map(r=>({query:String(r.keys?.[0]??""),page:String(r.keys?.[1]??""),...metric(r)})).filter(r=>r.query&&r.page);
- const {items:seoOpportunities,resolvedRedirects}=await buildSeoOpportunities(qrows,queryPageRows);
- const value:GscSummary={...base,connected:true,settledThrough:iso(end),performance:{days:d,...metric((summary.rows??[])[0])},topQueries:qrows.slice().sort((a,b)=>b.clicks-a.clicks||b.impressions-a.impressions).slice(0,30),topPages:prows.slice().sort((a,b)=>b.clicks-a.clicks||b.impressions-a.impressions).slice(0,30),opportunities:qrows.filter(r=>!r.query.toLowerCase().startsWith("site:")&&r.position>=5&&r.position<=20&&r.impressions>=3).sort((a,b)=>b.impressions-a.impressions||a.position-b.position).slice(0,30),seoOpportunities,opportunityCounts:opportunityCounts(seoOpportunities,resolvedRedirects)};
- cache.set(d,{expiresAt:Date.now()+5*60_000,value});return value
+  const end=new Date();end.setUTCDate(end.getUTCDate()-2);const start=new Date(end);start.setUTCDate(start.getUTCDate()-(d-1));const common={startDate:iso(start),endDate:iso(end),dataState:"final"};
+  const [summary,queries,pages,queryPages]=await Promise.all([
+   query({...common,rowLimit:1}),
+   query({...common,dimensions:["query"],rowLimit:500,startRow:0}),
+   query({...common,dimensions:["page"],rowLimit:500,startRow:0}),
+   query({...common,dimensions:["query","page"],aggregationType:"auto",rowLimit:1000,startRow:0}),
+  ]);
+  const qrows=((queries.rows??[]) as GscRow[]).map(r=>({query:String(r.keys?.[0]??""),...metric(r)})).filter(r=>r.query);
+  const prows=((pages.rows??[]) as GscRow[]).map(r=>({page:String(r.keys?.[0]??""),...metric(r)})).filter(r=>r.page);
+  const queryPageRows=((queryPages.rows??[]) as GscRow[]).map(r=>({query:String(r.keys?.[0]??""),page:String(r.keys?.[1]??""),...metric(r)})).filter(r=>r.query&&r.page);
+  const {items:seoOpportunities,resolvedRedirects}=await buildSeoOpportunities(qrows,queryPageRows);
+  const value:GscSummary={...base,connected:true,settledThrough:iso(end),performance:{days:d,...metric((summary.rows??[])[0])},topQueries:qrows.slice().sort((a,b)=>b.clicks-a.clicks||b.impressions-a.impressions).slice(0,30),topPages:prows.slice().sort((a,b)=>b.clicks-a.clicks||b.impressions-a.impressions).slice(0,30),opportunities:qrows.filter(r=>!r.query.toLowerCase().startsWith("site:")&&r.position>=5&&r.position<=20&&r.impressions>=3).sort((a,b)=>b.impressions-a.impressions||a.position-b.position).slice(0,30),seoOpportunities,opportunityCounts:opportunityCounts(seoOpportunities,resolvedRedirects)};
+  cache.set(d,{expiresAt:Date.now()+5*60_000,value});return value
  }catch(error){const c=classify(error);const value={...base,errorCode:c.code,errorMessage:c.message};cache.set(d,{expiresAt:Date.now()+60_000,value});return value}
 }

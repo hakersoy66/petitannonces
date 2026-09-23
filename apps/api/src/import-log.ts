@@ -6,18 +6,18 @@ const TRACKING_PARAMS=new Set(["fbclid","gclid","msclkid","mc_cid","mc_eid","ref
 export function canonicalImportSourceUrl(raw?:string|null){
  const value=raw?.trim();if(!value)return null;
  try{
- const u=new URL(value);u.hash="";u.hostname=u.hostname.toLowerCase();
- const host=u.hostname.replace(/^www\./,"");
- const isLeboncoin=host==="leboncoin.fr"||host.endsWith(".leboncoin.fr");const isVinted=host==="vinted.fr"||host.endsWith(".vinted.fr");const isFacebook=host==="facebook.com"||host.endsWith(".facebook.com")||host==="fb.com"||host.endsWith(".fb.com");
- if(isLeboncoin){u.protocol="https:";u.hostname="www.leboncoin.fr";u.search="";}
- else if(isVinted){const item=u.pathname.match(/\/items\/(\d{5,20})/i);u.protocol="https:";u.hostname="www.vinted.fr";if(item)u.pathname=`/items/${item[1]}`;u.search="";}
- else if(isFacebook){const item=u.pathname.match(/\/marketplace\/item\/([0-9]+)/i);u.protocol="https:";u.hostname="www.facebook.com";if(item)u.pathname=`/marketplace/item/${item[1]}`;u.search="";}
- else{
- for(const key of [...u.searchParams.keys()])if(key.toLowerCase().startsWith("utm_")||TRACKING_PARAMS.has(key.toLowerCase()))u.searchParams.delete(key);
- u.searchParams.sort();
- }
- if(u.pathname.length>1)u.pathname=u.pathname.replace(/\/+$/g,"");
- return u.toString();
+  const u=new URL(value);u.hash="";u.hostname=u.hostname.toLowerCase();
+  const host=u.hostname.replace(/^www\./,"");
+  const isLeboncoin=host==="leboncoin.fr"||host.endsWith(".leboncoin.fr");const isVinted=host==="vinted.fr"||host.endsWith(".vinted.fr");const isFacebook=host==="facebook.com"||host.endsWith(".facebook.com")||host==="fb.com"||host.endsWith(".fb.com");
+  if(isLeboncoin){u.protocol="https:";u.hostname="www.leboncoin.fr";u.search="";}
+  else if(isVinted){const item=u.pathname.match(/\/items\/(\d{5,20})/i);u.protocol="https:";u.hostname="www.vinted.fr";if(item)u.pathname=`/items/${item[1]}`;u.search="";}
+  else if(isFacebook){const item=u.pathname.match(/\/marketplace\/item\/([0-9]+)/i);u.protocol="https:";u.hostname="www.facebook.com";if(item)u.pathname=`/marketplace/item/${item[1]}`;u.search="";}
+  else{
+   for(const key of [...u.searchParams.keys()])if(key.toLowerCase().startsWith("utm_")||TRACKING_PARAMS.has(key.toLowerCase()))u.searchParams.delete(key);
+   u.searchParams.sort();
+  }
+  if(u.pathname.length>1)u.pathname=u.pathname.replace(/\/+$/g,"");
+  return u.toString();
  }catch{return value;}
 }
 
