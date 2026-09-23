@@ -30,7 +30,7 @@ jobs:
           set -euo pipefail
           work="$(mktemp -d)"
           tar -xzf /tmp/production-sync.tar.gz -C "$work"
-          forbidden="$(find "$work" -type f \(             -name '.env' -o -name '.env.*' -o             -name '*.pem' -o -name '*.key' -o -name '*.p12' -o -name '*.pfx' -o -name '*.crt' -o             -name '*.log' -o -name '*.bak' -o -name '*.bak.*' -o -name '*.bak-*'           \) -print -quit)"
+          forbidden="$(find "$work" -type f \(             -name '.env' -o \( -name '.env.*' ! -name '.env.example' \) -o             -name '*.pem' -o -name '*.key' -o -name '*.p12' -o -name '*.pfx' -o -name '*.crt' -o             -name '*.log' -o -name '*.bak' -o -name '*.bak.*' -o -name '*.bak-*'           \) -print -quit)"
           test -z "$forbidden" || { echo "Forbidden file: $forbidden"; exit 1; }
           if grep -RIlE 'sk_live_[A-Za-z0-9]{16,}|rk_live_[A-Za-z0-9]{16,}|whsec_[A-Za-z0-9]{16,}|-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----' "$work" >/dev/null 2>&1; then
             echo "Potential secret pattern detected"
