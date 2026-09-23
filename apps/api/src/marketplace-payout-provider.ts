@@ -73,3 +73,5 @@ export async function executeSellerPayout(input:{sellerId:string;orderId:string;
   if(runtime.provider==="mangopay")throw new Error(runtime.configured?"mangopay_payout_adapter_pending":"payout_provider_not_configured");
   throw new Error("payout_provider_not_configured");
 }
+
+[executed on device: mail.petitannonces.fr (b9fdfe5f-3df4-4e4a-a34e-5aa72c2ab64d)]

@@ -121,3 +121,5 @@ export async function registerProMessageToolRoutes(app:FastifyInstance){
 
  app.delete("/pro/message-tools/quick-replies/:id",async(request,reply)=>{const auth=await requireProfessionalContext(request,reply,"DASHBOARD");if(!auth)return;const{ctx}=auth;const params=z.object({id:z.string().min(1)}).safeParse(request.params);if(!params.success)return reply.code(400).send({error:"invalid_request"});const result=await prisma.$executeRawUnsafe(`DELETE FROM "ProQuickReply" WHERE "id"=$1 AND "ownerUserId"=$2`,params.data.id,ctx.ownerUserId);if(!result)return reply.code(404).send({error:"quick_reply_not_found"});return reply.send({deleted:true});});
 }
+
+[executed on device: mail.petitannonces.fr (b9fdfe5f-3df4-4e4a-a34e-5aa72c2ab64d)]
