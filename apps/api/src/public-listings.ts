@@ -46,50 +46,6 @@ export async function registerPublicListingRoutes(app: FastifyInstance) {
     return reply.send({count:Number(rows[0]?.count??0n)});
   });
 
-  app.get("/public/compare-listings", async (request, reply) => {
-    const query=z.object({ids:z.string().min(1).max(800)}).safeParse(request.query);
-    if(!query.success)return reply.code(400).send({error:"invalid_request"});
-    const ids=[...new Set(query.data.ids.split(",").map(value=>value.trim()).filter(Boolean))].slice(0,4);
-    if(!ids.length)return reply.code(400).send({error:"compare_listings_required"});
-    const listings=await prisma.listing.findMany({
-      where:{id:{in:ids},status:"PUBLISHED"},
-      include:{
-        category:{include:{parent:{include:{parent:true}}}},attributes:{include:{attribute:true}},vehicle:true,property:true,energy:true,
-        store:{select:{id:true,name:true,status:true,isVerified:true}},
-        seller:{select:{id:true,kind:true,profile:{select:{displayName:true,firstName:true}},business:{select:{tradeName:true,legalName:true,verificationStatus:true,siret:true}}}},
-      },
-    });
-    const listingIds=listings.map(item=>item.id);
-    const sellerIds=[...new Set(listings.map(item=>item.sellerId))];
-    const [mediaRows,commerceRows,reputationPairs]=await Promise.all([
-      listingIds.length?prisma.$queryRawUnsafe<Array<{listingId:string;publicUrl:string}>>(`SELECT DISTINCT ON ("listingId") "listingId","publicUrl" FROM "ListingMedia" WHERE "listingId"=ANY($1::text[]) AND "status"='READY' AND "publicUrl" IS NOT NULL ORDER BY "listingId","isCover" DESC,"sortOrder" ASC,"createdAt" ASC`,listingIds):Promise.resolve([]),
-      listingIds.length?prisma.$queryRawUnsafe<Array<{listingId:string;securePaymentEnabled:boolean;mondialRelayEnabled:boolean;colissimoEnabled:boolean;handDeliveryEnabled:boolean}>>(`SELECT "listingId","securePaymentEnabled","mondialRelayEnabled","colissimoEnabled","handDeliveryEnabled" FROM "ListingCommerceSettings" WHERE "listingId"=ANY($1::text[])`,listingIds):Promise.resolve([]),
-      Promise.all(sellerIds.map(async sellerId=>[sellerId,await getUserReputation(sellerId)] as const)),
-    ]);
-    const mediaMap=new Map(mediaRows.map(row=>[row.listingId,row.publicUrl] as const));
-    const commerceMap=new Map(commerceRows.map(row=>[row.listingId,row] as const));
-    const reputationMap=new Map(reputationPairs);
-    const itemMap=new Map(listings.map(listing=>{
-      const store=listing.store?.status==="ACTIVE"?listing.store:null;
-      const sellerName=store?.name??listing.seller.business?.tradeName??listing.seller.profile?.displayName??listing.seller.profile?.firstName??"Annonceur Petit Annonces";
-      const verified=Boolean(store?.isVerified||(listing.seller.business?.verificationStatus==="VERIFIED"&&listing.seller.business?.siret));
-      const reputation=reputationMap.get(listing.seller.id)??null;
-      const commerce=commerceMap.get(listing.id);
-      const shippable=!["VEHICLE","REAL_ESTATE","JOB","SERVICE"].includes(listing.category.domain);
-      const breadcrumb=[listing.category.parent?.parent,listing.category.parent,listing.category].filter(Boolean).map(item=>({name:item!.name,slug:item!.slug}));
-      return [listing.id,{
-        id:listing.id,slug:listing.slug,title:listing.title,priceMinor:listing.priceMinor,currency:listing.currency,city:listing.city,postalCode:listing.postalCode,publishedAt:listing.publishedAt,imageUrl:mediaMap.get(listing.id)??null,
-        category:{id:listing.category.id,name:listing.category.name,slug:listing.category.slug,domain:listing.category.domain},breadcrumb,
-        attributes:listing.attributes.map(item=>({key:item.attribute.key,label:item.attribute.label,unit:item.attribute.unit,value:readAttributeValue(item)})),
-        vehicle:listing.vehicle,property:listing.property,energy:listing.energy,
-        commerce:{securePaymentEnabled:commerce?.securePaymentEnabled===true,shippingEnabled:shippable&&(commerce?.mondialRelayEnabled===true||commerce?.colissimoEnabled===true),handDeliveryEnabled:commerce?.handDeliveryEnabled===true},
-        seller:{id:listing.seller.id,name:sellerName,kind:listing.seller.kind,verified,trust:reputation?.trust??null,reviewCount:reputation?.metrics.reviewCount??0,reviewAverage:reputation?.metrics.reviewAverage??null,completedSales:reputation?.metrics.completedSales??0},
-      }] as const;
-    }));
-    const items=ids.map(id=>itemMap.get(id)).filter((item):item is NonNullable<typeof item>=>Boolean(item));
-    return reply.send({items,missingIds:ids.filter(id=>!itemMap.has(id)),maxItems:4});
-  });
-
   app.get("/public/listings/:slug", async (request, reply) => {
     const params = z.object({ slug: z.string().min(1).max(180) }).safeParse(request.params);
     if (!params.success) return reply.code(400).send({ error: "invalid_request" });

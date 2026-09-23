@@ -34,6 +34,3 @@
 .reputationBadge[data-code="EXPEDITION_RAPIDE"]{background:rgba(255,247,239,.97);color:#a55a10;border-color:#f3d2b0}.reputationBadge[data-code="EXPEDITION_RAPIDE"] svg{color:#e97818}
 .reputationBadge[data-code="PROFILE_VERIFIE"]{background:rgba(241,248,255,.97);color:#1e5f91;border-color:#c9e1f3}.reputationBadge[data-code="PROFILE_VERIFIE"] svg{color:#2d76aa}
 @media(max-width:700px){.reputationBadges{left:6px;bottom:6px;gap:4px;max-width:calc(100% - 72px)}.reputationBadge{min-height:24px;padding:0 7px;font-size:7.2px}.reputationBadge:nth-child(n+2){display:none}}
-
-/* 2026-09-17 listing comparison control */
-.compare{position:absolute;z-index:5;right:8px;top:48px}@media(max-width:700px){.compare{right:6px;top:42px}}

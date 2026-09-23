@@ -5,7 +5,6 @@ import { ReputationBadges } from "./reputation-badges";
 import { formatListingPrice } from "../lib/listing-price";
 import { promotionClass, promotionLabel, type ListingPromotion } from "../lib/listing-promotions";
 import { ListingCategoryPlaceholder } from "./listing-category-placeholder";
-import { CompareToggleButton } from "./compare-toggle-button";
 import styles from "./marketplace-listing-card.module.css";
 
 type SellerReputation={
@@ -47,7 +46,6 @@ export function MarketplaceListingCard({item,variant="default",showFavorite=true
       <a className={styles.imageLink} href={href} aria-label={item.title??item.category.name}>{item.imageUrl?<Image src={item.imageUrl} alt={item.title??item.category.name} fill sizes="(max-width:700px) 50vw, (max-width:1180px) 33vw, 260px" quality={68} priority={imagePriority} fetchPriority={imagePriority?"high":"auto"}/>:<ListingCategoryPlaceholder category={item.category}/>}</a>
       <div className={styles.badges}>{item.promotions?.slice(0,2).map(p=>p.type==="URGENT"?<b key={`${p.code}-${p.type}`} className={`${styles.desktopIconBadge} ${styles.urgentIconBadge}`} data-tooltip="Urgent" aria-label="Urgent"><AppIcon name="bolt"/></b>:<b key={`${p.code}-${p.type}`} className={`${styles.badge} ${styles[promotionClass(p.type)]??""}`}>{promotionLabel(p.type)}</b>)}{isPro&&<b className={`${styles.desktopIconBadge} ${styles.proIconBadge}`} data-tooltip="Professionnel" aria-label="Professionnel"><AppIcon name="store"/></b>}</div>
       {showFavorite&&<div className={styles.favorite}><FavoriteButton listingId={item.id} compact/></div>}
-      <div className={styles.compare}><CompareToggleButton item={{id:item.id,slug:item.slug,title:item.title,imageUrl:item.imageUrl,priceMinor:item.priceMinor,currency:item.currency,city:item.city,category:item.category}}/></div>
       {(shippingAvailable||securePaymentAvailable)&&<div className={styles.serviceIcons}>{shippingAvailable&&<span className={`${styles.serviceIcon} ${styles.shippingIcon}`} title="Livraison possible" aria-label="Livraison possible"><AppIcon name="truck"/></span>}{securePaymentAvailable&&<span className={`${styles.serviceIcon} ${styles.paymentIcon}`} title="Paiement sécurisé" aria-label="Paiement sécurisé"><AppIcon name="shield"/></span>}</div>}
       {reputationBadges.length>0?<ReputationBadges badges={reputationBadges} variant="listing-card" max={2}/>:reliable&&<span className={styles.reliable}><AppIcon name="circle-check"/> Fiable</span>}
     </div>
