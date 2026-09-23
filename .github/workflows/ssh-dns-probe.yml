@@ -1,0 +1,29 @@
+name: SSH DNS Probe
+
+on:
+  push:
+    branches: [production-sync-20260923]
+    paths: [".github/workflows/ssh-dns-probe.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Resolve and probe
+        run: |
+          set +e
+          for host in mail.petitannonces.fr petitannonces.fr; do
+            echo "=== $host ==="
+            getent ahosts "$host" || true
+            echo "-- IPv4 --"
+            dig +short A "$host" || true
+            echo "-- IPv6 --"
+            dig +short AAAA "$host" || true
+            for ip in $(dig +short A "$host"); do
+              timeout 4 bash -c "exec 3<>/dev/tcp/$ip/22" 2>/dev/null && echo "$ip:22 OPEN" || echo "$ip:22 CLOSED_OR_FILTERED"
+            done
+          done
