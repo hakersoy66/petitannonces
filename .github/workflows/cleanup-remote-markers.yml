@@ -1,0 +1,57 @@
+name: Cleanup Remote Tool Markers
+
+on:
+  push:
+    branches: [production-sync-20260923]
+    paths: [".github/workflows/cleanup-remote-markers.yml"]
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: production-sync-20260923
+          fetch-depth: 0
+
+      - name: Remove tool-output marker lines
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          roots=[Path("apps"),Path("packages"),Path("scripts"),Path("infra"),Path("docs")]
+          suffixes={".ts",".tsx",".js",".mjs",".cjs",".json",".css",".scss",".sql",".prisma",".yml",".yaml",".md",".sh"}
+          changed=[]
+          for root in roots:
+              if not root.exists():
+                  continue
+              for p in root.rglob("*"):
+                  if not p.is_file() or p.suffix not in suffixes:
+                      continue
+                  if any(part in {"node_modules",".git","dist","coverage",".turbo"} or part.startswith(".next") for part in p.parts):
+                      continue
+                  try:
+                      s=p.read_text(encoding="utf-8")
+                  except UnicodeDecodeError:
+                      continue
+                  lines=s.splitlines(True)
+                  cleaned=[line for line in lines if not line.lstrip().startswith("[executed on device:")]
+                  if cleaned!=lines:
+                      p.write_text("".join(cleaned),encoding="utf-8")
+                      changed.append(str(p))
+          print(f"cleaned_files={len(changed)}")
+          for p in changed:
+              print(p)
+          PY
+          rm -f .github/workflows/cleanup-remote-markers.yml
+          git config user.name "Petit Annonces Production Sync"
+          git config user.email "hakersoy66@users.noreply.github.com"
+          git add -A
+          git diff --cached --stat
+          git diff --cached --quiet && exit 0
+          git commit -m "sync: remove remote tool output markers"
+          git push origin HEAD:production-sync-20260923
