@@ -62,3 +62,4 @@ The repository includes `.github/workflows/ios-native-testflight.yml` for an EAS
 TestFlight publishing is intentionally locked until the repository variable `IOS_TESTFLIGHT_ENABLED` is set to `true`. The signed path also requires these GitHub Actions secrets: `APPLE_TEAM_ID`, `APP_STORE_CONNECT_KEY_ID`, `APP_STORE_CONNECT_ISSUER_ID`, `APP_STORE_CONNECT_API_KEY_B64`, `IOS_DISTRIBUTION_CERT_P12_BASE64`, `IOS_DISTRIBUTION_CERT_PASSWORD`, and `IOS_PROVISIONING_PROFILE_BASE64`. The certificate and provisioning profile must belong to `fr.petitannonces.app`.
 
 The workflow reads the latest TestFlight build number and increments it before upload. No EAS build or EAS submit service is required for this path.
+

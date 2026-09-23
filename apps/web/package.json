@@ -4,19 +4,18 @@
   "scripts": {
     "dev": "next dev -p 3000",
     "build": "next build",
-    "start": "next start -H 127.0.0.1 -p 3000",
+    "start": "next start -H 127.0.0.1",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@pa/types": "workspace:*",
-    "lucide-react": "^0.468.0",
-    "next": "16.3.3",
-    "react": "^19.2.0",
-    "react-dom": "^19.2.0",
     "@fortawesome/fontawesome-svg-core": "^7.3.1",
     "@fortawesome/free-regular-svg-icons": "^7.3.1",
     "@fortawesome/free-solid-svg-icons": "^7.3.1",
-    "@fortawesome/react-fontawesome": "^3.5.0"
+    "@fortawesome/react-fontawesome": "^3.5.0",
+    "@pa/types": "workspace:*",
+    "next": "16.3.3",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

@@ -179,4 +179,3 @@ export function useAuth() {
   if (!value) throw new Error('AuthProvider missing');
   return value;
 }
-
