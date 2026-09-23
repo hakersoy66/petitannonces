@@ -254,4 +254,3 @@ export async function getGoogleAdsPerformanceMaxDiagnostics(customerId:string,ca
   assetGroups:Array.isArray(assetPayload.results)?assetPayload.results.map((row:any)=>row.assetGroup??row):[],
  };
 }
-

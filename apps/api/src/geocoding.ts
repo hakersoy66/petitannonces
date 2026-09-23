@@ -148,3 +148,4 @@ export async function lookupFrenchPostalCode(postalCode: string): Promise<French
     return [];
   }
 }
+
