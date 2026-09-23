@@ -1,0 +1,91 @@
+name: Production Source Sync Once
+
+on:
+  push:
+    branches: [production-sync-20260923]
+    paths: [".github/workflows/production-source-sync-once.yml"]
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    env:
+      PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
+      PRODUCTION_USER: ${{ secrets.PRODUCTION_USER }}
+    steps:
+      - name: Checkout sync branch
+        uses: actions/checkout@v4
+        with:
+          ref: production-sync-20260923
+          fetch-depth: 0
+
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$PRODUCTION_HOST"
+          test -n "$PRODUCTION_USER"
+          test -n "$SSH_PRIVATE_KEY"
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s ssh-ed25519 %s\n'             "$PRODUCTION_HOST"             'AAAAC3NzaC1lZDI1NTE5AAAAIGb5fP7d4Vh1gELLdX9xwaHCkE5AFRp4TFS9Dn9tkr3Z'             > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Capture production source tree
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -o IdentitiesOnly=yes -o ConnectTimeout=10             "$PRODUCTION_USER@$PRODUCTION_HOST"             'set -e
+             ROOT=/var/www/petitannonces/repository
+             cd "$ROOT"
+             items=""
+             for p in apps packages scripts infra docs package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.json tsconfig.base.json; do
+               [ -e "$p" ] && items="$items $p"
+             done
+             test -n "$items"
+             tar -czf -                --exclude=node_modules --exclude=.git                --exclude=.env --exclude=".env.*"                --exclude="*.pem" --exclude="*.key" --exclude="*.p12" --exclude="*.pfx" --exclude="*.crt"                --exclude="*.log" --exclude="*.bak" --exclude="*.bak.*" --exclude="*.bak-*"                --exclude=".next*" --exclude=dist --exclude=coverage --exclude=.turbo                $items' > production-source.tar.gz
+          test -s production-source.tar.gz
+          size=$(stat -c%s production-source.tar.gz)
+          test "$size" -lt 52428800
+
+      - name: Safety scan and import
+        run: |
+          set -euo pipefail
+          work="$(mktemp -d)"
+          tar -xzf production-source.tar.gz -C "$work"
+
+          forbidden="$(find "$work" -type f \(             -name '.env' -o -name '.env.*' -o             -name '*.pem' -o -name '*.key' -o -name '*.p12' -o -name '*.pfx' -o -name '*.crt' -o             -name '*.log' -o -name '*.bak' -o -name '*.bak.*' -o -name '*.bak-*'           \) -print -quit)"
+          test -z "$forbidden" || { echo "Forbidden file detected: $forbidden"; exit 1; }
+
+          if grep -RIlE 'sk_live_[A-Za-z0-9]{16,}|rk_live_[A-Za-z0-9]{16,}|whsec_[A-Za-z0-9]{16,}|-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----' "$work" >/dev/null 2>&1; then
+            echo "Potential secret pattern detected in captured source"
+            exit 1
+          fi
+
+          for p in apps packages scripts infra docs package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.json tsconfig.base.json; do
+            if [ -e "$work/$p" ]; then
+              rm -rf "$p"
+              cp -a "$work/$p" "$p"
+            fi
+          done
+
+          rm -f             .github/workflows/production-source-sync-once.yml             .github/workflows/ssh-dns-probe.yml
+
+          git config user.name "Petit Annonces Production Sync"
+          git config user.email "hakersoy66@users.noreply.github.com"
+          git add -A apps packages scripts infra docs package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.json tsconfig.base.json .github/workflows
+          git status --short
+          git diff --cached --stat
+
+          if git diff --cached --quiet; then
+            echo "No production source differences found"
+            exit 0
+          fi
+
+          git commit -m "sync: import current production source tree"
+          git push origin HEAD:production-sync-20260923
