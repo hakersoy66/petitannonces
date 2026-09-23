@@ -8,8 +8,15 @@ const COMPLIANCE_ROLES = new Set(["SUPER_ADMIN", "ADMIN", "COMPLIANCE", "SUPPORT
 
 function sha256(value: string) { return createHash("sha256").update(value).digest("hex"); }
 
+function bearerToken(request: FastifyRequest) {
+  const value = request.headers.authorization;
+  if (typeof value !== "string") return null;
+  const match = /^Bearer\s+(.+)$/i.exec(value.trim());
+  return match?.[1]?.trim() || null;
+}
+
 async function currentUser(request: FastifyRequest) {
-  const token = request.cookies[SESSION_COOKIE];
+  const token = bearerToken(request) ?? request.cookies[SESSION_COOKIE];
   if (!token) return null;
   const session = await prisma.session.findUnique({ where: { tokenHash: sha256(token) }, include: { user: { include: { roles: true } } } });
   if (!session || session.revokedAt || session.expiresAt <= new Date() || session.user.status !== "ACTIVE") return null;

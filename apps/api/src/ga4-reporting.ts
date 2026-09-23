@@ -77,11 +77,11 @@ function classify(error:unknown){
 
 export async function tryEnableGa4DataApi(){
  try{
- const [c,token]=await Promise.all([credential(),accessToken()]);
- const response=await fetch(`https://serviceusage.googleapis.com/v1/projects/${encodeURIComponent(c.projectId)}/services/analyticsdata.googleapis.com:enable`,{method:"POST",headers:{authorization:`Bearer ${token}`,"content-type":"application/json"},body:"{}"});
- const json=await response.json().catch(()=>({})) as any;
- if(response.ok){tokenCache=null;snapshotCache.clear();return{enabled:true,status:response.status,error:null}}
- return{enabled:false,status:response.status,error:String(json?.error?.status??json?.error?.message??"service_enable_failed").slice(0,300)};
+  const [c,token]=await Promise.all([credential(),accessToken()]);
+  const response=await fetch(`https://serviceusage.googleapis.com/v1/projects/${encodeURIComponent(c.projectId)}/services/analyticsdata.googleapis.com:enable`,{method:"POST",headers:{authorization:`Bearer ${token}`,"content-type":"application/json"},body:"{}"});
+  const json=await response.json().catch(()=>({})) as any;
+  if(response.ok){tokenCache=null;snapshotCache.clear();return{enabled:true,status:response.status,error:null}}
+  return{enabled:false,status:response.status,error:String(json?.error?.status??json?.error?.message??"service_enable_failed").slice(0,300)};
  }catch(error){return{enabled:false,status:0,error:String((error as Error)?.message??error).slice(0,300)}}
 }
 
@@ -91,15 +91,15 @@ export async function getGa4Summary(days=30):Promise<Ga4Summary>{
  const base:Ga4Summary={connected:false,propertyId:pid,measurementId:measurementId(),serviceAccountEmail:email,reportingConfigured:Boolean(pid&&email),errorCode:null,errorMessage:null,activeUsers:0,totalUsers:0,newUsers:0,sessions:0,pageViews:0,eventCount:0,keyEvents:0,engagementRate:0,bounceRate:0,averageSessionDuration:0,channels:[],pages:[]};
  if(!pid){const v={...base,errorCode:"property_id_missing",errorMessage:"GA4_PROPERTY_ID n’est pas configuré."};snapshotCache.set(d,{expiresAt:Date.now()+60_000,value:v});return v}
  try{
- const dateRanges=[{startDate:`${Math.max(0,d-1)}daysAgo`,endDate:"today"}];
- const [summary,channels,pages]=await Promise.all([
- runReport(pid,{dateRanges,metrics:[{name:"activeUsers"},{name:"totalUsers"},{name:"newUsers"},{name:"sessions"},{name:"screenPageViews"},{name:"eventCount"},{name:"keyEvents"},{name:"engagementRate"},{name:"bounceRate"},{name:"averageSessionDuration"}]}),
- runReport(pid,{dateRanges,dimensions:[{name:"sessionDefaultChannelGroup"}],metrics:[{name:"sessions"},{name:"totalUsers"}],limit:"8",orderBys:[{metric:{metricName:"sessions"},desc:true}]}),
- runReport(pid,{dateRanges,dimensions:[{name:"pagePath"}],metrics:[{name:"screenPageViews"},{name:"totalUsers"}],limit:"10",orderBys:[{metric:{metricName:"screenPageViews"},desc:true}]})
- ]);
- const values=(summary.rows?.[0] as Ga4MetricRow|undefined)?.metricValues??[];
- const value:Ga4Summary={...base,connected:true,activeUsers:num(values[0]?.value),totalUsers:num(values[1]?.value),newUsers:num(values[2]?.value),sessions:num(values[3]?.value),pageViews:num(values[4]?.value),eventCount:num(values[5]?.value),keyEvents:num(values[6]?.value),engagementRate:num(values[7]?.value),bounceRate:num(values[8]?.value),averageSessionDuration:num(values[9]?.value),channels:((channels.rows??[]) as Ga4DimensionRow[]).map(r=>({name:r.dimensionValues?.[0]?.value??"(not set)",sessions:num(r.metricValues?.[0]?.value),users:num(r.metricValues?.[1]?.value)})),pages:((pages.rows??[]) as Ga4DimensionRow[]).map(r=>({path:r.dimensionValues?.[0]?.value??"/",views:num(r.metricValues?.[0]?.value),users:num(r.metricValues?.[1]?.value)}))};
- snapshotCache.set(d,{expiresAt:Date.now()+5*60_000,value});return value;
+  const dateRanges=[{startDate:`${Math.max(0,d-1)}daysAgo`,endDate:"today"}];
+  const [summary,channels,pages]=await Promise.all([
+   runReport(pid,{dateRanges,metrics:[{name:"activeUsers"},{name:"totalUsers"},{name:"newUsers"},{name:"sessions"},{name:"screenPageViews"},{name:"eventCount"},{name:"keyEvents"},{name:"engagementRate"},{name:"bounceRate"},{name:"averageSessionDuration"}]}),
+   runReport(pid,{dateRanges,dimensions:[{name:"sessionDefaultChannelGroup"}],metrics:[{name:"sessions"},{name:"totalUsers"}],limit:"8",orderBys:[{metric:{metricName:"sessions"},desc:true}]}),
+   runReport(pid,{dateRanges,dimensions:[{name:"pagePath"}],metrics:[{name:"screenPageViews"},{name:"totalUsers"}],limit:"10",orderBys:[{metric:{metricName:"screenPageViews"},desc:true}]})
+  ]);
+  const values=(summary.rows?.[0] as Ga4MetricRow|undefined)?.metricValues??[];
+  const value:Ga4Summary={...base,connected:true,activeUsers:num(values[0]?.value),totalUsers:num(values[1]?.value),newUsers:num(values[2]?.value),sessions:num(values[3]?.value),pageViews:num(values[4]?.value),eventCount:num(values[5]?.value),keyEvents:num(values[6]?.value),engagementRate:num(values[7]?.value),bounceRate:num(values[8]?.value),averageSessionDuration:num(values[9]?.value),channels:((channels.rows??[]) as Ga4DimensionRow[]).map(r=>({name:r.dimensionValues?.[0]?.value??"(not set)",sessions:num(r.metricValues?.[0]?.value),users:num(r.metricValues?.[1]?.value)})),pages:((pages.rows??[]) as Ga4DimensionRow[]).map(r=>({path:r.dimensionValues?.[0]?.value??"/",views:num(r.metricValues?.[0]?.value),users:num(r.metricValues?.[1]?.value)}))};
+  snapshotCache.set(d,{expiresAt:Date.now()+5*60_000,value});return value;
  }catch(error){const c=classify(error);const value={...base,errorCode:c.code,errorMessage:c.message};snapshotCache.set(d,{expiresAt:Date.now()+60_000,value});return value}
 }
 
@@ -125,20 +125,20 @@ export async function getGa4OrganicFunnel(days=30):Promise<Ga4OrganicFunnel>{
  const pid=propertyId();const base:Ga4OrganicFunnel={connected:false,propertyId:pid,errorCode:null,errorMessage:null,sessions:0,users:0,signUps:0,listingsSubmitted:0,checkoutStarts:0,purchases:0,landingPages:[]};
  if(!pid){const value={...base,errorCode:"property_id_missing",errorMessage:"GA4_PROPERTY_ID n’est pas configuré."};organicCache.set(d,{expiresAt:Date.now()+60_000,value});return value}
  try{
- // Align the combined organic funnel with Search Console's stable window, which ends two days ago.
- const dateRanges=[{startDate:`${d+1}daysAgo`,endDate:"2daysAgo"}];
- const organicFilter={filter:{fieldName:"sessionDefaultChannelGroup",stringFilter:{matchType:"EXACT",value:"Organic Search",caseSensitive:false}}};
- const eventNames=["sign_up","listing_submitted","begin_checkout","purchase"];
- const [landingReport,eventReport]=await Promise.all([
- runReport(pid,{dateRanges,dimensions:[{name:"landingPage"}],metrics:[{name:"sessions"},{name:"totalUsers"}],dimensionFilter:organicFilter,limit:"250",orderBys:[{metric:{metricName:"sessions"},desc:true}]}),
- runReport(pid,{dateRanges,dimensions:[{name:"landingPage"},{name:"eventName"}],metrics:[{name:"eventCount"}],dimensionFilter:{andGroup:{expressions:[organicFilter,{filter:{fieldName:"eventName",inListFilter:{values:eventNames,caseSensitive:true}}}]}},limit:"1000"}),
- ]);
- const byPath=new Map<string,Ga4OrganicLandingRow>();
- for(const row of (landingReport.rows??[]) as Ga4DimensionRow[]){const path=row.dimensionValues?.[0]?.value||"(not set)";byPath.set(path,{path,sessions:num(row.metricValues?.[0]?.value),users:num(row.metricValues?.[1]?.value),signUps:0,listingsSubmitted:0,checkoutStarts:0,purchases:0})}
- for(const row of (eventReport.rows??[]) as Ga4DimensionRow[]){const path=row.dimensionValues?.[0]?.value||"(not set)";const eventName=row.dimensionValues?.[1]?.value||"";const target=byPath.get(path)??{path,sessions:0,users:0,signUps:0,listingsSubmitted:0,checkoutStarts:0,purchases:0};const count=num(row.metricValues?.[0]?.value);if(eventName==="sign_up")target.signUps+=count;else if(eventName==="listing_submitted")target.listingsSubmitted+=count;else if(eventName==="begin_checkout")target.checkoutStarts+=count;else if(eventName==="purchase")target.purchases+=count;byPath.set(path,target)}
- const landingPages=[...byPath.values()].sort((a,b)=>b.sessions-a.sessions||b.signUps-a.signUps).slice(0,100);
- const value:Ga4OrganicFunnel={...base,connected:true,sessions:landingPages.reduce((s,r)=>s+r.sessions,0),users:landingPages.reduce((s,r)=>s+r.users,0),signUps:landingPages.reduce((s,r)=>s+r.signUps,0),listingsSubmitted:landingPages.reduce((s,r)=>s+r.listingsSubmitted,0),checkoutStarts:landingPages.reduce((s,r)=>s+r.checkoutStarts,0),purchases:landingPages.reduce((s,r)=>s+r.purchases,0),landingPages};
- organicCache.set(d,{expiresAt:Date.now()+5*60_000,value});return value;
+  // Align the combined organic funnel with Search Console's stable window, which ends two days ago.
+  const dateRanges=[{startDate:`${d+1}daysAgo`,endDate:"2daysAgo"}];
+  const organicFilter={filter:{fieldName:"sessionDefaultChannelGroup",stringFilter:{matchType:"EXACT",value:"Organic Search",caseSensitive:false}}};
+  const eventNames=["sign_up","listing_submitted","begin_checkout","purchase"];
+  const [landingReport,eventReport]=await Promise.all([
+   runReport(pid,{dateRanges,dimensions:[{name:"landingPage"}],metrics:[{name:"sessions"},{name:"totalUsers"}],dimensionFilter:organicFilter,limit:"250",orderBys:[{metric:{metricName:"sessions"},desc:true}]}),
+   runReport(pid,{dateRanges,dimensions:[{name:"landingPage"},{name:"eventName"}],metrics:[{name:"eventCount"}],dimensionFilter:{andGroup:{expressions:[organicFilter,{filter:{fieldName:"eventName",inListFilter:{values:eventNames,caseSensitive:true}}}]}},limit:"1000"}),
+  ]);
+  const byPath=new Map<string,Ga4OrganicLandingRow>();
+  for(const row of (landingReport.rows??[]) as Ga4DimensionRow[]){const path=row.dimensionValues?.[0]?.value||"(not set)";byPath.set(path,{path,sessions:num(row.metricValues?.[0]?.value),users:num(row.metricValues?.[1]?.value),signUps:0,listingsSubmitted:0,checkoutStarts:0,purchases:0})}
+  for(const row of (eventReport.rows??[]) as Ga4DimensionRow[]){const path=row.dimensionValues?.[0]?.value||"(not set)";const eventName=row.dimensionValues?.[1]?.value||"";const target=byPath.get(path)??{path,sessions:0,users:0,signUps:0,listingsSubmitted:0,checkoutStarts:0,purchases:0};const count=num(row.metricValues?.[0]?.value);if(eventName==="sign_up")target.signUps+=count;else if(eventName==="listing_submitted")target.listingsSubmitted+=count;else if(eventName==="begin_checkout")target.checkoutStarts+=count;else if(eventName==="purchase")target.purchases+=count;byPath.set(path,target)}
+  const landingPages=[...byPath.values()].sort((a,b)=>b.sessions-a.sessions||b.signUps-a.signUps).slice(0,100);
+  const value:Ga4OrganicFunnel={...base,connected:true,sessions:landingPages.reduce((s,r)=>s+r.sessions,0),users:landingPages.reduce((s,r)=>s+r.users,0),signUps:landingPages.reduce((s,r)=>s+r.signUps,0),listingsSubmitted:landingPages.reduce((s,r)=>s+r.listingsSubmitted,0),checkoutStarts:landingPages.reduce((s,r)=>s+r.checkoutStarts,0),purchases:landingPages.reduce((s,r)=>s+r.purchases,0),landingPages};
+  organicCache.set(d,{expiresAt:Date.now()+5*60_000,value});return value;
  }catch(error){const c=classify(error);const value={...base,errorCode:c.code,errorMessage:c.message};organicCache.set(d,{expiresAt:Date.now()+60_000,value});return value}
 }
 
@@ -147,11 +147,11 @@ export async function getGa4DataStreams(){
  const pid=propertyId();
  if(!pid)return{propertyId:null,streams:[],error:"property_id_missing"};
  try{
- const token=await accessToken();
- const response=await fetch(`https://analyticsadmin.googleapis.com/v1beta/properties/${encodeURIComponent(pid)}/dataStreams`,{headers:{authorization:`Bearer ${token}`}});
- const json=await response.json().catch(()=>({})) as any;
- if(!response.ok)return{propertyId:pid,streams:[],error:String(json?.error?.message??`admin_${response.status}`).slice(0,300)};
- return{propertyId:pid,streams:(json.dataStreams??[]).map((s:any)=>({name:String(s.name??""),displayName:String(s.displayName??""),type:String(s.type??""),measurementId:String(s.webStreamData?.measurementId??""),defaultUri:String(s.webStreamData?.defaultUri??"")})),error:null};
+  const token=await accessToken();
+  const response=await fetch(`https://analyticsadmin.googleapis.com/v1beta/properties/${encodeURIComponent(pid)}/dataStreams`,{headers:{authorization:`Bearer ${token}`}});
+  const json=await response.json().catch(()=>({})) as any;
+  if(!response.ok)return{propertyId:pid,streams:[],error:String(json?.error?.message??`admin_${response.status}`).slice(0,300)};
+  return{propertyId:pid,streams:(json.dataStreams??[]).map((s:any)=>({name:String(s.name??""),displayName:String(s.displayName??""),type:String(s.type??""),measurementId:String(s.webStreamData?.measurementId??""),defaultUri:String(s.webStreamData?.defaultUri??"")})),error:null};
  }catch(error){return{propertyId:pid,streams:[],error:String((error as Error)?.message??error).slice(0,300)}}
 }
 
@@ -159,11 +159,11 @@ export async function getGa4RealtimeSummary(){
  const pid=propertyId();
  if(!pid)return{propertyId:null,activeUsers:0,eventCount:0,rows:[],error:"property_id_missing"};
  try{
- const token=await accessToken();
- const response=await fetch(`https://analyticsdata.googleapis.com/v1beta/properties/${encodeURIComponent(pid)}:runRealtimeReport`,{method:"POST",headers:{authorization:`Bearer ${token}`,"content-type":"application/json"},body:JSON.stringify({dimensions:[{name:"eventName"}],metrics:[{name:"activeUsers"},{name:"eventCount"}],minuteRanges:[{startMinutesAgo:29,endMinutesAgo:0}],limit:"50"})});
- const json=await response.json().catch(()=>({})) as any;
- if(!response.ok)return{propertyId:pid,activeUsers:0,eventCount:0,rows:[],error:String(json?.error?.message??`realtime_${response.status}`).slice(0,300)};
- const rows=(json.rows??[]).map((r:any)=>({eventName:String(r.dimensionValues?.[0]?.value??""),activeUsers:num(r.metricValues?.[0]?.value),eventCount:num(r.metricValues?.[1]?.value)}));
- return{propertyId:pid,activeUsers:rows.reduce((m:number,r:any)=>Math.max(m,r.activeUsers),0),eventCount:rows.reduce((s:number,r:any)=>s+r.eventCount,0),rows,error:null};
+  const token=await accessToken();
+  const response=await fetch(`https://analyticsdata.googleapis.com/v1beta/properties/${encodeURIComponent(pid)}:runRealtimeReport`,{method:"POST",headers:{authorization:`Bearer ${token}`,"content-type":"application/json"},body:JSON.stringify({dimensions:[{name:"eventName"}],metrics:[{name:"activeUsers"},{name:"eventCount"}],minuteRanges:[{startMinutesAgo:29,endMinutesAgo:0}],limit:"50"})});
+  const json=await response.json().catch(()=>({})) as any;
+  if(!response.ok)return{propertyId:pid,activeUsers:0,eventCount:0,rows:[],error:String(json?.error?.message??`realtime_${response.status}`).slice(0,300)};
+  const rows=(json.rows??[]).map((r:any)=>({eventName:String(r.dimensionValues?.[0]?.value??""),activeUsers:num(r.metricValues?.[0]?.value),eventCount:num(r.metricValues?.[1]?.value)}));
+  return{propertyId:pid,activeUsers:rows.reduce((m:number,r:any)=>Math.max(m,r.activeUsers),0),eventCount:rows.reduce((s:number,r:any)=>s+r.eventCount,0),rows,error:null};
  }catch(error){return{propertyId:pid,activeUsers:0,eventCount:0,rows:[],error:String((error as Error)?.message??error).slice(0,300)}}
 }
