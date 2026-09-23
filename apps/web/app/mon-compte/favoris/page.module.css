@@ -4,4 +4,3 @@
 @media(max-width:390px){.grid,.skeletonGrid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:9px 7px!important}.skeletonGrid i{height:250px!important}}
 @media(display-mode:standalone){.grid,.skeletonGrid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px 8px!important}}
 
-[executed on device: mail.petitannonces.fr (b9fdfe5f-3df4-4e4a-a34e-5aa72c2ab64d)]

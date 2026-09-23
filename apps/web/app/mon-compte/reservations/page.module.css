@@ -1,3 +1,2 @@
 .page{min-height:100vh;background:#f7f8fb}.shell{width:min(1380px,calc(100% - 40px));margin:0 auto;padding:28px 0 70px;display:grid;grid-template-columns:270px minmax(0,1fr);gap:24px;align-items:start}.content{min-width:0}@media(max-width:980px){.shell{grid-template-columns:1fr;width:min(100% - 24px,1380px)}}@media(max-width:560px){.shell{width:min(100% - 18px,1380px);padding-top:18px}}
 
-[executed on device: mail.petitannonces.fr (b9fdfe5f-3df4-4e4a-a34e-5aa72c2ab64d)]

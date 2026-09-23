@@ -154,4 +154,3 @@ export function startAutoApprovalWorker(log?:{info:(value:unknown,message?:strin
   void tick();const timer=setInterval(()=>void tick(),intervalMs);timer.unref();return timer;
 }
 
-[executed on device: mail.petitannonces.fr (b9fdfe5f-3df4-4e4a-a34e-5aa72c2ab64d)]

@@ -213,4 +213,3 @@ const s=StyleSheet.create({
  primary:{minHeight:47,paddingHorizontal:22,borderRadius:14,backgroundColor:PA.primary,alignItems:'center',justifyContent:'center'},primaryText:{fontSize:11,fontWeight:'900',color:'#fff'}
 });
 
-[executed on device: mail.petitannonces.fr (b9fdfe5f-3df4-4e4a-a34e-5aa72c2ab64d)]
