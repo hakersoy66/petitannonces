@@ -18,19 +18,19 @@ const transfers=String(account?.capabilities?.transfers??"").toLowerCase();const
 export async function stripeMarketplaceConfigured(){const marketplace=await getRuntimeIntegration("marketplace-payment");return Boolean(marketplace?.enabled&&String(marketplace.config.provider??"").toLowerCase()==="stripe-connect"&&await runtime())}
 
 export async function ensurePayoutReconciliationSchema(){
- await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "MarketplacePayoutProviderEvent" ("id" TEXT PRIMARY KEY,"payoutId" TEXT NOT NULL,"providerEventId" TEXT NOT NULL,"eventType" TEXT NOT NULL,"providerObjectId" TEXT,"status" TEXT,"failureReason" TEXT,"payload" JSONB,"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,UNIQUE("providerEventId"))`);
- await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "MarketplacePayoutProviderEvent_payout_idx" ON "MarketplacePayoutProviderEvent"("payoutId","createdAt")`);
- await prisma.$executeRawUnsafe(`ALTER TABLE "MarketplacePayout" ADD COLUMN IF NOT EXISTS "failureReason" TEXT`);
- await prisma.$executeRawUnsafe(`ALTER TABLE "MarketplacePayout" ADD COLUMN IF NOT EXISTS "retryCount" INTEGER NOT NULL DEFAULT 0`);
- await prisma.$executeRawUnsafe(`ALTER TABLE "MarketplacePayout" ADD COLUMN IF NOT EXISTS "lastProviderEvent" TEXT`);
- await prisma.$executeRawUnsafe(`ALTER TABLE "MarketplacePayout" ADD COLUMN IF NOT EXISTS "lastProviderEventAt" TIMESTAMP(3)`);
- await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "MarketplaceUnmatchedProviderEvent" ("id" TEXT PRIMARY KEY,"providerEventId" TEXT NOT NULL UNIQUE,"eventType" TEXT NOT NULL,"providerObjectId" TEXT,"accountId" TEXT,"reason" TEXT NOT NULL,"payload" JSONB,"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP)`);
- await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "MarketplaceUnmatchedProviderEvent_created_idx" ON "MarketplaceUnmatchedProviderEvent"("createdAt")`);
+  await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "MarketplacePayoutProviderEvent" ("id" TEXT PRIMARY KEY,"payoutId" TEXT NOT NULL,"providerEventId" TEXT NOT NULL,"eventType" TEXT NOT NULL,"providerObjectId" TEXT,"status" TEXT,"failureReason" TEXT,"payload" JSONB,"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,UNIQUE("providerEventId"))`);
+  await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "MarketplacePayoutProviderEvent_payout_idx" ON "MarketplacePayoutProviderEvent"("payoutId","createdAt")`);
+  await prisma.$executeRawUnsafe(`ALTER TABLE "MarketplacePayout" ADD COLUMN IF NOT EXISTS "failureReason" TEXT`);
+  await prisma.$executeRawUnsafe(`ALTER TABLE "MarketplacePayout" ADD COLUMN IF NOT EXISTS "retryCount" INTEGER NOT NULL DEFAULT 0`);
+  await prisma.$executeRawUnsafe(`ALTER TABLE "MarketplacePayout" ADD COLUMN IF NOT EXISTS "lastProviderEvent" TEXT`);
+  await prisma.$executeRawUnsafe(`ALTER TABLE "MarketplacePayout" ADD COLUMN IF NOT EXISTS "lastProviderEventAt" TIMESTAMP(3)`);
+  await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "MarketplaceUnmatchedProviderEvent" ("id" TEXT PRIMARY KEY,"providerEventId" TEXT NOT NULL UNIQUE,"eventType" TEXT NOT NULL,"providerObjectId" TEXT,"accountId" TEXT,"reason" TEXT NOT NULL,"payload" JSONB,"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP)`);
+  await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "MarketplaceUnmatchedProviderEvent_created_idx" ON "MarketplaceUnmatchedProviderEvent"("createdAt")`);
 }
 
 async function recordPayoutProviderEvent(input:{payoutId:string;providerEventId:string;eventType:string;providerObjectId?:string|null;status?:string|null;failureReason?:string|null;payload?:unknown}){
- await ensurePayoutReconciliationSchema();
- await prisma.$executeRawUnsafe(`INSERT INTO "MarketplacePayoutProviderEvent" ("id","payoutId","providerEventId","eventType","providerObjectId","status","failureReason","payload") VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb) ON CONFLICT ("providerEventId") DO NOTHING`,randomUUID(),input.payoutId,input.providerEventId,input.eventType,input.providerObjectId??null,input.status??null,input.failureReason??null,JSON.stringify(input.payload??{}));
+  await ensurePayoutReconciliationSchema();
+  await prisma.$executeRawUnsafe(`INSERT INTO "MarketplacePayoutProviderEvent" ("id","payoutId","providerEventId","eventType","providerObjectId","status","failureReason","payload") VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb) ON CONFLICT ("providerEventId") DO NOTHING`,randomUUID(),input.payoutId,input.providerEventId,input.eventType,input.providerObjectId??null,input.status??null,input.failureReason??null,JSON.stringify(input.payload??{}));
 }
 async function sellerRow(userId:string){const r=await prisma.$queryRawUnsafe<Array<any>>(`SELECT * FROM "MarketplaceSellerAccount" WHERE "userId"=$1 LIMIT 1`,userId);return r[0]??null}
 export async function refreshStripeSellerAccount(userId:string){const row=await sellerRow(userId);if(!row?.providerAccountId)return null;const account=await getSellerStripeAccount(String(row.providerAccountId));const state=recipientState(account);await prisma.$executeRawUnsafe(`UPDATE "MarketplaceSellerAccount" SET "detailsSubmitted"=$1,"chargesEnabled"=$2,"payoutsEnabled"=$3,"onboardingStatus"=$4,"updatedAt"=CURRENT_TIMESTAMP WHERE "userId"=$5`,state.detailsSubmitted,state.chargesEnabled,state.payoutsEnabled,state.onboardingStatus,userId);return state}
@@ -41,128 +41,128 @@ export async function refundMarketplacePayment(paymentIntentId:string,amountMino
 export async function transferMarketplacePayout(input:{sellerId:string;orderId:string;amountMinor:number;currency:string;idempotencyKey:string}){const row=await sellerRow(input.sellerId);if(!row?.providerAccountId)throw new Error("seller_payment_account_missing");const acct=await getSellerStripeAccount(String(row.providerAccountId));const state=await syncSeller(input.sellerId,acct);if(!state.payoutsEnabled)throw new Error("seller_payouts_not_enabled");const p=new URLSearchParams();p.set("amount",String(input.amountMinor));p.set("currency",input.currency.toLowerCase());p.set("destination",String(row.providerAccountId));p.set("transfer_group",input.orderId);p.set("metadata[pa_marketplace_order_id]",input.orderId);const j=await stripe("/v1/transfers",p,input.idempotencyKey);return{id:String(j.id)}}
 export async function transferVacationDepositPayout(input:{sellerId:string;reservationId:string;payoutId:string;amountMinor:number;currency:string;idempotencyKey:string}){const row=await sellerRow(input.sellerId);if(!row?.providerAccountId)throw new Error("seller_payment_account_missing");const acct=await getSellerStripeAccount(String(row.providerAccountId));const state=await syncSeller(input.sellerId,acct);if(!state.payoutsEnabled)throw new Error("seller_payouts_not_enabled");const p=new URLSearchParams();p.set("amount",String(input.amountMinor));p.set("currency",input.currency.toLowerCase());p.set("destination",String(row.providerAccountId));p.set("transfer_group",`vacation:${input.reservationId}`);p.set("metadata[pa_vacation_reservation_id]",input.reservationId);p.set("metadata[pa_vacation_deposit_payout_id]",input.payoutId);const j=await stripe("/v1/transfers",p,input.idempotencyKey);return{id:String(j.id)}}
 export async function handleMarketplaceStripeEvent(type:string,obj:any,eventId?:string,accountId?:string){
- const orderId=String(obj?.metadata?.pa_marketplace_order_id??"");
- if((type.startsWith("transfer.")||type.startsWith("payout."))&&!orderId){
- await ensurePayoutReconciliationSchema();
- const providerObjectId=typeof obj?.id==="string"?obj.id:null;
- await prisma.$executeRawUnsafe(`INSERT INTO "MarketplaceUnmatchedProviderEvent" ("id","providerEventId","eventType","providerObjectId","accountId","reason","payload") VALUES ($1,$2,$3,$4,$5,'missing_order_metadata',$6::jsonb) ON CONFLICT ("providerEventId") DO NOTHING`,randomUUID(),eventId??`${type}:${providerObjectId??randomUUID()}`,type,providerObjectId,accountId??null,JSON.stringify(obj??{}));
- return true;
- }
- if(!orderId)return false;
- if(type.startsWith("transfer.")||type.startsWith("payout.")){
- await ensurePayoutReconciliationSchema();
- const payouts=await prisma.$queryRawUnsafe<Array<{id:string;status:string;providerPayoutId:string|null}>>(`SELECT "id","status"::text AS "status","providerPayoutId" FROM "MarketplacePayout" WHERE "orderId"=$1 LIMIT 1`,orderId);
- const local=payouts[0];
- if(!local)return true;
- const providerObjectId=typeof obj?.id==="string"?obj.id:null;
- const failureReason=String(obj?.failure_message??obj?.failure_code??obj?.reason??"").slice(0,500)||null;
- let nextStatus:string|null=null;
- if(type==="transfer.reversed"||type==="payout.failed"||type==="payout.canceled")nextStatus="FAILED";
- if(type==="payout.paid")nextStatus="PAID";
- await recordPayoutProviderEvent({payoutId:local.id,providerEventId:eventId??`${type}:${providerObjectId??orderId}`,eventType:type,providerObjectId,status:nextStatus??local.status,failureReason,payload:obj});
- if(nextStatus){
- await prisma.$executeRawUnsafe(`UPDATE "MarketplacePayout" SET "status"=$1::"PayoutStatus","failureReason"=$2,"lastProviderEvent"=$3,"lastProviderEventAt"=CURRENT_TIMESTAMP,"paidAt"=CASE WHEN $1='PAID' THEN COALESCE("paidAt",CURRENT_TIMESTAMP) ELSE "paidAt" END,"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$4`,nextStatus,failureReason,type,local.id);
- }else{
- await prisma.$executeRawUnsafe(`UPDATE "MarketplacePayout" SET "lastProviderEvent"=$1,"lastProviderEventAt"=CURRENT_TIMESTAMP,"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$2`,type,local.id);
- }
- if(nextStatus==="PAID"||nextStatus==="FAILED"){
- const orderRows=await prisma.$queryRawUnsafe<Array<{sellerId:string;orderNumber:string}>>(`SELECT "sellerId","orderNumber" FROM "MarketplaceOrder" WHERE "id"=$1 LIMIT 1`,orderId);
- const orderRow=orderRows[0];
- if(orderRow)await deliverUserEvent({userId:orderRow.sellerId,eventKind:"LISTING",notificationKind:"SYSTEM",title:nextStatus==="PAID"?"Versement effectué":"Incident de versement",body:nextStatus==="PAID"?`Le versement de la commande ${orderRow.orderNumber} a été confirmé.`:`Le versement de la commande ${orderRow.orderNumber} nécessite une nouvelle vérification. Aucun nouveau débit n’est demandé.`,actionUrl:`/commandes/${orderId}#versement`,transactional:true,metadata:{orderId,payoutStatus:nextStatus}}).catch(()=>undefined);
- }
- return true;
- }
- const rows=await prisma.$queryRawUnsafe<Array<{id:string;listingId:string;buyerId:string;sellerId:string;orderNumber:string;status:string;totalAmountMinor:number;currency:string}>>(`SELECT "id","listingId","buyerId","sellerId","orderNumber","status"::text AS "status","totalAmountMinor","currency" FROM "MarketplaceOrder" WHERE "id"=$1 LIMIT 1`,orderId);
- const order=rows[0];if(!order)return false;
- if(type==="refund.updated"){
- const providerRefundId=typeof obj?.id==="string"?obj.id:"";const stripeStatus=String(obj?.status??"").toLowerCase();
- if(!providerRefundId)return true;
- const local=await prisma.$queryRawUnsafe<Array<{id:string;paymentId:string;amountMinor:number;idempotencyKey:string;reason:string|null}>>(`SELECT "id","paymentId","amountMinor","idempotencyKey","reason" FROM "MarketplaceRefund" WHERE "orderId"=$1 AND "providerRefundId"=$2 LIMIT 1`,orderId,providerRefundId);
- const refund=local[0];if(!refund)return true;
- const nextStatus=stripeStatus==="succeeded"?"SUCCEEDED":stripeStatus==="failed"?"FAILED":stripeStatus==="canceled"?"CANCELED":"PROCESSING";
- const baseIdempotencyKey=refund.idempotencyKey.split(":retry:")[0]??refund.idempotencyKey;
- const linkedReturnId=baseIdempotencyKey.startsWith("return-refund-")?baseIdempotencyKey.slice("return-refund-".length):null;
- const linkedDisputeId=baseIdempotencyKey.startsWith("dispute-refund-")?baseIdempotencyKey.slice("dispute-refund-".length):null;
- let linkedReturnClosed=false,linkedDisputeClosed=false;
- await prisma.$transaction(async tx=>{
- await tx.$executeRawUnsafe(`UPDATE "MarketplaceRefund" SET "status"=$1::"RefundStatus","updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$2`,nextStatus,refund.id);
- if(nextStatus==="SUCCEEDED"){
- const sums=await tx.$queryRawUnsafe<Array<{refunded:bigint;paymentAmount:number}>>(`SELECT COALESCE((SELECT SUM(r."amountMinor") FROM "MarketplaceRefund" r WHERE r."paymentId"=$1 AND r."status"='SUCCEEDED'),0)::bigint AS "refunded",p."amountMinor" AS "paymentAmount" FROM "MarketplacePayment" p WHERE p."id"=$1 LIMIT 1`,refund.paymentId);
- const refunded=Number(sums[0]?.refunded??0n),paymentAmount=Number(sums[0]?.paymentAmount??0);const full=paymentAmount>0&&refunded>=paymentAmount;
- await tx.$executeRawUnsafe(`UPDATE "MarketplacePayment" SET "status"=$1::"PaymentStatus","updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$2`,full?"REFUNDED":"PARTIALLY_REFUNDED",refund.paymentId);
- if(full)await tx.$executeRawUnsafe(`UPDATE "MarketplaceOrder" SET "status"='REFUNDED',"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$1 AND "status" NOT IN ('CANCELED','REFUNDED')`,orderId);
- if(linkedReturnId){const changed=await tx.$queryRawUnsafe<Array<{id:string}>>(`UPDATE "MarketplaceReturnRequest" SET "status"='REFUNDED',"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$1 AND "orderId"=$2 AND "status"<>'REFUNDED' RETURNING "id"`,linkedReturnId,orderId);linkedReturnClosed=Boolean(changed[0]);}
- if(linkedDisputeId){const changed=await tx.$queryRawUnsafe<Array<{id:string}>>(`UPDATE "MarketplaceDispute" SET "status"='RESOLVED_BUYER',"refundAmountMinor"=COALESCE("refundAmountMinor",$3),"resolvedAt"=COALESCE("resolvedAt",CURRENT_TIMESTAMP),"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$1 AND "orderId"=$2 AND "status"<>'RESOLVED_BUYER' RETURNING "id"`,linkedDisputeId,orderId,refund.amountMinor);linkedDisputeClosed=Boolean(changed[0]);}
- }
- });
- if(linkedDisputeClosed&&linkedDisputeId)await prisma.$executeRawUnsafe(`INSERT INTO "DisputeMessage" ("id","disputeId","authorId","kind","body") VALUES ($1,$2,NULL,'SYSTEM',$3)`,randomUUID(),linkedDisputeId,"Remboursement confirmé par le prestataire · litige résolu en faveur de l’acheteur").catch(()=>undefined);
- if(nextStatus==="SUCCEEDED")await Promise.all([
- deliverUserEvent({userId:order.buyerId,eventKind:"LISTING",notificationKind:"SYSTEM",title:"Remboursement effectué",body:`Le remboursement lié à la commande ${order.orderNumber} a été confirmé.`,actionUrl:`/commandes/${order.id}#retour`,transactional:true,dedupeKey:`refund-status:${refund.id}:SUCCEEDED:buyer`,metadata:{orderId:order.id,refundId:refund.id,refundStatus:nextStatus,linkedReturnClosed,linkedDisputeClosed}}),
- deliverUserEvent({userId:order.sellerId,eventKind:"LISTING",notificationKind:"SYSTEM",title:"Remboursement confirmé",body:`Le remboursement lié à la commande ${order.orderNumber} a été confirmé. Le versement vendeur reste ajusté en conséquence.`,actionUrl:`/commandes/${order.id}#versement`,transactional:true,dedupeKey:`refund-status:${refund.id}:SUCCEEDED:seller`,metadata:{orderId:order.id,refundId:refund.id,refundStatus:nextStatus,linkedReturnClosed,linkedDisputeClosed}}),
- ]).catch(()=>undefined);
- if(nextStatus==="FAILED"||nextStatus==="CANCELED")await deliverUserEvent({userId:order.buyerId,eventKind:"LISTING",notificationKind:"SYSTEM",title:"Remboursement en vérification",body:`Le remboursement de la commande ${order.orderNumber} n’a pas pu être confirmé automatiquement. Le dossier reste suivi par Petit Annonces.`,actionUrl:`/commandes/${order.id}#retour`,transactional:true,dedupeKey:`refund-status:${refund.id}:${nextStatus}:buyer`,metadata:{orderId:order.id,refundId:refund.id,refundStatus:nextStatus}}).catch(()=>undefined);
- return true;
- }
- if(type==="checkout.session.expired"||type==="checkout.session.async_payment_failed"||type==="payment_intent.payment_failed"){
- await prisma.$transaction(async tx=>{
- await tx.$executeRawUnsafe(`UPDATE "MarketplaceOrder" SET "status"='CANCELED',"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$1 AND "status"='PENDING_PAYMENT'`,orderId);
- await tx.$executeRawUnsafe(`UPDATE "MarketplacePayment" SET "status"='FAILED',"updatedAt"=CURRENT_TIMESTAMP WHERE "orderId"=$1 AND "status" IN ('CREATED','REQUIRES_ACTION','AUTHORIZED')`,orderId);
- });
- await deliverUserEvent({userId:order.buyerId,eventKind:"LISTING",notificationKind:"SYSTEM",title:"Paiement non finalisé",body:`Le paiement de la commande ${order.orderNumber} n’a pas abouti. Aucun paiement confirmé n’a été enregistré; vous pouvez réessayer depuis la commande.`,actionUrl:`/commandes/${order.id}`,transactional:true,dedupeKey:`payment-failed:${order.id}:buyer`,metadata:{orderId:order.id,orderStatus:"CANCELED",paymentStatus:"FAILED",paymentProvider:"stripe"}}).catch(()=>undefined);
- return true;
- }
- if(type!=="checkout.session.completed"&&type!=="checkout.session.async_payment_succeeded")return false;
- if(String(obj.payment_status)!=="paid")return true;
- const paymentIntent=typeof obj.payment_intent==="string"?obj.payment_intent:null;
- let captured=false;let refundLate=false;
- await prisma.$transaction(async tx=>{
- const orderLocked=await tx.$queryRawUnsafe<Array<{status:string}>>(`SELECT "status"::text AS "status" FROM "MarketplaceOrder" WHERE "id"=$1 FOR UPDATE`,orderId);
- const paymentLocked=await tx.$queryRawUnsafe<Array<{status:string;providerPaymentId:string|null}>>(`SELECT "status"::text AS "status","providerPaymentId" FROM "MarketplacePayment" WHERE "orderId"=$1 ORDER BY "createdAt" DESC LIMIT 1 FOR UPDATE`,orderId);
- const alreadyPaid=["PAID","PROCESSING","SHIPPED","DELIVERED","COMPLETED","DISPUTED"].includes(String(orderLocked[0]?.status))&&["CAPTURED","PARTIALLY_REFUNDED","REFUNDED"].includes(String(paymentLocked[0]?.status));
- const alreadyRefunded=["CANCELED","REFUNDED"].includes(String(orderLocked[0]?.status))&&["PARTIALLY_REFUNDED","REFUNDED"].includes(String(paymentLocked[0]?.status));
- if(alreadyPaid||alreadyRefunded){
- if(paymentIntent)await tx.$executeRawUnsafe(`UPDATE "MarketplacePayment" SET "providerPaymentId"=COALESCE("providerPaymentId",$2),"updatedAt"=CURRENT_TIMESTAMP WHERE "orderId"=$1`,orderId,paymentIntent);
- return;
- }
- const listingLocked=await tx.$queryRawUnsafe<Array<{status:string}>>(`SELECT "status"::text AS "status" FROM "Listing" WHERE "id"=$1 FOR UPDATE`,order.listingId);
- if(orderLocked[0]?.status!=="PENDING_PAYMENT"||listingLocked[0]?.status!=="PUBLISHED"){
- refundLate=true;
- await tx.$executeRawUnsafe(`UPDATE "MarketplacePayment" SET "status"='CAPTURED',"providerPaymentId"=COALESCE("providerPaymentId",$2),"capturedAt"=COALESCE("capturedAt",CURRENT_TIMESTAMP),"updatedAt"=CURRENT_TIMESTAMP WHERE "orderId"=$1`,orderId,paymentIntent);
- return;
- }
- captured=true;
- await tx.$executeRawUnsafe(`UPDATE "MarketplaceOrder" SET "status"='PAID',"paidAt"=COALESCE("paidAt",CURRENT_TIMESTAMP),"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$1`,orderId);
- await tx.$executeRawUnsafe(`UPDATE "MarketplacePayment" SET "status"='CAPTURED',"providerPaymentId"=COALESCE("providerPaymentId",$2),"capturedAt"=COALESCE("capturedAt",CURRENT_TIMESTAMP),"updatedAt"=CURRENT_TIMESTAMP WHERE "orderId"=$1`,orderId,paymentIntent);
- await tx.$executeRawUnsafe(`UPDATE "Listing" SET "status"='SOLD',"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$1 AND "status"='PUBLISHED'`,order.listingId);
- });
- if(refundLate&&paymentIntent){
- try{
- const refund=await refundMarketplacePayment(paymentIntent,order.totalAmountMinor,`late-marketplace-refund-${order.id}`,order.id);
- await prisma.$transaction(async tx=>{
- await tx.$executeRawUnsafe(`UPDATE "MarketplacePayment" SET "status"='REFUNDED',"updatedAt"=CURRENT_TIMESTAMP WHERE "orderId"=$1`,order.id);
- await tx.$executeRawUnsafe(`UPDATE "MarketplaceOrder" SET "status"='CANCELED',"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$1 AND "status"='PENDING_PAYMENT'`,order.id);
- const refundStatus=String(refund.status).toLowerCase()==="succeeded"?"SUCCEEDED":"PROCESSING";
- await tx.$executeRawUnsafe(`INSERT INTO "MarketplaceRefund" ("id","orderId","paymentId","providerRefundId","amountMinor","currency","reason","status","idempotencyKey") SELECT $1,$2,p."id",$3,$4,$5,'Paiement reçu après expiration/réservation concurrente',$6::"RefundStatus",$7 FROM "MarketplacePayment" p WHERE p."orderId"=$2 ORDER BY p."createdAt" DESC LIMIT 1 ON CONFLICT DO NOTHING`,randomUUID(),order.id,refund.id,order.totalAmountMinor,order.currency,refundStatus,`late-marketplace-refund-${order.id}`);
- });
- }catch{return true;}
- }
- if(captured){const actionUrl=`/commandes/${order.id}`;await Promise.all([deliverUserEvent({userId:order.buyerId,eventKind:"LISTING",notificationKind:"SYSTEM",title:"Paiement confirmé",body:`Le paiement de la commande ${order.orderNumber} est confirmé. Le vendeur peut préparer l’envoi.`,actionUrl,transactional:true,dedupeKey:`payment-paid:${order.id}:buyer`,metadata:{orderId:order.id,orderStatus:"PAID",paymentProvider:"stripe"}}),deliverUserEvent({userId:order.sellerId,eventKind:"LISTING",notificationKind:"SYSTEM",title:"Nouvelle vente",body:`La commande ${order.orderNumber} a été payée. Vous pouvez préparer l’envoi.`,actionUrl,transactional:true,dedupeKey:`payment-paid:${order.id}:seller`,metadata:{orderId:order.id,orderStatus:"PAID",paymentProvider:"stripe"}})])}
- return true;
+  const orderId=String(obj?.metadata?.pa_marketplace_order_id??"");
+  if((type.startsWith("transfer.")||type.startsWith("payout."))&&!orderId){
+    await ensurePayoutReconciliationSchema();
+    const providerObjectId=typeof obj?.id==="string"?obj.id:null;
+    await prisma.$executeRawUnsafe(`INSERT INTO "MarketplaceUnmatchedProviderEvent" ("id","providerEventId","eventType","providerObjectId","accountId","reason","payload") VALUES ($1,$2,$3,$4,$5,'missing_order_metadata',$6::jsonb) ON CONFLICT ("providerEventId") DO NOTHING`,randomUUID(),eventId??`${type}:${providerObjectId??randomUUID()}`,type,providerObjectId,accountId??null,JSON.stringify(obj??{}));
+    return true;
+  }
+  if(!orderId)return false;
+  if(type.startsWith("transfer.")||type.startsWith("payout.")){
+    await ensurePayoutReconciliationSchema();
+    const payouts=await prisma.$queryRawUnsafe<Array<{id:string;status:string;providerPayoutId:string|null}>>(`SELECT "id","status"::text AS "status","providerPayoutId" FROM "MarketplacePayout" WHERE "orderId"=$1 LIMIT 1`,orderId);
+    const local=payouts[0];
+    if(!local)return true;
+    const providerObjectId=typeof obj?.id==="string"?obj.id:null;
+    const failureReason=String(obj?.failure_message??obj?.failure_code??obj?.reason??"").slice(0,500)||null;
+    let nextStatus:string|null=null;
+    if(type==="transfer.reversed"||type==="payout.failed"||type==="payout.canceled")nextStatus="FAILED";
+    if(type==="payout.paid")nextStatus="PAID";
+    await recordPayoutProviderEvent({payoutId:local.id,providerEventId:eventId??`${type}:${providerObjectId??orderId}`,eventType:type,providerObjectId,status:nextStatus??local.status,failureReason,payload:obj});
+    if(nextStatus){
+      await prisma.$executeRawUnsafe(`UPDATE "MarketplacePayout" SET "status"=$1::"PayoutStatus","failureReason"=$2,"lastProviderEvent"=$3,"lastProviderEventAt"=CURRENT_TIMESTAMP,"paidAt"=CASE WHEN $1='PAID' THEN COALESCE("paidAt",CURRENT_TIMESTAMP) ELSE "paidAt" END,"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$4`,nextStatus,failureReason,type,local.id);
+    }else{
+      await prisma.$executeRawUnsafe(`UPDATE "MarketplacePayout" SET "lastProviderEvent"=$1,"lastProviderEventAt"=CURRENT_TIMESTAMP,"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$2`,type,local.id);
+    }
+    if(nextStatus==="PAID"||nextStatus==="FAILED"){
+      const orderRows=await prisma.$queryRawUnsafe<Array<{sellerId:string;orderNumber:string}>>(`SELECT "sellerId","orderNumber" FROM "MarketplaceOrder" WHERE "id"=$1 LIMIT 1`,orderId);
+      const orderRow=orderRows[0];
+      if(orderRow)await deliverUserEvent({userId:orderRow.sellerId,eventKind:"LISTING",notificationKind:"SYSTEM",title:nextStatus==="PAID"?"Versement effectué":"Incident de versement",body:nextStatus==="PAID"?`Le versement de la commande ${orderRow.orderNumber} a été confirmé.`:`Le versement de la commande ${orderRow.orderNumber} nécessite une nouvelle vérification. Aucun nouveau débit n’est demandé.`,actionUrl:`/commandes/${orderId}#versement`,transactional:true,metadata:{orderId,payoutStatus:nextStatus}}).catch(()=>undefined);
+    }
+    return true;
+  }
+  const rows=await prisma.$queryRawUnsafe<Array<{id:string;listingId:string;buyerId:string;sellerId:string;orderNumber:string;status:string;totalAmountMinor:number;currency:string}>>(`SELECT "id","listingId","buyerId","sellerId","orderNumber","status"::text AS "status","totalAmountMinor","currency" FROM "MarketplaceOrder" WHERE "id"=$1 LIMIT 1`,orderId);
+  const order=rows[0];if(!order)return false;
+  if(type==="refund.updated"){
+    const providerRefundId=typeof obj?.id==="string"?obj.id:"";const stripeStatus=String(obj?.status??"").toLowerCase();
+    if(!providerRefundId)return true;
+    const local=await prisma.$queryRawUnsafe<Array<{id:string;paymentId:string;amountMinor:number;idempotencyKey:string;reason:string|null}>>(`SELECT "id","paymentId","amountMinor","idempotencyKey","reason" FROM "MarketplaceRefund" WHERE "orderId"=$1 AND "providerRefundId"=$2 LIMIT 1`,orderId,providerRefundId);
+    const refund=local[0];if(!refund)return true;
+    const nextStatus=stripeStatus==="succeeded"?"SUCCEEDED":stripeStatus==="failed"?"FAILED":stripeStatus==="canceled"?"CANCELED":"PROCESSING";
+    const baseIdempotencyKey=refund.idempotencyKey.split(":retry:")[0]??refund.idempotencyKey;
+    const linkedReturnId=baseIdempotencyKey.startsWith("return-refund-")?baseIdempotencyKey.slice("return-refund-".length):null;
+    const linkedDisputeId=baseIdempotencyKey.startsWith("dispute-refund-")?baseIdempotencyKey.slice("dispute-refund-".length):null;
+    let linkedReturnClosed=false,linkedDisputeClosed=false;
+    await prisma.$transaction(async tx=>{
+      await tx.$executeRawUnsafe(`UPDATE "MarketplaceRefund" SET "status"=$1::"RefundStatus","updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$2`,nextStatus,refund.id);
+      if(nextStatus==="SUCCEEDED"){
+        const sums=await tx.$queryRawUnsafe<Array<{refunded:bigint;paymentAmount:number}>>(`SELECT COALESCE((SELECT SUM(r."amountMinor") FROM "MarketplaceRefund" r WHERE r."paymentId"=$1 AND r."status"='SUCCEEDED'),0)::bigint AS "refunded",p."amountMinor" AS "paymentAmount" FROM "MarketplacePayment" p WHERE p."id"=$1 LIMIT 1`,refund.paymentId);
+        const refunded=Number(sums[0]?.refunded??0n),paymentAmount=Number(sums[0]?.paymentAmount??0);const full=paymentAmount>0&&refunded>=paymentAmount;
+        await tx.$executeRawUnsafe(`UPDATE "MarketplacePayment" SET "status"=$1::"PaymentStatus","updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$2`,full?"REFUNDED":"PARTIALLY_REFUNDED",refund.paymentId);
+        if(full)await tx.$executeRawUnsafe(`UPDATE "MarketplaceOrder" SET "status"='REFUNDED',"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$1 AND "status" NOT IN ('CANCELED','REFUNDED')`,orderId);
+        if(linkedReturnId){const changed=await tx.$queryRawUnsafe<Array<{id:string}>>(`UPDATE "MarketplaceReturnRequest" SET "status"='REFUNDED',"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$1 AND "orderId"=$2 AND "status"<>'REFUNDED' RETURNING "id"`,linkedReturnId,orderId);linkedReturnClosed=Boolean(changed[0]);}
+        if(linkedDisputeId){const changed=await tx.$queryRawUnsafe<Array<{id:string}>>(`UPDATE "MarketplaceDispute" SET "status"='RESOLVED_BUYER',"refundAmountMinor"=COALESCE("refundAmountMinor",$3),"resolvedAt"=COALESCE("resolvedAt",CURRENT_TIMESTAMP),"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$1 AND "orderId"=$2 AND "status"<>'RESOLVED_BUYER' RETURNING "id"`,linkedDisputeId,orderId,refund.amountMinor);linkedDisputeClosed=Boolean(changed[0]);}
+      }
+    });
+    if(linkedDisputeClosed&&linkedDisputeId)await prisma.$executeRawUnsafe(`INSERT INTO "DisputeMessage" ("id","disputeId","authorId","kind","body") VALUES ($1,$2,NULL,'SYSTEM',$3)`,randomUUID(),linkedDisputeId,"Remboursement confirmé par le prestataire · litige résolu en faveur de l’acheteur").catch(()=>undefined);
+    if(nextStatus==="SUCCEEDED")await Promise.all([
+      deliverUserEvent({userId:order.buyerId,eventKind:"LISTING",notificationKind:"SYSTEM",title:"Remboursement effectué",body:`Le remboursement lié à la commande ${order.orderNumber} a été confirmé.`,actionUrl:`/commandes/${order.id}#retour`,transactional:true,dedupeKey:`refund-status:${refund.id}:SUCCEEDED:buyer`,metadata:{orderId:order.id,refundId:refund.id,refundStatus:nextStatus,linkedReturnClosed,linkedDisputeClosed}}),
+      deliverUserEvent({userId:order.sellerId,eventKind:"LISTING",notificationKind:"SYSTEM",title:"Remboursement confirmé",body:`Le remboursement lié à la commande ${order.orderNumber} a été confirmé. Le versement vendeur reste ajusté en conséquence.`,actionUrl:`/commandes/${order.id}#versement`,transactional:true,dedupeKey:`refund-status:${refund.id}:SUCCEEDED:seller`,metadata:{orderId:order.id,refundId:refund.id,refundStatus:nextStatus,linkedReturnClosed,linkedDisputeClosed}}),
+    ]).catch(()=>undefined);
+    if(nextStatus==="FAILED"||nextStatus==="CANCELED")await deliverUserEvent({userId:order.buyerId,eventKind:"LISTING",notificationKind:"SYSTEM",title:"Remboursement en vérification",body:`Le remboursement de la commande ${order.orderNumber} n’a pas pu être confirmé automatiquement. Le dossier reste suivi par Petit Annonces.`,actionUrl:`/commandes/${order.id}#retour`,transactional:true,dedupeKey:`refund-status:${refund.id}:${nextStatus}:buyer`,metadata:{orderId:order.id,refundId:refund.id,refundStatus:nextStatus}}).catch(()=>undefined);
+    return true;
+  }
+  if(type==="checkout.session.expired"||type==="checkout.session.async_payment_failed"||type==="payment_intent.payment_failed"){
+    await prisma.$transaction(async tx=>{
+      await tx.$executeRawUnsafe(`UPDATE "MarketplaceOrder" SET "status"='CANCELED',"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$1 AND "status"='PENDING_PAYMENT'`,orderId);
+      await tx.$executeRawUnsafe(`UPDATE "MarketplacePayment" SET "status"='FAILED',"updatedAt"=CURRENT_TIMESTAMP WHERE "orderId"=$1 AND "status" IN ('CREATED','REQUIRES_ACTION','AUTHORIZED')`,orderId);
+    });
+    await deliverUserEvent({userId:order.buyerId,eventKind:"LISTING",notificationKind:"SYSTEM",title:"Paiement non finalisé",body:`Le paiement de la commande ${order.orderNumber} n’a pas abouti. Aucun paiement confirmé n’a été enregistré; vous pouvez réessayer depuis la commande.`,actionUrl:`/commandes/${order.id}`,transactional:true,dedupeKey:`payment-failed:${order.id}:buyer`,metadata:{orderId:order.id,orderStatus:"CANCELED",paymentStatus:"FAILED",paymentProvider:"stripe"}}).catch(()=>undefined);
+    return true;
+  }
+  if(type!=="checkout.session.completed"&&type!=="checkout.session.async_payment_succeeded")return false;
+  if(String(obj.payment_status)!=="paid")return true;
+  const paymentIntent=typeof obj.payment_intent==="string"?obj.payment_intent:null;
+  let captured=false;let refundLate=false;
+  await prisma.$transaction(async tx=>{
+    const orderLocked=await tx.$queryRawUnsafe<Array<{status:string}>>(`SELECT "status"::text AS "status" FROM "MarketplaceOrder" WHERE "id"=$1 FOR UPDATE`,orderId);
+    const paymentLocked=await tx.$queryRawUnsafe<Array<{status:string;providerPaymentId:string|null}>>(`SELECT "status"::text AS "status","providerPaymentId" FROM "MarketplacePayment" WHERE "orderId"=$1 ORDER BY "createdAt" DESC LIMIT 1 FOR UPDATE`,orderId);
+    const alreadyPaid=["PAID","PROCESSING","SHIPPED","DELIVERED","COMPLETED","DISPUTED"].includes(String(orderLocked[0]?.status))&&["CAPTURED","PARTIALLY_REFUNDED","REFUNDED"].includes(String(paymentLocked[0]?.status));
+    const alreadyRefunded=["CANCELED","REFUNDED"].includes(String(orderLocked[0]?.status))&&["PARTIALLY_REFUNDED","REFUNDED"].includes(String(paymentLocked[0]?.status));
+    if(alreadyPaid||alreadyRefunded){
+      if(paymentIntent)await tx.$executeRawUnsafe(`UPDATE "MarketplacePayment" SET "providerPaymentId"=COALESCE("providerPaymentId",$2),"updatedAt"=CURRENT_TIMESTAMP WHERE "orderId"=$1`,orderId,paymentIntent);
+      return;
+    }
+    const listingLocked=await tx.$queryRawUnsafe<Array<{status:string}>>(`SELECT "status"::text AS "status" FROM "Listing" WHERE "id"=$1 FOR UPDATE`,order.listingId);
+    if(orderLocked[0]?.status!=="PENDING_PAYMENT"||listingLocked[0]?.status!=="PUBLISHED"){
+      refundLate=true;
+      await tx.$executeRawUnsafe(`UPDATE "MarketplacePayment" SET "status"='CAPTURED',"providerPaymentId"=COALESCE("providerPaymentId",$2),"capturedAt"=COALESCE("capturedAt",CURRENT_TIMESTAMP),"updatedAt"=CURRENT_TIMESTAMP WHERE "orderId"=$1`,orderId,paymentIntent);
+      return;
+    }
+    captured=true;
+    await tx.$executeRawUnsafe(`UPDATE "MarketplaceOrder" SET "status"='PAID',"paidAt"=COALESCE("paidAt",CURRENT_TIMESTAMP),"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$1`,orderId);
+    await tx.$executeRawUnsafe(`UPDATE "MarketplacePayment" SET "status"='CAPTURED',"providerPaymentId"=COALESCE("providerPaymentId",$2),"capturedAt"=COALESCE("capturedAt",CURRENT_TIMESTAMP),"updatedAt"=CURRENT_TIMESTAMP WHERE "orderId"=$1`,orderId,paymentIntent);
+    await tx.$executeRawUnsafe(`UPDATE "Listing" SET "status"='SOLD',"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$1 AND "status"='PUBLISHED'`,order.listingId);
+  });
+  if(refundLate&&paymentIntent){
+    try{
+      const refund=await refundMarketplacePayment(paymentIntent,order.totalAmountMinor,`late-marketplace-refund-${order.id}`,order.id);
+      await prisma.$transaction(async tx=>{
+        await tx.$executeRawUnsafe(`UPDATE "MarketplacePayment" SET "status"='REFUNDED',"updatedAt"=CURRENT_TIMESTAMP WHERE "orderId"=$1`,order.id);
+        await tx.$executeRawUnsafe(`UPDATE "MarketplaceOrder" SET "status"='CANCELED',"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$1 AND "status"='PENDING_PAYMENT'`,order.id);
+        const refundStatus=String(refund.status).toLowerCase()==="succeeded"?"SUCCEEDED":"PROCESSING";
+        await tx.$executeRawUnsafe(`INSERT INTO "MarketplaceRefund" ("id","orderId","paymentId","providerRefundId","amountMinor","currency","reason","status","idempotencyKey") SELECT $1,$2,p."id",$3,$4,$5,'Paiement reçu après expiration/réservation concurrente',$6::"RefundStatus",$7 FROM "MarketplacePayment" p WHERE p."orderId"=$2 ORDER BY p."createdAt" DESC LIMIT 1 ON CONFLICT DO NOTHING`,randomUUID(),order.id,refund.id,order.totalAmountMinor,order.currency,refundStatus,`late-marketplace-refund-${order.id}`);
+      });
+    }catch{return true;}
+  }
+  if(captured){const actionUrl=`/commandes/${order.id}`;await Promise.all([deliverUserEvent({userId:order.buyerId,eventKind:"LISTING",notificationKind:"SYSTEM",title:"Paiement confirmé",body:`Le paiement de la commande ${order.orderNumber} est confirmé. Le vendeur peut préparer l’envoi.`,actionUrl,transactional:true,dedupeKey:`payment-paid:${order.id}:buyer`,metadata:{orderId:order.id,orderStatus:"PAID",paymentProvider:"stripe"}}),deliverUserEvent({userId:order.sellerId,eventKind:"LISTING",notificationKind:"SYSTEM",title:"Nouvelle vente",body:`La commande ${order.orderNumber} a été payée. Vous pouvez préparer l’envoi.`,actionUrl,transactional:true,dedupeKey:`payment-paid:${order.id}:seller`,metadata:{orderId:order.id,orderStatus:"PAID",paymentProvider:"stripe"}})])}
+  return true;
 }
 
 export async function reconcileMarketplaceOrderPayment(orderId:string){
- const rows=await prisma.$queryRawUnsafe<Array<{id:string;status:string;providerCheckoutId:string|null;paymentProvider:string|null;totalAmountMinor:number}>>(`SELECT "id","status"::text AS "status","providerCheckoutId","paymentProvider","totalAmountMinor" FROM "MarketplaceOrder" WHERE "id"=$1 LIMIT 1`,orderId);
- const order=rows[0];
- if(!order)return{reconciled:false,reason:"order_not_found"};
- if(order.status!=="PENDING_PAYMENT")return{reconciled:false,status:order.status};
- if(order.paymentProvider!=="stripe-connect"||!order.providerCheckoutId)return{reconciled:false,reason:"stripe_checkout_missing"};
- const session=await stripeGet(`/v1/checkout/sessions/${encodeURIComponent(order.providerCheckoutId)}`);
- if(String(session?.metadata?.pa_marketplace_order_id??"")!==order.id)return{reconciled:false,reason:"order_metadata_mismatch"};
- if(Number(session?.amount_total??-1)!==Number(order.totalAmountMinor))return{reconciled:false,reason:"amount_mismatch"};
- if(String(session?.status)!=="complete"||String(session?.payment_status)!=="paid")return{reconciled:false,status:order.status,reason:"payment_not_paid"};
- await handleMarketplaceStripeEvent("checkout.session.completed",session,`reconcile:${String(session.id??order.providerCheckoutId)}`);
- const after=await prisma.$queryRawUnsafe<Array<{status:string}>>(`SELECT "status"::text AS "status" FROM "MarketplaceOrder" WHERE "id"=$1 LIMIT 1`,orderId);
- return{reconciled:true,status:after[0]?.status??order.status};
+  const rows=await prisma.$queryRawUnsafe<Array<{id:string;status:string;providerCheckoutId:string|null;paymentProvider:string|null;totalAmountMinor:number}>>(`SELECT "id","status"::text AS "status","providerCheckoutId","paymentProvider","totalAmountMinor" FROM "MarketplaceOrder" WHERE "id"=$1 LIMIT 1`,orderId);
+  const order=rows[0];
+  if(!order)return{reconciled:false,reason:"order_not_found"};
+  if(order.status!=="PENDING_PAYMENT")return{reconciled:false,status:order.status};
+  if(order.paymentProvider!=="stripe-connect"||!order.providerCheckoutId)return{reconciled:false,reason:"stripe_checkout_missing"};
+  const session=await stripeGet(`/v1/checkout/sessions/${encodeURIComponent(order.providerCheckoutId)}`);
+  if(String(session?.metadata?.pa_marketplace_order_id??"")!==order.id)return{reconciled:false,reason:"order_metadata_mismatch"};
+  if(Number(session?.amount_total??-1)!==Number(order.totalAmountMinor))return{reconciled:false,reason:"amount_mismatch"};
+  if(String(session?.status)!=="complete"||String(session?.payment_status)!=="paid")return{reconciled:false,status:order.status,reason:"payment_not_paid"};
+  await handleMarketplaceStripeEvent("checkout.session.completed",session,`reconcile:${String(session.id??order.providerCheckoutId)}`);
+  const after=await prisma.$queryRawUnsafe<Array<{status:string}>>(`SELECT "status"::text AS "status" FROM "MarketplaceOrder" WHERE "id"=$1 LIMIT 1`,orderId);
+  return{reconciled:true,status:after[0]?.status??order.status};
 }
 
 export async function registerMarketplaceStripeRoutes(app:FastifyInstance){app.get("/marketplace/seller/payouts",async(request,reply)=>{const user=await currentUser(request,reply);if(!user)return;const rows=await prisma.$queryRawUnsafe<Array<Record<string,any>>>(`SELECT o."id",o."orderNumber",o."sellerNetMinor",o."currency",o."status" AS "orderStatus",o."createdAt",bp."endsAt" AS "protectionEndsAt",bp."payoutEligibleAt",po."status" AS "payoutStatus",po."paidAt" AS "payoutPaidAt",CASE WHEN po."status"='PAID' THEN 'PAID' WHEN po."status"='PROCESSING' THEN 'PROCESSING' WHEN po."status"='FAILED' THEN 'FAILED' WHEN po."status"='BLOCKED' AND po."failureReason"='PROVIDER_PENDING' THEN 'PROVIDER_PENDING' WHEN po."status"='BLOCKED' AND po."failureReason"='SHIPMENT_NOT_DELIVERED' THEN 'BLOCKED_SHIPMENT' WHEN po."status"='BLOCKED' AND po."failureReason" IN ('RISK_REVIEW_REQUIRED','RISK_REVIEW_REJECTED') THEN 'BLOCKED_RISK_REVIEW' WHEN EXISTS(SELECT 1 FROM "MarketplaceOrderRiskReview" cr WHERE cr."orderId"=o."id" AND cr."payoutGate"='HOLD' AND COALESCE(cr."payoutResolution",'')<>'APPROVED') THEN 'BLOCKED_RISK_REVIEW' WHEN po."status"='BLOCKED' THEN 'BLOCKED' WHEN EXISTS(SELECT 1 FROM "MarketplaceDispute" d WHERE d."orderId"=o."id" AND d."status" NOT IN ('RESOLVED_BUYER','RESOLVED_SELLER','CLOSED')) THEN 'BLOCKED_DISPUTE' WHEN EXISTS(SELECT 1 FROM "MarketplaceReturnRequest" rr WHERE rr."orderId"=o."id" AND rr."status" IN ('OPEN','APPROVED','PROCESSING')) THEN 'BLOCKED_RETURN' WHEN EXISTS(SELECT 1 FROM "MarketplaceRefund" rf WHERE rf."orderId"=o."id" AND rf."status" IN ('PENDING','PROCESSING')) THEN 'BLOCKED_REFUND' WHEN EXISTS(SELECT 1 FROM "MarketplacePayment" mp2 WHERE mp2."orderId"=o."id" AND mp2."status"='PARTIALLY_REFUNDED') THEN 'BLOCKED_PARTIAL_REFUND' WHEN o."status"='COMPLETED' AND NOT EXISTS(SELECT 1 FROM "MarketplaceShipment" ms WHERE ms."orderId"=o."id" AND ms."status"='DELIVERED') THEN 'BLOCKED_SHIPMENT' WHEN o."status"<>'COMPLETED' THEN 'WAITING_COMPLETION' WHEN NOT EXISTS(SELECT 1 FROM "MarketplaceSellerAccount" msa WHERE msa."userId"=o."sellerId" AND msa."onboardingStatus"='ACTIVE' AND msa."payoutsEnabled"=TRUE AND msa."detailsSubmitted"=TRUE) THEN 'BANK_REQUIRED' WHEN bp."payoutEligibleAt" IS NULL THEN 'SCHEDULE_PENDING' WHEN bp."payoutEligibleAt">CURRENT_TIMESTAMP THEN 'SCHEDULED' ELSE 'READY' END AS "payoutState" FROM "MarketplaceOrder" o LEFT JOIN "BuyerProtectionWindow" bp ON bp."orderId"=o."id" LEFT JOIN "MarketplacePayout" po ON po."orderId"=o."id" WHERE o."sellerId"=$1 AND o."status" NOT IN ('PENDING_PAYMENT','CANCELED') ORDER BY o."createdAt" DESC LIMIT 100`,user.id);const summary=rows.reduce((a:any,r:any)=>{const n=Number(r.sellerNetMinor??0);if(r.payoutState==='PAID')a.paidMinor+=n;else if(r.payoutState==='READY')a.readyMinor+=n;else if(['SCHEDULED','WAITING_COMPLETION','SCHEDULE_PENDING','PROVIDER_PENDING','BANK_REQUIRED'].includes(String(r.payoutState)))a.scheduledMinor+=n;else if(String(r.payoutState).startsWith('BLOCKED'))a.blockedMinor+=n;return a},{paidMinor:0,readyMinor:0,scheduledMinor:0,blockedMinor:0});return reply.send({summary,items:rows})});app.get("/marketplace/seller/payment-account",async(request,reply)=>{const user=await currentUser(request,reply);if(!user)return;const marketplace=await getRuntimeIntegration("marketplace-payment");const provider=String(marketplace?.config.provider??"").toLowerCase();if(provider==="mangopay"){const configured=Boolean(marketplace?.enabled&&String(marketplace.config.clientId??"").trim()&&String(marketplace.secrets.apiKey??"").trim());const rows=await prisma.$queryRawUnsafe<Array<{kycLevel:string;recipientStatus:string;payoutsEnabled:boolean;bankLast4:string|null;bankName:string|null;userStatus:string;providerUserId:string|null}>>(`SELECT "kycLevel","recipientStatus","payoutsEnabled","bankLast4","bankName","userStatus","providerUserId" FROM "MarketplaceSellerPayoutProfile" WHERE "userId"=$1 LIMIT 1`,user.id);const p=rows[0]??null;return reply.send({provider:"mangopay",configured,onboardingAvailable:false,account:p?{detailsSubmitted:p.kycLevel==="REGULAR",chargesEnabled:Boolean(p.providerUserId),payoutsEnabled:p.payoutsEnabled,onboardingStatus:p.userStatus,bankLast4:p.bankLast4,bankName:p.bankName,kycLevel:p.kycLevel,recipientStatus:p.recipientStatus}:null})}const configured=await stripeMarketplaceConfigured();if(!configured)return reply.send({provider:provider||"payout",configured:false,account:null});const row=await sellerRow(user.id);if(!row)return reply.send({provider:"stripe-connect",configured:true,account:null});try{const acct=await getSellerStripeAccount(String(row.providerAccountId));return reply.send({provider:"stripe-connect",configured:true,account:await syncSeller(user.id,acct)})}catch{return reply.send({provider:"stripe-connect",configured:true,account:{onboardingStatus:row.onboardingStatus,payoutsEnabled:row.payoutsEnabled,detailsSubmitted:row.detailsSubmitted}})}});app.post("/marketplace/seller/onboarding",async(request,reply)=>{const user=await currentUser(request,reply);if(!user)return;const marketplace=await getRuntimeIntegration("marketplace-payment");const provider=String(marketplace?.config.provider??"").toLowerCase();if(provider==="mangopay")return reply.code(503).send({error:marketplace?.enabled?"mangopay_onboarding_adapter_pending":"mangopay_not_configured"});if(!await stripeMarketplaceConfigured())return reply.code(503).send({error:"stripe_marketplace_not_configured"});let row=await sellerRow(user.id);try{if(!row){let accountId:string|null=null;try{const acct=await stripeV2("/v2/core/accounts",{contact_email:user.email,display_name:user.email.split("@")[0]||"Vendeur Petit Annonces",defaults:{responsibilities:{fees_collector:"application",losses_collector:"application"}},dashboard:"express",identity:{country:"fr"},configuration:{recipient:{capabilities:{stripe_balance:{stripe_transfers:{requested:true}}}}},include:["configuration.recipient","identity","requirements"],metadata:{pa_user_id:user.id}},`pa-seller-v2-${user.id}`);accountId=String(acct.id)}catch(v2Error:any){if(isAccountsV2Unavailable(String(v2Error?.message??""))){const p=new URLSearchParams();p.set("country","FR");p.set("email",user.email);p.set("controller[fees][payer]","application");p.set("controller[losses][payments]","application");p.set("controller[stripe_dashboard][type]","express");p.set("capabilities[transfers][requested]","true");p.set("metadata[pa_user_id]",user.id);const acct=await stripe("/v1/accounts",p,`pa-seller-v1-${user.id}`);accountId=String(acct.id)}else throw v2Error}if(!accountId)throw new Error("stripe_account_creation_failed");await prisma.$executeRawUnsafe(`INSERT INTO "MarketplaceSellerAccount" ("id","userId","providerAccountId") VALUES ($1,$2,$3)`,randomUUID(),user.id,accountId);row=await sellerRow(user.id)}let link:any;try{link=await stripeV2("/v2/core/account_links",{account:String(row.providerAccountId),use_case:{type:"account_onboarding",account_onboarding:{configurations:["recipient"],refresh_url:"https://petitannonces.fr/mon-compte/paiements?iban=refresh",return_url:"https://petitannonces.fr/mon-compte/paiements?iban=return"}}})}catch(v2LinkError:any){if(isAccountsV2Unavailable(String(v2LinkError?.message??""))){const p=new URLSearchParams();p.set("account",String(row.providerAccountId));p.set("refresh_url","https://petitannonces.fr/mon-compte/paiements?iban=refresh");p.set("return_url","https://petitannonces.fr/mon-compte/paiements?iban=return");p.set("type","account_onboarding");link=await stripe("/v1/account_links",p)}else throw v2LinkError}return reply.send({url:String(link.url)})}catch(error:any){request.log.error({error},"stripe connect onboarding failed");const m=String(error?.message??"");if(m.includes("platform_controls"))return reply.code(409).send({error:"stripe_platform_liability_required"});if(m.includes("accounts_v2_access_required"))return reply.code(409).send({error:"stripe_accounts_v2_access_required"});return reply.code(503).send({error:"stripe_connect_unavailable"})}})}
