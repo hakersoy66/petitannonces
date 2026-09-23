@@ -20,7 +20,7 @@ jobs:
     environment: production
     env:
       DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
-      PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
+      PRODUCTION_HOST: mail.petitannonces.fr
       PRODUCTION_USER: ${{ secrets.PRODUCTION_USER }}
     steps:
       - uses: actions/checkout@v4
