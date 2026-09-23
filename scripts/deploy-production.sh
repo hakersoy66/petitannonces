@@ -9,8 +9,13 @@ cd "$ROOT"
 
 DEPLOY_SHA="${1:?missing deploy SHA}"
 
-# Refuse to overwrite tracked live edits. Untracked runtime/build files are
-# intentionally ignored because the production tree keeps blue/green outputs.
+# Next.js rewrites next-env.d.ts to the active blue/green dist directory during
+# builds. These generated references are never a human production edit.
+git restore --source=HEAD --worktree -- \
+  apps/web/next-env.d.ts apps/admin/next-env.d.ts 2>/dev/null || true
+
+# Refuse to overwrite any remaining tracked live edits. Untracked runtime/build
+# files are intentionally ignored because production keeps blue/green outputs.
 if ! git diff --quiet --ignore-submodules -- || ! git diff --cached --quiet --ignore-submodules --; then
   echo "Tracked production changes detected; refusing automated deploy." >&2
   git status --short --untracked-files=no >&2
