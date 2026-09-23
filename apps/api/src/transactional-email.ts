@@ -43,7 +43,6 @@ export function nativePasswordResetActionUrl(token: string) {
   return `/app/reset-password?token=${encodeURIComponent(token)}`;
 }
 
-
 export type AdminNotificationRole="SUPER_ADMIN"|"ADMIN"|"MODERATOR"|"SUPPORT"|"FINANCE"|"COMPLIANCE"|"MARKETING";
 
 export async function queueAdminRoleEmail(args:{
