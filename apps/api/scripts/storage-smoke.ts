@@ -6,4 +6,3 @@ const url=await uploadStoredObject(key,"image/png",body);
 console.log(JSON.stringify({configured:true,uploaded:Boolean(url)}));
 await deleteStoredObject(key);
 console.log(JSON.stringify({deleted:true}));
-
