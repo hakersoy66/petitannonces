@@ -15,7 +15,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        slot: [1, 2, 3, 4, 5, 6]
+        slot: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
     runs-on: ubuntu-latest
     timeout-minutes: 8
     environment: production
@@ -42,7 +42,7 @@ jobs:
         shell: bash
         run: |
           set +e
-          for attempt in 1 2 3; do
+          for attempt in 1 2; do
             timeout 10 ssh -o BatchMode=yes -o IdentitiesOnly=yes -o ConnectTimeout=6 \
               "$PRODUCTION_USER@$PRODUCTION_HOST" \
               'set -e
