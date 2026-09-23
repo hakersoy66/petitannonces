@@ -1,0 +1,62 @@
+name: Import Final Production Source Delta
+
+on:
+  push:
+    branches: [production-final-sync-20260923]
+    paths: [".github/workflows/import-final-production-sync.yml"]
+
+permissions:
+  contents: write
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: production-final-sync-20260923
+          fetch-depth: 0
+
+      - name: Download and verify
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 --max-time 30 -o /tmp/production-sync.tar.gz "https://media.petitannonces.fr/internal/source-sync/final-f95c8424-ed6d-4f8f-b1b1-603e54a6d160.tar.gz"
+          echo "a391b405a06b22a1faf0654af6596ba3e1b7e5e36fa550b2c7c68f835ae7e58a  /tmp/production-sync.tar.gz" | sha256sum -c -
+
+      - name: Safety scan and apply
+        run: |
+          set -euo pipefail
+          work="$(mktemp -d)"
+          tar -xzf /tmp/production-sync.tar.gz -C "$work"
+
+          forbidden="$(find "$work" -type f \(             -name '.env' -o \( -name '.env.*' ! -name '.env.example' \) -o             -name '*.pem' -o -name '*.key' -o -name '*.p12' -o -name '*.pfx' -o -name '*.crt' -o             -name '*.log' -o -name '*.bak' -o -name '*.bak.*' -o -name '*.bak-*'           \) -print -quit)"
+          test -z "$forbidden" || { echo "Forbidden file: $forbidden"; exit 1; }
+
+          if grep -RIlE 'sk_live_[A-Za-z0-9]{16,}|rk_live_[A-Za-z0-9]{16,}|whsec_[A-Za-z0-9]{16,}|-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----' "$work" >/dev/null 2>&1; then
+            echo "Potential secret pattern detected"
+            exit 1
+          fi
+
+          deletions="$work/__pa_deletions.txt"
+          rm -f "$work/__pa_deletions.txt"
+          cp -a "$work"/. "$GITHUB_WORKSPACE"/
+
+          if [ -f "$deletions" ]; then
+            while IFS= read -r path; do
+              [ -n "$path" ] || continue
+              case "$path" in
+                apps/*|packages/*|scripts/*|infra/*|docs/*) rm -f -- "$path" ;;
+                *) echo "Unsafe deletion path: $path"; exit 1 ;;
+              esac
+            done < "$deletions"
+          fi
+
+          git config user.name "Petit Annonces Production Sync"
+          git config user.email "hakersoy66@users.noreply.github.com"
+          git add -A
+          git status --short
+          git diff --cached --stat
+          git diff --cached --quiet && exit 0
+          git commit -m "sync: apply final production source delta"
+          git push origin HEAD:production-final-sync-20260923
