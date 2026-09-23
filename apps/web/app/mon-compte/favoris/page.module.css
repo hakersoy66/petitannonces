@@ -3,4 +3,3 @@
 @media(max-width:700px){.grid,.skeletonGrid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px 8px!important}.skeletonGrid i{height:270px!important;border-radius:15px!important}.content{min-width:0!important}.hero{padding:20px!important}.heroSide{padding:14px!important}.quickNav{margin:12px 0 14px!important}}
 @media(max-width:390px){.grid,.skeletonGrid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:9px 7px!important}.skeletonGrid i{height:250px!important}}
 @media(display-mode:standalone){.grid,.skeletonGrid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px 8px!important}}
-

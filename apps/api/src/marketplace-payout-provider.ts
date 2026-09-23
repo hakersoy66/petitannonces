@@ -73,4 +73,3 @@ export async function executeSellerPayout(input:{sellerId:string;orderId:string;
   if(runtime.provider==="mangopay")throw new Error(runtime.configured?"mangopay_payout_adapter_pending":"payout_provider_not_configured");
   throw new Error("payout_provider_not_configured");
 }
-

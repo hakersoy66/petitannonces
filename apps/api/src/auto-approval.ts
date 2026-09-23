@@ -153,4 +153,3 @@ export function startAutoApprovalWorker(log?:{info:(value:unknown,message?:strin
   const tick=async()=>{if(running)return;running=true;try{const result=await processDueAutoApprovals();if(result.approved)log?.info(result,"trusted listings auto-approved")}catch(error){log?.error(error,"listing auto-approval worker failed")}finally{running=false}};
   void tick();const timer=setInterval(()=>void tick(),intervalMs);timer.unref();return timer;
 }
-
