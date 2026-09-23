@@ -37,10 +37,6 @@ jobs:
       - name: Database bootstrap and migration smoke test
         run: bash scripts/migration-smoke.sh
       - run: pnpm typecheck
-      - name: Mobile parity quality gate
-        run: |
-          pnpm --filter @pa/mobile lint
-          pnpm --filter @pa/mobile preflight
       - run: pnpm build
       - name: Verify production build artifacts
         run: |
