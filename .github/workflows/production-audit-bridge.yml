@@ -13,6 +13,7 @@ permissions:
 jobs:
   audit:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     environment: production
     env:
       PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
@@ -34,8 +35,25 @@ jobs:
             > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
-      - name: Read-only production repository audit
+      - name: Verify direct production access
         run: |
-          ssh -o BatchMode=yes -o IdentitiesOnly=yes \
+          timeout 30s ssh -o BatchMode=yes -o IdentitiesOnly=yes -o ConnectTimeout=10 \
             "$PRODUCTION_USER@$PRODUCTION_HOST" \
-            'set -e; echo "WHOAMI=$(whoami)"; echo "HOST=$(hostname -f)"; ROOT=/var/www/petitannonces/repository; test -d "$ROOT/.git"; echo "HEAD=$(git -C "$ROOT" rev-parse HEAD)"; echo "BRANCH=$(git -C "$ROOT" branch --show-current)"; echo "::STATUS::"; git -C "$ROOT" status --short; echo "::DIFFSTAT::"; git -C "$ROOT" diff --stat; echo "::UNTRACKED::"; git -C "$ROOT" ls-files --others --exclude-standard'
+            'set -e; ROOT=/var/www/petitannonces/repository; echo "WHOAMI=$(whoami)"; echo "HOST=$(hostname -f)"; test -d "$ROOT"; echo "HEAD=$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || true)"'
+
+      - name: Snapshot production source
+        run: |
+          timeout 120s ssh -o BatchMode=yes -o IdentitiesOnly=yes -o ConnectTimeout=10 \
+            "$PRODUCTION_USER@$PRODUCTION_HOST" \
+            'set -e; ROOT=/var/www/petitannonces/repository; cd "$ROOT"; items=""; for p in apps packages scripts infra docs package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.json tsconfig.base.json; do [ -e "$p" ] && items="$items $p"; done; test -n "$items"; tar -czf - --exclude="node_modules" --exclude=".git" --exclude=".env" --exclude=".env.*" --exclude="*.pem" --exclude="*.key" --exclude="*.p12" --exclude="*.pfx" --exclude="*.crt" --exclude="*.log" --exclude=".next*" --exclude="dist" --exclude="coverage" $items' \
+            > production-source.tar.gz
+          test -s production-source.tar.gz
+          ls -lh production-source.tar.gz
+
+      - name: Upload production source snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-source-snapshot
+          path: production-source.tar.gz
+          retention-days: 1
+          if-no-files-found: error
