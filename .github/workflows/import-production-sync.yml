@@ -45,6 +45,7 @@ jobs:
           deletions="$work/__pa_deletions.txt"
           rm -f "$work/__pa_deletions.txt"
 
+          rm -rf "$work/.github"
           cp -a "$work"/. "$GITHUB_WORKSPACE"/
 
           if [ -f "$deletions" ]; then
