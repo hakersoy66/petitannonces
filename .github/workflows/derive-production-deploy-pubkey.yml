@@ -1,0 +1,25 @@
+name: Derive Production Deploy Public Key
+
+on:
+  push:
+    branches: [production-sync-20260923]
+    paths:
+      - ".github/workflows/derive-production-deploy-pubkey.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  derive:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Derive public key
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
+        run: |
+          test -n "$SSH_PRIVATE_KEY"
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/production_key
+          chmod 600 ~/.ssh/production_key
+          echo "PRODUCTION_DEPLOY_PUBLIC_KEY=$(ssh-keygen -y -f ~/.ssh/production_key)"
