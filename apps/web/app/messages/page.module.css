@@ -998,3 +998,1076 @@
     min-height:0!important;
     padding:12px 9px 10px!important;
     gap:8px!important;
+    overflow-y:auto!important;
+    overflow-x:hidden!important;
+    overscroll-behavior-y:contain!important;
+  }
+  .bubble{
+    max-width:82%!important;
+    padding:9px 11px!important;
+    border-radius:17px 17px 17px 5px!important;
+  }
+  .mine .bubble{border-radius:17px 17px 5px 17px!important}
+  .bubble p{font-size:11.5px!important}
+  .bubble small{font-size:7.8px!important}
+  .offerCard{
+    width:min(88%,330px)!important;
+    max-width:88%!important;
+    padding:10px!important;
+  }
+  .quickReplies{
+    flex:0 0 auto!important;
+    padding:6px 8px!important;
+    overflow-x:auto!important;
+  }
+  .composerZone{
+    flex:0 0 auto!important;
+    padding:7px 8px calc(8px + env(safe-area-inset-bottom))!important;
+    background:rgba(255,255,255,.98)!important;
+  }
+  .composer{
+    grid-template-columns:40px minmax(0,1fr) 66px!important;
+    gap:5px!important;
+    padding:4px!important;
+    border-radius:16px!important;
+  }
+  .attach{
+    width:40px!important;
+    height:40px!important;
+    min-width:40px!important;
+    border-radius:12px!important;
+  }
+  .composer textarea{
+    min-height:40px!important;
+    max-height:86px!important;
+    padding:9px 7px!important;
+    font-size:16px!important;
+  }
+  .composer>button{
+    width:66px!important;
+    min-width:66px!important;
+    height:40px!important;
+    padding:0 7px!important;
+    border-radius:12px!important;
+    font-size:9px!important;
+  }
+  .offerComposer{
+    margin-top:6px!important;
+    padding:7px!important;
+    border-radius:12px!important;
+    display:grid!important;
+    grid-template-columns:minmax(0,1fr) auto!important;
+    gap:6px!important;
+  }
+  .offerComposer>span{
+    grid-column:1/-1!important;
+    font-size:8.5px!important;
+  }
+  .offerComposer input{
+    width:100%!important;
+    min-width:0!important;
+    height:35px!important;
+    box-sizing:border-box!important;
+    font-size:16px!important;
+  }
+  .offerComposer button{
+    min-height:35px!important;
+    padding:0 8px!important;
+    font-size:8.5px!important;
+  }
+  .chatShell[data-keyboard-open] .security,
+  .chatShell[data-keyboard-open] .quickReplies{display:none!important}
+  .chatShell[data-keyboard-open] .composerZone{padding-bottom:6px!important}
+}
+@media(max-width:390px){
+  .conversationItem{grid-template-columns:42px minmax(0,1fr) auto!important}
+  .conversationItem .avatar{width:42px!important;height:42px!important;min-width:42px!important}
+  .chatHeader{grid-template-columns:32px 36px minmax(0,1fr) auto!important;padding-left:6px!important;padding-right:6px!important}
+  .chatHeader>.avatar{width:36px!important;height:36px!important;min-width:36px!important}
+  .composer{grid-template-columns:38px minmax(0,1fr) 60px!important}
+  .attach{width:38px!important;min-width:38px!important}
+  .composer>button{width:60px!important;min-width:60px!important}
+}
+
+
+/* 2026-09-19 Messages layout correction v3 */
+.offerCard{
+  overflow:visible!important;
+  min-width:0!important;
+}
+.offerCard>div:first-child{
+  display:grid!important;
+  grid-template-columns:auto minmax(0,1fr)!important;
+  align-items:center!important;
+  gap:10px!important;
+}
+.offerCard>div:first-child>span{
+  min-width:0!important;
+}
+.offerCard>div:first-child>strong{
+  min-width:0!important;
+  max-width:100%!important;
+  text-align:right!important;
+  white-space:nowrap!important;
+  overflow:visible!important;
+  text-overflow:clip!important;
+  word-break:normal!important;
+  overflow-wrap:normal!important;
+  font-variant-numeric:tabular-nums;
+  line-height:1.15!important;
+}
+@media(max-width:760px),(display-mode:standalone) and (max-width:850px){
+  .page{
+    width:100%!important;
+    max-width:100vw!important;
+    height:auto!important;
+    min-height:0!important;
+    overflow:hidden!important;
+  }
+  .accountShell{
+    display:block!important;
+    width:100%!important;
+    max-width:100vw!important;
+    min-height:0!important;
+    margin:0!important;
+    padding:0!important;
+    overflow:hidden!important;
+  }
+  .accountShell>.shell{
+    display:block!important;
+    width:100%!important;
+    max-width:100%!important;
+    min-height:0!important;
+    margin:0!important;
+    padding:0!important;
+    overflow:hidden!important;
+  }
+  .chatShell{
+    margin:0!important;
+    width:100%!important;
+    max-width:100%!important;
+    min-height:0!important;
+    border-radius:0!important;
+    border-left:0!important;
+    border-right:0!important;
+    box-sizing:border-box!important;
+  }
+
+  /* Keep the conversation header to two compact rows maximum. */
+  .chatHeader{
+    min-height:0!important;
+    padding:7px 8px!important;
+    display:grid!important;
+    grid-template-columns:34px 38px minmax(0,1fr) auto!important;
+    grid-template-rows:auto auto!important;
+    column-gap:7px!important;
+    row-gap:5px!important;
+    align-items:center!important;
+    box-sizing:border-box!important;
+  }
+  .back{
+    grid-column:1!important;
+    grid-row:1!important;
+  }
+  .chatHeader>.avatar{
+    grid-column:2!important;
+    grid-row:1!important;
+    width:38px!important;
+    height:38px!important;
+    min-width:38px!important;
+  }
+  .chatIdentity{
+    grid-column:3!important;
+    grid-row:1!important;
+    min-width:0!important;
+  }
+  .listingLink{
+    grid-column:4!important;
+    grid-row:1!important;
+    width:auto!important;
+    min-width:68px!important;
+    max-width:82px!important;
+    min-height:30px!important;
+    padding:0 7px!important;
+    display:flex!important;
+    align-items:center!important;
+    justify-content:center!important;
+    border-radius:9px!important;
+  }
+  .listingLink>span,.listingLink>b{display:none!important}
+  .mobileListingCta{
+    display:block!important;
+    font-size:8px!important;
+    line-height:1!important;
+    white-space:nowrap!important;
+  }
+  .chatTools{
+    grid-column:1/-1!important;
+    grid-row:2!important;
+    width:100%!important;
+    display:grid!important;
+    grid-template-columns:repeat(3,minmax(0,1fr))!important;
+    gap:5px!important;
+    padding:0!important;
+    margin:0!important;
+    overflow:visible!important;
+  }
+  .chatTools button{
+    width:100%!important;
+    min-width:0!important;
+    min-height:30px!important;
+    padding:0 5px!important;
+    display:flex!important;
+    align-items:center!important;
+    justify-content:center!important;
+    font-size:8px!important;
+    white-space:nowrap!important;
+    overflow:hidden!important;
+    text-overflow:ellipsis!important;
+  }
+
+  .security{
+    margin:0!important;
+  }
+  .messages{
+    width:100%!important;
+    min-height:0!important;
+    padding-top:10px!important;
+    padding-bottom:10px!important;
+    box-sizing:border-box!important;
+  }
+  .composerZone{
+    width:100%!important;
+    max-width:100%!important;
+    box-sizing:border-box!important;
+  }
+
+  /* Offer amounts must always remain fully visible. */
+  .offerCard{
+    width:min(94%,360px)!important;
+    max-width:94%!important;
+    padding:11px!important;
+    overflow:visible!important;
+  }
+  .offerCard>div:first-child{
+    grid-template-columns:minmax(0,1fr) auto!important;
+    gap:8px!important;
+  }
+  .offerCard>div:first-child>strong{
+    font-size:clamp(16px,5vw,20px)!important;
+    line-height:1.15!important;
+    white-space:nowrap!important;
+    overflow:visible!important;
+  }
+  .offerCard>div:first-child>span{
+    font-size:9px!important;
+    white-space:nowrap!important;
+  }
+  .offerCard p{
+    margin:7px 0 5px!important;
+    line-height:1.4!important;
+  }
+  .offerActions{
+    width:100%!important;
+    display:grid!important;
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+    gap:6px!important;
+  }
+  .offerActions button{
+    width:100%!important;
+    min-width:0!important;
+    min-height:34px!important;
+    padding:0 6px!important;
+    font-size:8.5px!important;
+    line-height:1.15!important;
+  }
+  .buyOffer{
+    width:100%!important;
+    max-width:100%!important;
+    box-sizing:border-box!important;
+  }
+}
+@media(max-width:390px){
+  .chatHeader{
+    grid-template-columns:32px 36px minmax(0,1fr) 70px!important;
+    padding-left:6px!important;
+    padding-right:6px!important;
+  }
+  .chatHeader>.avatar{
+    width:36px!important;
+    height:36px!important;
+    min-width:36px!important;
+  }
+  .listingLink{
+    min-width:66px!important;
+    max-width:70px!important;
+    padding:0 5px!important;
+  }
+  .chatTools button{font-size:7.5px!important}
+  .offerCard{
+    width:96%!important;
+    max-width:96%!important;
+  }
+  .offerCard>div:first-child>strong{
+    font-size:17px!important;
+  }
+}
+
+
+/* 2026-09-19 Messages mobile width hotfix — force single-column chat grid */
+@media(max-width:760px){
+  .accountShell{
+    display:block!important;
+    grid-template-columns:none!important;
+  }
+  .accountShell>.shell{
+    display:block!important;
+    width:100vw!important;
+    max-width:100vw!important;
+  }
+  .chatShell{
+    display:grid!important;
+    grid-template-columns:minmax(0,1fr)!important;
+    grid-template-rows:minmax(0,1fr)!important;
+    width:100vw!important;
+    max-width:100vw!important;
+    min-width:0!important;
+  }
+  .sidebar,
+  .chatPanel{
+    grid-column:1!important;
+    grid-row:1!important;
+    width:100%!important;
+    max-width:100%!important;
+    min-width:0!important;
+    box-sizing:border-box!important;
+  }
+  .sidebar{
+    display:flex!important;
+  }
+  .mobileOpen .sidebar{
+    display:none!important;
+  }
+  .chatPanel{
+    display:none!important;
+  }
+  .mobileOpen .chatPanel{
+    display:flex!important;
+  }
+
+  /* Offer card amount visibility */
+  .offerCard{
+    width:calc(100% - 18px)!important;
+    max-width:360px!important;
+    min-width:0!important;
+    overflow:visible!important;
+    box-sizing:border-box!important;
+  }
+  .offerCard>div:first-child{
+    width:100%!important;
+    min-width:0!important;
+    display:flex!important;
+    align-items:center!important;
+    justify-content:space-between!important;
+    gap:8px!important;
+  }
+  .offerCard>div:first-child>strong{
+    flex:0 0 auto!important;
+    max-width:none!important;
+    white-space:nowrap!important;
+    overflow:visible!important;
+    text-overflow:clip!important;
+    word-break:normal!important;
+    overflow-wrap:normal!important;
+    font-size:18px!important;
+  }
+}
+@media(max-width:390px){
+  .offerCard>div:first-child>strong{font-size:16px!important}
+}
+
+
+/* 2026-09-19 Messages mobile simplification v4 */
+.composerActions{display:flex;align-items:center;justify-content:flex-start}
+.offerToggle{
+  min-height:32px;
+  padding:0 11px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:7px;
+  border:1px solid #e5e1f5;
+  border-radius:10px;
+  background:#faf9ff;
+  color:#5a4ed4;
+  font-size:10px;
+  font-weight:850;
+  cursor:pointer;
+}
+.offerToggle svg{font-size:11px}
+.offerToggle:disabled{opacity:.45;cursor:not-allowed}
+
+@media(max-width:760px),(display-mode:standalone) and (max-width:850px){
+  .chatHeader{
+    padding:7px 8px!important;
+    grid-template-columns:32px 36px minmax(0,1fr) auto!important;
+    grid-template-rows:auto auto!important;
+    column-gap:7px!important;
+    row-gap:4px!important;
+    background:#fff!important;
+  }
+  .back{
+    width:30px!important;
+    height:30px!important;
+    min-width:30px!important;
+    border-radius:9px!important;
+    font-size:21px!important;
+  }
+  .chatHeader>.avatar{
+    width:36px!important;
+    height:36px!important;
+    min-width:36px!important;
+  }
+  .chatIdentity strong{
+    font-size:12px!important;
+    line-height:1.1!important;
+  }
+  .chatIdentity span{
+    margin-top:2px!important;
+    font-size:8.5px!important;
+    line-height:1.15!important;
+  }
+  .listingLink{
+    min-width:72px!important;
+    max-width:78px!important;
+    min-height:30px!important;
+    padding:0 7px!important;
+    border-radius:9px!important;
+    background:#f5f3ff!important;
+  }
+  .mobileListingCta{
+    font-size:8px!important;
+  }
+  .chatTools{
+    grid-template-columns:repeat(3,minmax(0,1fr))!important;
+    gap:4px!important;
+  }
+  .chatTools button{
+    min-height:28px!important;
+    padding:0 4px!important;
+    border-radius:8px!important;
+    background:#fff!important;
+    border-color:#eceaf1!important;
+    box-shadow:none!important;
+    font-size:7.8px!important;
+    font-weight:760!important;
+  }
+  .chatTools .deleteTool{
+    background:#fff8f9!important;
+    color:#a63e4d!important;
+    border-color:#efd9dd!important;
+  }
+
+  .security{
+    min-height:0!important;
+    padding:6px 9px!important;
+    font-size:8px!important;
+    line-height:1.25!important;
+    background:#fff8e8!important;
+  }
+
+  .messages{
+    padding:10px 8px 8px!important;
+    gap:7px!important;
+    background:#f7f7fa!important;
+  }
+  .bubble{
+    max-width:80%!important;
+    padding:9px 10px!important;
+    border-radius:15px 15px 15px 5px!important;
+    box-shadow:none!important;
+  }
+  .mine .bubble{
+    border-radius:15px 15px 5px 15px!important;
+    box-shadow:none!important;
+  }
+  .bubble p{
+    font-size:11px!important;
+    line-height:1.4!important;
+  }
+  .bubble small{font-size:7.7px!important}
+
+  .offerCard{
+    width:min(88%,340px)!important;
+    max-width:88%!important;
+    padding:10px 11px!important;
+    border-radius:16px!important;
+    box-shadow:none!important;
+  }
+  .offerCard>div:first-child>span{
+    font-size:8.5px!important;
+    letter-spacing:.07em!important;
+  }
+  .offerCard>div:first-child>strong{
+    font-size:17px!important;
+  }
+  .offerCard p{
+    margin:7px 0 5px!important;
+    font-size:10.5px!important;
+  }
+  .offerCard small{
+    font-size:8px!important;
+  }
+
+  .quickReplies{
+    min-height:36px!important;
+    padding:5px 7px!important;
+    gap:5px!important;
+    background:#fff!important;
+    border-top:1px solid #efedf3!important;
+  }
+  .quickReplies button{
+    min-height:27px!important;
+    height:27px!important;
+    padding:0 10px!important;
+    border-radius:999px!important;
+    background:#faf9ff!important;
+    border-color:#e7e3f4!important;
+    font-size:8px!important;
+  }
+
+  .composerZone{
+    padding:7px 8px calc(7px + env(safe-area-inset-bottom,0px))!important;
+    background:#fff!important;
+    border-top:0!important;
+    box-shadow:none!important;
+  }
+  .composer{
+    grid-template-columns:38px minmax(0,1fr) 70px!important;
+    gap:5px!important;
+    padding:4px!important;
+    border-radius:14px!important;
+    background:#f7f7fa!important;
+    border:1px solid #e8e6ee!important;
+    box-shadow:none!important;
+  }
+  .attach{
+    width:38px!important;
+    min-width:38px!important;
+    height:38px!important;
+    border-radius:10px!important;
+    box-shadow:none!important;
+  }
+  .composer textarea{
+    min-height:38px!important;
+    max-height:76px!important;
+    padding:8px 6px!important;
+  }
+  .composer>button{
+    width:70px!important;
+    min-width:70px!important;
+    height:38px!important;
+    border-radius:10px!important;
+    box-shadow:none!important;
+    font-size:8.5px!important;
+  }
+
+  .composerActions{
+    margin-top:6px!important;
+  }
+  .offerToggle{
+    width:auto!important;
+    min-height:30px!important;
+    padding:0 10px!important;
+    border-radius:9px!important;
+    background:#faf9ff!important;
+    border:1px solid #e5e1f5!important;
+    color:#5b4cf0!important;
+    font-size:8.5px!important;
+    box-shadow:none!important;
+  }
+  .offerToggle svg{font-size:9px!important}
+
+  .offerComposer{
+    margin-top:6px!important;
+    padding:8px!important;
+    border-radius:12px!important;
+    background:#faf9ff!important;
+    border:1px solid #e9e5f5!important;
+    grid-template-columns:minmax(0,1fr) auto!important;
+    gap:6px!important;
+  }
+  .offerComposer>span{
+    margin:0!important;
+    font-size:8px!important;
+  }
+  .offerComposer input{
+    height:36px!important;
+    border-radius:10px!important;
+  }
+  .offerComposer button{
+    min-height:36px!important;
+    height:36px!important;
+    border-radius:10px!important;
+    padding:0 9px!important;
+    font-size:8px!important;
+  }
+}
+
+@media(max-width:390px){
+  .chatHeader{
+    grid-template-columns:30px 34px minmax(0,1fr) 70px!important;
+    padding-left:6px!important;
+    padding-right:6px!important;
+  }
+  .chatHeader>.avatar{
+    width:34px!important;
+    height:34px!important;
+    min-width:34px!important;
+  }
+  .listingLink{
+    min-width:66px!important;
+    max-width:70px!important;
+  }
+  .composer{
+    grid-template-columns:36px minmax(0,1fr) 64px!important;
+  }
+  .attach{
+    width:36px!important;
+    min-width:36px!important;
+  }
+  .composer>button{
+    width:64px!important;
+    min-width:64px!important;
+  }
+}
+
+
+/* 2026-09-19 inline offer composer: one field, one place */
+.composerModeBar{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  margin:0 0 6px;
+}
+.offerToggleActive{
+  background:#efedff!important;
+  border-color:#d8d1ff!important;
+  color:#4f41d2!important;
+}
+.offerInlineComposer{
+  align-items:center!important;
+}
+.offerInlineIcon{
+  width:42px;
+  height:42px;
+  display:grid;
+  place-items:center;
+  border-radius:13px;
+  background:#f0edff;
+  color:#5b4cf0;
+}
+.offerInlineIcon svg{font-size:15px}
+.offerInlineInput{
+  width:100%;
+  min-width:0;
+  height:42px;
+  padding:0 10px;
+  border:0;
+  outline:0;
+  background:transparent;
+  color:#292936;
+  font:inherit;
+  font-size:16px;
+  font-weight:800;
+}
+.offerInlineInput::placeholder{color:#aaa7b5;font-weight:650}
+
+@media(max-width:760px),(display-mode:standalone) and (max-width:850px){
+  .composerModeBar{
+    display:grid!important;
+    grid-template-columns:38px minmax(0,1fr) 92px!important;
+    gap:5px!important;
+    margin:0 0 5px!important;
+  }
+  .composerModeBar .offerToggle{
+    grid-column:3!important;
+    justify-self:end!important;
+    width:auto!important;
+    min-width:92px!important;
+    min-height:28px!important;
+    height:28px!important;
+    padding:0 8px!important;
+    border-radius:9px!important;
+    font-size:8px!important;
+    white-space:nowrap!important;
+  }
+  .offerInlineComposer{
+    grid-template-columns:38px minmax(0,1fr) 92px!important;
+  }
+  .offerInlineIcon{
+    width:38px!important;
+    height:38px!important;
+    border-radius:10px!important;
+  }
+  .offerInlineIcon svg{font-size:13px!important}
+  .offerInlineInput{
+    height:38px!important;
+    padding:0 7px!important;
+    font-size:16px!important;
+  }
+  .offerInlineComposer>button{
+    width:92px!important;
+    min-width:92px!important;
+    height:38px!important;
+    padding:0 6px!important;
+    font-size:8px!important;
+    line-height:1.1!important;
+  }
+}
+@media(max-width:390px){
+  .composerModeBar{
+    grid-template-columns:36px minmax(0,1fr) 86px!important;
+  }
+  .composerModeBar .offerToggle{
+    min-width:86px!important;
+  }
+  .offerInlineComposer{
+    grid-template-columns:36px minmax(0,1fr) 86px!important;
+  }
+  .offerInlineIcon{
+    width:36px!important;
+    height:36px!important;
+  }
+  .offerInlineComposer>button{
+    width:86px!important;
+    min-width:86px!important;
+  }
+}
+
+
+/* 2026-09-19 offer control inside composer, above send */
+.composer{
+  grid-template-columns:42px minmax(0,1fr) 104px!important;
+  align-items:stretch!important;
+}
+.composerActionStack{
+  min-width:0;
+  display:grid;
+  grid-template-rows:1fr 1fr;
+  gap:4px;
+  align-self:stretch;
+}
+.composerActionStack button{
+  width:100%!important;
+  min-width:0!important;
+  height:auto!important;
+  min-height:0!important;
+  padding:0 7px!important;
+  border-radius:10px!important;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  gap:5px!important;
+  font-size:9px!important;
+  line-height:1.05!important;
+  font-weight:850!important;
+  white-space:nowrap!important;
+}
+.composerActionStack .offerToggle{
+  border:1px solid #ded9fa!important;
+  background:#f4f2ff!important;
+  color:#5547d8!important;
+  box-shadow:none!important;
+}
+.composerActionStack .offerToggle svg{font-size:9px!important}
+.composerActionStack .sendAction{
+  border:0!important;
+  background:linear-gradient(145deg,#6758ee,#5143d7)!important;
+  color:#fff!important;
+  box-shadow:none!important;
+}
+.composerActionStack .sendAction:disabled{
+  opacity:.45!important;
+}
+.offerInlineComposer{
+  grid-template-columns:42px minmax(0,1fr) 104px!important;
+}
+
+@media(max-width:760px),(display-mode:standalone) and (max-width:850px){
+  .composer{
+    grid-template-columns:38px minmax(0,1fr) 92px!important;
+    min-height:58px!important;
+    padding:4px!important;
+    align-items:stretch!important;
+  }
+  .composerActionStack{
+    grid-template-rows:25px 25px!important;
+    gap:4px!important;
+    align-self:center!important;
+  }
+  .composerActionStack button{
+    height:25px!important;
+    min-height:25px!important;
+    padding:0 5px!important;
+    border-radius:8px!important;
+    font-size:7.7px!important;
+    line-height:1!important;
+  }
+  .composerActionStack .offerToggle svg{font-size:8px!important}
+  .composer textarea{
+    min-height:58px!important;
+    max-height:82px!important;
+    padding:10px 7px!important;
+    align-self:center!important;
+  }
+  .attach{
+    width:38px!important;
+    height:58px!important;
+    min-height:58px!important;
+    align-self:center!important;
+    border-radius:10px!important;
+  }
+  .offerInlineComposer{
+    grid-template-columns:38px minmax(0,1fr) 92px!important;
+  }
+  .offerInlineIcon{
+    width:38px!important;
+    height:58px!important;
+    min-height:58px!important;
+    align-self:center!important;
+    border-radius:10px!important;
+  }
+  .offerInlineInput{
+    height:58px!important;
+    align-self:center!important;
+  }
+}
+@media(max-width:390px){
+  .composer,
+  .offerInlineComposer{
+    grid-template-columns:36px minmax(0,1fr) 86px!important;
+  }
+  .composerActionStack{
+    grid-template-rows:24px 24px!important;
+    gap:4px!important;
+  }
+  .composerActionStack button{
+    height:24px!important;
+    min-height:24px!important;
+    font-size:7.2px!important;
+  }
+  .attach,.offerInlineIcon{
+    width:36px!important;
+    height:56px!important;
+    min-height:56px!important;
+  }
+  .composer textarea,.offerInlineInput{
+    min-height:56px!important;
+    height:56px!important;
+  }
+}
+
+
+/* 2026-09-19 compact header action menu + taller composer */
+.headerCompactActions{
+  margin-left:auto;
+  display:flex;
+  align-items:center;
+  gap:6px;
+  min-width:0;
+}
+.actionMenuWrap{
+  position:relative;
+  flex:0 0 auto;
+}
+.actionMenuTrigger{
+  width:36px;
+  height:36px;
+  display:grid;
+  place-items:center;
+  border:1px solid #e3e1ea;
+  border-radius:11px;
+  background:#fff;
+  color:#696776;
+  cursor:pointer;
+}
+.actionMenuTrigger svg{font-size:14px}
+.actionMenuTrigger:hover{background:#f7f5ff;color:#5143d7}
+.actionMenu{
+  position:absolute;
+  z-index:80;
+  top:calc(100% + 7px);
+  right:0;
+  width:154px;
+  padding:6px;
+  display:grid;
+  gap:3px;
+  border:1px solid #e7e5ee;
+  border-radius:13px;
+  background:#fff;
+  box-shadow:0 16px 38px rgba(31,29,67,.14);
+}
+.actionMenu button{
+  width:100%;
+  min-height:36px;
+  padding:0 10px;
+  border:0;
+  border-radius:9px;
+  background:transparent;
+  color:#565462;
+  text-align:left;
+  font-size:10px;
+  font-weight:800;
+  cursor:pointer;
+}
+.actionMenu button:hover{background:#f7f6fb}
+.actionMenu .actionMenuDanger{color:#a43a48}
+.actionMenu .actionMenuDanger:hover{background:#fff3f5}
+
+@media(max-width:760px),(display-mode:standalone) and (max-width:850px){
+  .chatHeader{
+    grid-template-columns:32px 36px minmax(0,1fr) auto!important;
+    grid-template-rows:auto!important;
+    min-height:50px!important;
+    padding:6px 7px!important;
+    column-gap:6px!important;
+    row-gap:0!important;
+  }
+  .headerCompactActions{
+    grid-column:4!important;
+    grid-row:1!important;
+    margin-left:0!important;
+    gap:4px!important;
+  }
+  .headerCompactActions .listingLink{
+    width:auto!important;
+    min-width:68px!important;
+    max-width:76px!important;
+    min-height:30px!important;
+    height:30px!important;
+    padding:0 6px!important;
+    border-radius:9px!important;
+  }
+  .actionMenuTrigger{
+    width:30px!important;
+    height:30px!important;
+    min-width:30px!important;
+    border-radius:9px!important;
+  }
+  .actionMenuTrigger svg{font-size:12px!important}
+  .actionMenu{
+    top:calc(100% + 5px)!important;
+    right:0!important;
+    width:142px!important;
+    padding:5px!important;
+    border-radius:11px!important;
+  }
+  .actionMenu button{
+    min-height:34px!important;
+    padding:0 9px!important;
+    border-radius:8px!important;
+    font-size:9px!important;
+  }
+
+  .composerZone{
+    padding:5px 7px max(2px,env(safe-area-inset-bottom,0px))!important;
+  }
+  .composer,
+  .offerInlineComposer{
+    min-height:76px!important;
+    grid-template-columns:38px minmax(0,1fr) 92px!important;
+    padding:4px!important;
+    align-items:stretch!important;
+  }
+  .composer textarea{
+    min-height:68px!important;
+    height:68px!important;
+    max-height:96px!important;
+    padding:10px 7px!important;
+    align-self:center!important;
+  }
+  .attach,
+  .offerInlineIcon{
+    width:38px!important;
+    height:68px!important;
+    min-height:68px!important;
+    align-self:center!important;
+  }
+  .offerInlineInput{
+    height:68px!important;
+    min-height:68px!important;
+    align-self:center!important;
+  }
+  .composerActionStack{
+    grid-template-rows:32px 32px!important;
+    gap:4px!important;
+    align-self:center!important;
+  }
+  .composerActionStack button{
+    height:32px!important;
+    min-height:32px!important;
+    font-size:7.8px!important;
+  }
+}
+@media(max-width:390px){
+  .chatHeader{
+    grid-template-columns:30px 34px minmax(0,1fr) auto!important;
+    padding-left:5px!important;
+    padding-right:5px!important;
+  }
+  .headerCompactActions .listingLink{
+    min-width:64px!important;
+    max-width:68px!important;
+  }
+  .actionMenuTrigger{
+    width:28px!important;
+    height:30px!important;
+    min-width:28px!important;
+  }
+  .composer,
+  .offerInlineComposer{
+    min-height:72px!important;
+    grid-template-columns:36px minmax(0,1fr) 86px!important;
+  }
+  .composer textarea,
+  .offerInlineInput{
+    min-height:64px!important;
+    height:64px!important;
+  }
+  .attach,
+  .offerInlineIcon{
+    width:36px!important;
+    height:64px!important;
+    min-height:64px!important;
+  }
+  .composerActionStack{
+    grid-template-rows:30px 30px!important;
+  }
+  .composerActionStack button{
+    height:30px!important;
+    min-height:30px!important;
+    font-size:7.2px!important;
+  }
+}
+
+
+/* Native shell parity for Android/iOS message composer */
+@media(max-width:850px){
+  :global(html.pa-native-shell) .page,
+  :global(html.pa-native-shell) .accountShell,
+  :global(html.pa-native-shell) .accountShell>.shell,
+  :global(html.pa-native-shell) .chatShell,
+  :global(html.pa-native-shell) .chatPanel{
+    width:100%!important;
+    max-width:100%!important;
+    min-width:0!important;
+    margin-left:0!important;
+    margin-right:0!important;
+    overflow-x:hidden!important;
+    box-sizing:border-box!important;
+  }
+  :global(html.pa-native-shell) .composerZone{
+    padding-bottom:max(2px,env(safe-area-inset-bottom,0px),var(--pa-native-safe-bottom,0px))!important;
+  }
+}
