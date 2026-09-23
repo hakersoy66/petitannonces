@@ -1,0 +1,41 @@
+name: Production Audit Bridge
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/production-audit-bridge.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
+      PRODUCTION_USER: ${{ secrets.PRODUCTION_USER }}
+    steps:
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
+        run: |
+          test -n "$PRODUCTION_HOST"
+          test -n "$PRODUCTION_USER"
+          test -n "$SSH_PRIVATE_KEY"
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s ssh-ed25519 %s\n' \
+            "$PRODUCTION_HOST" \
+            'AAAAC3NzaC1lZDI1NTE5AAAAIGb5fP7d4Vh1gELLdX9xwaHCkE5AFRp4TFS9Dn9tkr3Z' \
+            > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Read-only production repository audit
+        run: |
+          ssh -o BatchMode=yes -o IdentitiesOnly=yes \
+            "$PRODUCTION_USER@$PRODUCTION_HOST" \
+            'set -e; echo "WHOAMI=$(whoami)"; echo "HOST=$(hostname -f)"; ROOT=/var/www/petitannonces/repository; test -d "$ROOT/.git"; echo "HEAD=$(git -C "$ROOT" rev-parse HEAD)"; echo "BRANCH=$(git -C "$ROOT" branch --show-current)"; echo "::STATUS::"; git -C "$ROOT" status --short; echo "::DIFFSTAT::"; git -C "$ROOT" diff --stat; echo "::UNTRACKED::"; git -C "$ROOT" ls-files --others --exclude-standard'
