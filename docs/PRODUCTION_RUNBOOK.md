@@ -24,7 +24,7 @@ The application processes must never run as `root`. Use a dedicated `petitannonc
 6. Put the production environment file at `/var/www/petitannonces/shared/.env` with mode `600`.
 7. Install `infra/nginx/petitannonces.conf`, obtain TLS certificates, run `nginx -t`, then reload Nginx.
 8. Configure PM2 startup for the non-root runtime user.
-9. Enrol SentinelX, then validate host capabilities and service health.
+9. Validate the restricted GitHub deploy dispatcher, the blue/green PM2 services and the public health endpoint.
 
 ## Database bootstrap
 
@@ -48,27 +48,26 @@ Production deploys are gated by the repository variable:
 
 `PRODUCTION_DEPLOY_ENABLED=true`
 
-Required GitHub `production` environment secrets:
+Required GitHub `production` environment secret:
 
-- `PRODUCTION_HOST`
-- `PRODUCTION_USER`
 - `PRODUCTION_SSH_PRIVATE_KEY`
-- `PRODUCTION_SSH_HOST_KEY`
 
-A deployment only starts after CI succeeds on `main`. The remote deploy script:
+The production hostname, restricted SSH user and pinned ED25519 host key are explicit in the deployment workflow. The SSH key is forced through `pa-github-dispatch`; it does not provide an unrestricted shell.
 
-1. fetches the exact commit SHA;
-2. creates an immutable release worktree;
-3. runs `pnpm install --frozen-lockfile`;
-4. builds all applications;
-5. verifies expected build artifacts;
-6. creates a PostgreSQL custom-format backup;
-7. applies checksum-validated SQL migrations;
-8. atomically switches `/var/www/petitannonces/current`;
-9. reloads PM2;
-10. waits for `/health/ready`;
-11. rolls the application symlink back if health checks fail;
-12. retains recent releases and database backups.
+A deployment only starts after CI succeeds on `main`. The remote deploy path:
+
+1. accepts only the exact 40-character commit SHA that passed CI;
+2. creates a verified PostgreSQL backup before changing production;
+3. fetches and resets the repository to that exact SHA;
+4. runs `pnpm install --frozen-lockfile`;
+5. applies checksum-validated SQL migrations;
+6. builds the inactive blue/green web, admin and API release;
+7. starts the inactive PM2 color on isolated loopback ports;
+8. waits for web, admin and API readiness checks;
+9. validates Nginx and atomically switches the upstream ports;
+10. verifies public `/healthz` and the listing publication route;
+11. drains the old Nginx workers before retiring the previous PM2 color;
+12. leaves the currently serving color untouched if the new release fails before the switch.
 
 Database migrations are not automatically rolled back. Schema changes must therefore follow expand/contract compatibility rules.
 
@@ -121,7 +120,7 @@ Minimum alerts before launch:
 
 ## Security baseline
 
-- SSH keys only; disable password auth after SentinelX enrolment is proven.
+- SSH keys only; GitHub production deploys must use the restricted forced-command dispatcher rather than an unrestricted shell.
 - No public PostgreSQL/Redis ports.
 - Nginx request/body limits and per-IP API rate limiting.
 - TLS 1.2/1.3 only; HSTS after certificates and all subdomains are confirmed HTTPS-ready.
@@ -133,7 +132,7 @@ Minimum alerts before launch:
 
 Do not enable automatic production deployment until all of these are true:
 
-- SentinelX connected and labelled
+- restricted GitHub production dispatcher active and tested
 - DNS points to the intended production server
 - TLS certificates valid
 - PostgreSQL/Redis installed or managed endpoints configured
