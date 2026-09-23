@@ -9,7 +9,7 @@ import {useAuth} from '../lib/auth';
 import {nativeScheme} from '../lib/app-variant';
 import {money} from '../lib/format';
 import { AppIcon } from '../components/app-icon';
-type Plan={id:string;code:'ESSENTIEL'|'PROFESSIONNEL'|'PREMIUM';name:string;description?:string|null;monthlyPriceMinor:number;currency:string;maxActiveListings:number|null;maxStores:number;analyticsEnabled:boolean;autoRenewListings:boolean;prioritySupport:boolean;bulkImportEnabled:boolean;apiFeedEnabled:boolean};
+type Plan={id:string;code:string;name:string;description?:string|null;monthlyPriceMinor:number;currency:string;maxActiveListings:number|null;maxStores:number;analyticsEnabled:boolean;autoRenewListings:boolean;prioritySupport:boolean;bulkImportEnabled:boolean;apiFeedEnabled:boolean};
 type Subscription={id:string;status:string;trialEndsAt?:string|null;currentPeriodStart?:string|null;currentPeriodEnd?:string|null;cancelAtPeriodEnd:boolean;plan:Plan};
 type Invoice={id:string;number?:string|null;status?:string|null;amountDueMinor:number;amountPaidMinor:number;currency:string;createdAt?:string|null;hostedInvoiceUrl?:string|null;invoicePdfUrl?:string|null};
 type Payload={externalBillingEnabled:boolean;stripeReachable:boolean;subscription:Subscription|null;plans:Plan[];invoices:Invoice[]};

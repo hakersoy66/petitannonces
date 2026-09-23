@@ -8,7 +8,7 @@ type Plan={id:string;code:string;name:string;description:string|null;monthlyPric
 type Banner={id:string;placement:"HOME_TOP"|"HOME_AFTER_LATEST";title:string;body:string;ctaLabel:string;href:string;imageUrl:string|null;enabled:boolean;startsAt:string|null;endsAt:string|null;sortOrder:number};
 type Tab="visibility"|"plans"|"banners";
 type PromoDraft={id?:string;code:string;type:string;name:string;description:string;price:string;duration:string;isActive:boolean};
-type PlanDraft={id:string;code:string;name:string;description:string;monthly:string;yearly:string;maxActiveListings:string;maxStores:string;analyticsEnabled:boolean;autoRenewListings:boolean;prioritySupport:boolean;bulkImportEnabled:boolean;apiFeedEnabled:boolean;isActive:boolean};
+type PlanDraft={id?:string;code:string;name:string;description:string;monthly:string;yearly:string;maxActiveListings:string;maxStores:string;analyticsEnabled:boolean;autoRenewListings:boolean;prioritySupport:boolean;bulkImportEnabled:boolean;apiFeedEnabled:boolean;isActive:boolean};
 
 const euro=(n:number,c="EUR")=>new Intl.NumberFormat("fr-FR",{style:"currency",currency:c}).format(n/100);
 const duration=(h:number|null)=>!h?"Sans limite":h%24===0?String(h/24)+" j":String(h)+" h";
@@ -57,6 +57,7 @@ export default function CommercialClient(){
   const created=!promoEditor.id;setPromoEditor(null);setMsg({ok:true,t:created?"Nouvelle option de visibilité créée.":"Option de visibilité mise à jour."});await load();
  }
 
+ function newPlan(){setPlanEditor({code:"",name:"",description:"",monthly:"9.90",yearly:"",maxActiveListings:"50",maxStores:"1",analyticsEnabled:false,autoRenewListings:false,prioritySupport:false,bulkImportEnabled:false,apiFeedEnabled:false,isActive:true})}
  function editPlan(p:Plan){setPlanEditor({id:p.id,code:p.code,name:p.name,description:p.description??"",monthly:(p.monthlyPriceMinor/100).toFixed(2),yearly:p.yearlyPriceMinor==null?"":(p.yearlyPriceMinor/100).toFixed(2),maxActiveListings:p.maxActiveListings==null?"":String(p.maxActiveListings),maxStores:String(p.maxStores),analyticsEnabled:p.analyticsEnabled,autoRenewListings:p.autoRenewListings,prioritySupport:p.prioritySupport,bulkImportEnabled:p.bulkImportEnabled,apiFeedEnabled:p.apiFeedEnabled,isActive:p.isActive})}
  async function savePlan(){
   if(!planEditor)return;
@@ -64,16 +65,21 @@ export default function CommercialClient(){
   const yearlyPriceMinor=planEditor.yearly?Math.round(Number(planEditor.yearly)*100):null;
   const maxStores=Math.max(1,Math.round(Number(planEditor.maxStores)||1));
   const maxActiveListings=planEditor.maxActiveListings?Math.max(1,Math.round(Number(planEditor.maxActiveListings))):null;
-  if(planEditor.name.trim().length<2||monthlyPriceMinor<0){setMsg({ok:false,t:"Vérifiez le nom et le prix de la formule."});return}
+  if(planEditor.name.trim().length<2||!Number.isFinite(monthlyPriceMinor)||monthlyPriceMinor<0){setMsg({ok:false,t:"Vérifiez le nom et le prix de la formule."});return}
+  if(!planEditor.id&&!/^[A-Z0-9_-]{2,60}$/.test(planEditor.code)){setMsg({ok:false,t:"Le code doit contenir uniquement A-Z, 0-9, _ ou -."});return}
   setBusy(true);
-  const r=await fetch("/api/admin/commercial/pro-plans/"+planEditor.id,{method:"PUT",credentials:"include",headers:{"content-type":"application/json"},body:JSON.stringify({
+  const created=!planEditor.id;
+  const url=created?"/api/admin/commercial/pro-plans":"/api/admin/commercial/pro-plans/"+planEditor.id;
+  const body:any={
    name:planEditor.name.trim(),description:planEditor.description.trim()||null,monthlyPriceMinor,yearlyPriceMinor,maxActiveListings,maxStores,
    analyticsEnabled:planEditor.analyticsEnabled,autoRenewListings:planEditor.autoRenewListings,prioritySupport:planEditor.prioritySupport,
    featuredCreditsMonthly:0,bulkImportEnabled:planEditor.bulkImportEnabled,apiFeedEnabled:planEditor.apiFeedEnabled,isActive:planEditor.isActive
-  })});
-  setBusy(false);
-  if(!r.ok){setMsg({ok:false,t:"Impossible d’enregistrer cette formule."});return}
-  setPlanEditor(null);setMsg({ok:true,t:"Formule professionnelle mise à jour."});await load();
+  };
+  if(created)body.code=planEditor.code;
+  const r=await fetch(url,{method:created?"POST":"PUT",credentials:"include",headers:{"content-type":"application/json"},body:JSON.stringify(body)});
+  const payload=await r.json().catch(()=>({}));setBusy(false);
+  if(!r.ok){setMsg({ok:false,t:payload.error==="plan_code_exists"?"Ce code de formule existe déjà.":"Impossible d’enregistrer cette formule."});return}
+  setPlanEditor(null);setMsg({ok:true,t:created?"Nouvelle formule professionnelle créée.":"Formule professionnelle mise à jour."});await load();
  }
 
  function patchBanner(id:string,key:keyof Banner,value:any){setBanners(v=>v.map(x=>x.id===id?{...x,[key]:value}:x))}
@@ -127,7 +133,7 @@ export default function CommercialClient(){
    </>}
 
    {tab==="plans"&&<>
-    <div className="admin-commercial-head"><div><h2>Formules professionnelles</h2><p>Tarifs, quotas et fonctionnalités des abonnements Petit Annonces Pro.</p></div><span className="admin-badge"><AdminIcon name="credit-card"/>Stripe synchronisé</span></div>
+    <div className="admin-commercial-head"><div><h2>Formules professionnelles</h2><p>Tarifs, quotas et fonctionnalités des abonnements Petit Annonces Pro.</p></div><div className="admin-page-actions"><span className="admin-badge"><AdminIcon name="credit-card"/>Stripe dynamique</span><button type="button" className="admin-btn primary" onClick={newPlan}><AdminIcon name="plus"/>Ajouter une formule</button></div></div>
     <div className="admin-package-list">{plans.map(p=><article className="admin-package-row admin-pro-plan-row" key={p.id}>
      <span className={"admin-package-icon "+(p.isActive?"active":"")}><AdminIcon name="briefcase"/></span>
      <div className="admin-package-main"><div><strong>{p.name}</strong><span className={"admin-badge "+(p.isActive?"green":"red")}>{p.isActive?"Disponible":"Masquée"}</span></div><small>{p.code}</small><p>{p.description||"Formule professionnelle"}</p><div className="admin-plan-tags">{p.analyticsEnabled&&<span>Analytics</span>}{p.autoRenewListings&&<span>Renouvellement auto</span>}{p.bulkImportEnabled&&<span>Import en masse</span>}{p.apiFeedEnabled&&<span>API</span>}{p.prioritySupport&&<span>Support prioritaire</span>}</div></div>
@@ -135,7 +141,7 @@ export default function CommercialClient(){
      <div className="admin-package-metric"><small>Annonces</small><strong>{p.maxActiveListings??"∞"}</strong></div>
      <button type="button" className="admin-btn" onClick={()=>editPlan(p)}><AdminIcon name="edit"/>Modifier</button>
     </article>)}</div>
-    <div className="admin-commercial-note"><AdminIcon name="shield"/><div><strong>Codes de facturation protégés</strong><p>Les codes Pro actuels restent liés aux abonnements Stripe. Le nom, le prix, les quotas et les fonctionnalités sont modifiables sans casser les abonnements existants.</p></div></div>
+    <div className="admin-commercial-note"><AdminIcon name="shield"/><div><strong>Codes de formule stables</strong><p>Chaque formule possède un code unique. Les abonnements existants conservent leur code; les nouvelles formules sont facturées dynamiquement par Stripe à partir du tarif mensuel enregistré ici.</p></div></div>
    </>}
 
    {tab==="banners"&&<>
@@ -172,8 +178,9 @@ export default function CommercialClient(){
   </section></div>}
 
   {planEditor&&<div className="admin-modal-backdrop" onMouseDown={()=>setPlanEditor(null)}><section className="admin-card admin-modal admin-modal-wide" onMouseDown={e=>e.stopPropagation()}>
-   <div className="admin-modal-head"><div><span className="admin-modal-icon"><AdminIcon name="briefcase"/></span><div><h2>{"Modifier la formule "+planEditor.name}</h2><p>{planEditor.code+" · abonnement professionnel"}</p></div></div><button className="admin-icon-button" onClick={()=>setPlanEditor(null)}>×</button></div>
+   <div className="admin-modal-head"><div><span className="admin-modal-icon"><AdminIcon name="briefcase"/></span><div><h2>{planEditor.id?"Modifier la formule "+planEditor.name:"Nouvelle formule professionnelle"}</h2><p>{planEditor.id?planEditor.code+" · abonnement professionnel":"Créez une formule facturée dynamiquement par Stripe."}</p></div></div><button className="admin-icon-button" onClick={()=>setPlanEditor(null)}>×</button></div>
    <div className="admin-form-grid admin-form-modern">
+    {!planEditor.id&&<label>Code<input className="admin-input" value={planEditor.code} onChange={e=>setPlanEditor({...planEditor,code:e.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g,"")})} placeholder="PRO_PLUS"/></label>}
     <label>Nom<input className="admin-input" value={planEditor.name} onChange={e=>setPlanEditor({...planEditor,name:e.target.value})}/></label>
     <label>Prix mensuel (€)<input className="admin-input" type="number" min="0" step="0.01" value={planEditor.monthly} onChange={e=>setPlanEditor({...planEditor,monthly:e.target.value})}/></label>
     <label>Prix annuel (€)<input className="admin-input" type="number" min="0" step="0.01" value={planEditor.yearly} onChange={e=>setPlanEditor({...planEditor,yearly:e.target.value})}/></label>
@@ -184,7 +191,7 @@ export default function CommercialClient(){
    <div className="admin-feature-switches">
     {([["analyticsEnabled","Analytics avancés"],["autoRenewListings","Renouvellement automatique"],["prioritySupport","Support prioritaire"],["bulkImportEnabled","Import en masse"],["apiFeedEnabled","Flux API"],["isActive","Formule disponible"]] as Array<[keyof PlanDraft,string]>).map(([key,label])=><label key={String(key)}><span>{label}</span><input type="checkbox" checked={Boolean(planEditor[key])} onChange={e=>setPlanEditor({...planEditor,[key]:e.target.checked})}/></label>)}
    </div>
-   <div className="admin-modal-actions"><button className="admin-btn" onClick={()=>setPlanEditor(null)}>Annuler</button><button className="admin-btn primary" onClick={()=>void savePlan()} disabled={busy}>{busy?"Enregistrement…":"Enregistrer la formule"}</button></div>
+   <div className="admin-modal-actions"><button className="admin-btn" onClick={()=>setPlanEditor(null)}>Annuler</button><button className="admin-btn primary" onClick={()=>void savePlan()} disabled={busy}>{busy?"Enregistrement…":planEditor.id?"Enregistrer la formule":"Créer la formule"}</button></div>
   </section></div>}
  </>;
 }

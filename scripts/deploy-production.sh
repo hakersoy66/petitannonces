@@ -33,6 +33,10 @@ sudo bash "$ROOT/scripts/backup-database.sh" >/dev/null
 git reset --hard "$DEPLOY_SHA"
 sudo -u "$APP_USER" pnpm install --frozen-lockfile
 
+# Apply versioned SQL migrations against the production database before build.
+# The database backup above guarantees a rollback point if a migration fails.
+sudo -u "$APP_USER" bash -lc "cd '$ROOT'; set -a; . '$ENV'; set +a; bash scripts/apply-sql-migrations.sh"
+
 active=$(cat "$STATE" 2>/dev/null || echo green)
 if [ "$active" = green ]; then
   next=blue; web_port=3000; admin_port=3001; api_port=4000

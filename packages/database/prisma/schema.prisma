@@ -116,12 +116,6 @@ enum StoreStatus {
   SUSPENDED
 }
 
-enum ProfessionalPlanCode {
-  ESSENTIEL
-  PROFESSIONNEL
-  PREMIUM
-}
-
 enum SubscriptionStatus {
   TRIALING
   ACTIVE
@@ -540,7 +534,7 @@ model Store {
 
 model ProfessionalPlan {
   id String @id @default(cuid())
-  code ProfessionalPlanCode @unique
+  code String @unique
   name String
   description String?
   monthlyPriceMinor Int

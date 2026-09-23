@@ -55,7 +55,7 @@ function stripeId(value: unknown) {
 function planCode(obj: StripeObject) {
   const metadata = obj.metadata as Record<string, unknown> | undefined;
   const value = metadata?.pa_plan_code;
-  return value === "ESSENTIEL" || value === "PROFESSIONNEL" || value === "PREMIUM" ? value : null;
+  return typeof value==="string"&&/^[A-Z0-9_-]{2,60}$/.test(value)?value:null;
 }
 function mapStatus(value: unknown) {
   switch (value) {
@@ -238,7 +238,7 @@ export async function registerStripeBillingRoutes(app: FastifyInstance) {
     let stripeReachable=false;
     let paymentMethod:null|{type:string;brand:string|null;last4:string|null;expMonth:number|null;expYear:number|null}=null;
     let upcomingInvoice:null|{amountDueMinor:number;currency:string;chargeAt:string|null;periodStart:string|null;periodEnd:string|null}=null;
-    let pendingChange:null|{planCode:"ESSENTIEL"|"PROFESSIONNEL"|"PREMIUM";effectiveAt:string|null;scheduleId:string}=null;
+    let pendingChange:null|{planCode:string;effectiveAt:string|null;scheduleId:string}=null;
     if(local?.externalProvider==="stripe"&&local.externalSubscriptionId){
       try{
         const sub=await stripeRequest(`/v1/subscriptions/${encodeURIComponent(local.externalSubscriptionId)}`);
@@ -250,10 +250,11 @@ export async function registerStripeBillingRoutes(app: FastifyInstance) {
             const schedule=await stripeRequest(`/v1/subscription_schedules/${encodeURIComponent(scheduleId)}`);
             const metadata=(schedule.payload.metadata&&typeof schedule.payload.metadata==="object"?schedule.payload.metadata:{}) as Record<string,unknown>;
             const target=metadata.pa_target_plan_code;
-            if(target==="ESSENTIEL"||target==="PROFESSIONNEL"||target==="PREMIUM"){
+            const targetCode=typeof target==="string"&&/^[A-Z0-9_-]{2,60}$/.test(target)?target:null;
+            if(targetCode){
               const currentPhase=(schedule.payload.current_phase&&typeof schedule.payload.current_phase==="object"?schedule.payload.current_phase:{}) as Record<string,unknown>;
               const effectiveUnix=typeof currentPhase.end_date==="number"?currentPhase.end_date:typeof sub.payload.current_period_end==="number"?sub.payload.current_period_end:null;
-              pendingChange={planCode:target,effectiveAt:effectiveUnix?new Date(effectiveUnix*1000).toISOString():null,scheduleId};
+              pendingChange={planCode:targetCode,effectiveAt:effectiveUnix?new Date(effectiveUnix*1000).toISOString():null,scheduleId};
             }
           }catch(error){request.log.warn({error,scheduleId},"stripe scheduled subscription change unavailable")}
         }
@@ -327,7 +328,7 @@ export async function registerStripeBillingRoutes(app: FastifyInstance) {
 
   app.post("/billing/stripe/subscription/checkout", async (request, reply) => {
     const user=await requireUser(request,reply);if(!user)return;
-    const body=z.object({planCode:z.enum(["ESSENTIEL","PROFESSIONNEL","PREMIUM"]),returnMode:z.enum(["WEB","NATIVE"]).optional().default("WEB"),appScheme:z.enum(["petitannonces","petitannonces-development","petitannonces-preview"]).optional().default("petitannonces")}).safeParse(request.body);if(!body.success)return reply.code(400).send({error:"invalid_request"});
+    const body=z.object({planCode:z.string().trim().min(2).max(60).regex(/^[A-Z0-9_-]+$/),returnMode:z.enum(["WEB","NATIVE"]).optional().default("WEB"),appScheme:z.enum(["petitannonces","petitannonces-development","petitannonces-preview"]).optional().default("petitannonces")}).safeParse(request.body);if(!body.success)return reply.code(400).send({error:"invalid_request"});
     if(body.data.returnMode==="NATIVE"&&!nativeExternalProBillingEnabled())return reply.code(403).send({error:"native_external_billing_disabled"});
     await ensurePlans();
     const active=await prisma.professionalSubscription.findFirst({where:{userId:user.id,externalProvider:"stripe",status:{in:["TRIALING","ACTIVE","PAST_DUE"]}},select:{id:true}});if(active)return reply.code(409).send({error:"stripe_subscription_already_active"});
@@ -358,7 +359,7 @@ export async function registerStripeBillingRoutes(app: FastifyInstance) {
 
   app.post("/billing/stripe/subscription/change", async (request, reply) => {
     const user=await requireUser(request,reply);if(!user)return;
-    const body=z.object({planCode:z.enum(["ESSENTIEL","PROFESSIONNEL","PREMIUM"])}).safeParse(request.body);if(!body.success)return reply.code(400).send({error:"invalid_request"});
+    const body=z.object({planCode:z.string().trim().min(2).max(60).regex(/^[A-Z0-9_-]+$/)}).safeParse(request.body);if(!body.success)return reply.code(400).send({error:"invalid_request"});
     await ensurePlans();
     const [local,target]=await Promise.all([
       prisma.professionalSubscription.findFirst({where:{userId:user.id,externalProvider:"stripe",externalSubscriptionId:{not:null},status:{in:["TRIALING","ACTIVE","PAST_DUE"]}},include:{plan:true},orderBy:{createdAt:"desc"}}),

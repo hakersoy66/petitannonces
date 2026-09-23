@@ -18,10 +18,12 @@ const bannersSchema=z.array(bannerSchema).max(30);
 const promoTypeSchema=z.enum(["URGENT","FEATURED","BUMP","SPONSORED","GALLERY"]);
 const promoUpdateSchema=z.object({name:z.string().trim().min(2).max(100),description:z.string().trim().max(500).nullable(),priceMinor:z.number().int().min(0).max(1_000_000),durationHours:z.number().int().min(1).max(24*365).nullable(),isActive:z.boolean()});
 const promoCreateSchema=promoUpdateSchema.extend({code:z.string().trim().min(2).max(60).regex(/^[A-Z0-9_-]+$/),type:promoTypeSchema});
+const planCodeSchema=z.string().trim().min(2).max(60).regex(/^[A-Z0-9_-]+$/);
 const planUpdateSchema=z.object({
   name:z.string().trim().min(2).max(100),description:z.string().trim().max(500).nullable(),monthlyPriceMinor:z.number().int().min(0).max(5_000_000),yearlyPriceMinor:z.number().int().min(0).max(50_000_000).nullable(),
   maxActiveListings:z.number().int().positive().max(1_000_000).nullable(),maxStores:z.number().int().min(1).max(1000),analyticsEnabled:z.boolean(),autoRenewListings:z.boolean(),prioritySupport:z.boolean(),featuredCreditsMonthly:z.number().int().min(0).max(100000).optional(),bulkImportEnabled:z.boolean(),apiFeedEnabled:z.boolean(),isActive:z.boolean(),
 });
+const planCreateSchema=planUpdateSchema.extend({code:planCodeSchema});
 const DEFAULT_PLANS=[
   {code:"ESSENTIEL" as const,name:"Essentiel",description:"Pour démarrer avec une présence professionnelle simple.",monthlyPriceMinor:990,maxActiveListings:50,maxStores:1,analyticsEnabled:false,autoRenewListings:false,prioritySupport:false,featuredCreditsMonthly:0,bulkImportEnabled:false,apiFeedEnabled:false,isActive:true},
   {code:"PROFESSIONNEL" as const,name:"Professionnel",description:"Pour les vendeurs réguliers qui veulent plus d’outils et de visibilité.",monthlyPriceMinor:2490,maxActiveListings:250,maxStores:2,analyticsEnabled:true,autoRenewListings:true,prioritySupport:false,featuredCreditsMonthly:0,bulkImportEnabled:true,apiFeedEnabled:true,isActive:true},
@@ -63,6 +65,8 @@ export async function registerAdminCommercialRoutes(app:FastifyInstance){
   });
 
   app.put("/admin/commercial/promotions/:id",{preHandler:requireAdminRoles([...ROLES])},async(request,reply)=>{const params=z.object({id:z.string().min(1)}).safeParse(request.params);const body=promoUpdateSchema.safeParse(request.body);if(!params.success||!body.success)return reply.code(400).send({error:"invalid_request"});const rows=await prisma.$queryRawUnsafe<Array<{id:string}>>(`UPDATE "PromotionProduct" SET "name"=$1,"description"=$2,"priceMinor"=$3,"creditCost"=0,"durationHours"=$4,"isActive"=$5,"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$6 RETURNING "id"`,body.data.name,body.data.description,body.data.priceMinor,body.data.durationHours,body.data.isActive,params.data.id);if(!rows[0])return reply.code(404).send({error:"promotion_not_found"});await audit(request,"PROMOTION_PRODUCT_UPDATED","PROMOTION_PRODUCT",params.data.id,body.data);return reply.send({saved:true})});
+
+  app.post("/admin/commercial/pro-plans",{preHandler:requireAdminRoles([...ROLES])},async(request,reply)=>{const body=planCreateSchema.safeParse(request.body);if(!body.success)return reply.code(400).send({error:"invalid_request",details:body.error.flatten()});const existing=await prisma.professionalPlan.findUnique({where:{code:body.data.code}});if(existing)return reply.code(409).send({error:"plan_code_exists"});const plan=await prisma.professionalPlan.create({data:{...body.data,currency:"EUR",featuredCreditsMonthly:0}});await audit(request,"PRO_PLAN_CREATED","PRO_PLAN",plan.id,{...body.data,code:plan.code});return reply.code(201).send({created:true,plan})});
 
   app.put("/admin/commercial/pro-plans/:id",{preHandler:requireAdminRoles([...ROLES])},async(request,reply)=>{const params=z.object({id:z.string().min(1)}).safeParse(request.params);const body=planUpdateSchema.safeParse(request.body);if(!params.success||!body.success)return reply.code(400).send({error:"invalid_request"});const plan=await prisma.professionalPlan.findUnique({where:{id:params.data.id}});if(!plan)return reply.code(404).send({error:"plan_not_found"});const updated=await prisma.professionalPlan.update({where:{id:plan.id},data:{...body.data,featuredCreditsMonthly:0}});await audit(request,"PRO_PLAN_UPDATED","PRO_PLAN",plan.id,{code:plan.code,...body.data});return reply.send({saved:true,plan:updated})});
 

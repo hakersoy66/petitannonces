@@ -5,7 +5,7 @@ import {useEffect,useState} from "react";
 import styles from "../pro-tools.module.css";
 import {fetchWithRetry} from "../../../lib/fetch-resilient";
 
-type PlanCode="ESSENTIEL"|"PROFESSIONNEL"|"PREMIUM";
+type PlanCode=string;
 type Plan={id:string;code:PlanCode;name:string;monthlyPriceMinor:number;currency:string;maxActiveListings:number|null;maxStores:number;analyticsEnabled:boolean;autoRenewListings:boolean;prioritySupport:boolean;featuredCreditsMonthly:number;bulkImportEnabled:boolean;apiFeedEnabled:boolean};
 type Subscription={status:string;trialEndsAt:string|null;currentPeriodStart:string|null;currentPeriodEnd:string|null;cancelAtPeriodEnd:boolean;createdAt:string;externalProvider:string|null;plan:Plan};
 type Me={id:string;email:string;subscriptions:Subscription[]};
@@ -23,7 +23,7 @@ function invoiceStatusLabel(v:string|null){return ({paid:"Payée",open:"À payer
 function paymentMethodLabel(pm:PaymentMethodSummary|null){if(!pm)return"Non disponible";const brand=(pm.brand??"").toLowerCase();const label=brand==="visa"?"Visa":brand==="mastercard"?"Mastercard":brand==="amex"?"American Express":brand==="sepa"?"Prélèvement SEPA":pm.type==="card"?"Carte bancaire":pm.type.replaceAll("_"," ");return pm.last4?`${label} •••• ${pm.last4}`:label}
 function paymentExpiry(pm:PaymentMethodSummary|null){return pm?.expMonth&&pm?.expYear?`Expire ${String(pm.expMonth).padStart(2,"0")}/${String(pm.expYear).slice(-2)}`:"Géré de façon sécurisée par Stripe"}
 function daysLeft(value:string|null){if(!value)return null;return Math.max(0,Math.ceil((new Date(value).getTime()-Date.now())/86400000))}
-function planPitch(code:PlanCode){return code==="ESSENTIEL"?"Pour démarrer avec une vitrine professionnelle claire.":code==="PROFESSIONNEL"?"Le meilleur équilibre pour développer une activité régulière.":"Pour les catalogues importants et les équipes qui veulent tout débloquer."}
+function planPitch(code:PlanCode){if(code==="ESSENTIEL")return"Pour démarrer avec une vitrine professionnelle claire.";if(code==="PROFESSIONNEL")return"Le meilleur équilibre pour développer une activité régulière.";if(code==="PREMIUM")return"Pour les catalogues importants et les équipes qui veulent tout débloquer.";return"Une formule professionnelle adaptée à votre activité."}
 
 export default function Abonnement(){
   const[plans,setPlans]=useState<Plan[]>([]);
@@ -123,7 +123,7 @@ export default function Abonnement(){
 
   useEffect(()=>{
     const q=new URLSearchParams(window.location.search);setStripeState(q.get("stripe")??"");
-    const requested=q.get("plan");if(requested==="ESSENTIEL"||requested==="PROFESSIONNEL"||requested==="PREMIUM")setDesiredPlan(requested);
+    const requested=q.get("plan");if(requested&&/^[A-Z0-9_-]{2,60}$/.test(requested))setDesiredPlan(requested);
     void load().catch(()=>setCheckoutMsg("Impossible de charger les informations d’abonnement pour le moment."));
   },[]);
 
