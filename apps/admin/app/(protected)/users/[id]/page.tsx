@@ -1,0 +1,1 @@
+import UserDetailClient from "./user-detail-client";export const metadata={title:"Détail utilisateur"};export default function Page(){return <UserDetailClient/>}
