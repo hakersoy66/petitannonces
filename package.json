@@ -2,7 +2,9 @@
   "name": "petitannonces",
   "private": true,
   "packageManager": "pnpm@10.15.0",
-  "engines": { "node": ">=24.0.0" },
+  "engines": {
+    "node": ">=24.0.0"
+  },
   "scripts": {
     "dev": "turbo dev",
     "build": "turbo build",
@@ -14,5 +16,31 @@
   "devDependencies": {
     "turbo": "^2.5.0",
     "typescript": "^5.9.0"
-  }
+  },
+  "pnpm": {
+    "overrides": {
+      "deepmerge-ts": "8.0.2",
+      "mysql2": "3.24.4",
+      "uuid": "11.1.1",
+      "decode-uri-component": "0.5.0"
+    }
+  },
+  "version": "1.0.0",
+  "description": "France-first classifieds and transactional marketplace platform.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hakersoy66/petitannonces.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/hakersoy66/petitannonces/issues"
+  },
+  "homepage": "https://github.com/hakersoy66/petitannonces#readme"
 }

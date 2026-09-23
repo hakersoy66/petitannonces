@@ -245,6 +245,9 @@ model Category {
   name String
   slug String @unique
   domain CategoryDomain @default(GENERAL)
+  isActive Boolean @default(true)
+  sortOrder Int @default(0)
+  iconKey String?
   parentId String?
   parent Category? @relation("CategoryTree", fields: [parentId], references: [id])
   children Category[] @relation("CategoryTree")
@@ -253,6 +256,7 @@ model Category {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   @@index([domain])
+  @@index([parentId, isActive, sortOrder])
 }
 
 model CategoryAttribute {
@@ -315,7 +319,9 @@ model Listing {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   publishedAt DateTime?
+  draftSavedAt DateTime?
   @@index([status, categoryId])
+  @@index([status, draftSavedAt])
   @@index([sellerId, createdAt])
   @@index([storeId, status, publishedAt])
   @@index([status, city, publishedAt])

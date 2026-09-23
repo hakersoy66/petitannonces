@@ -3,18 +3,18 @@ import {prisma} from "@pa/database";
 
 export async function ensureSocialGrowthSchema(){
  await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "SocialGrowthPost" (
- "id" text PRIMARY KEY,
- "listingId" text NOT NULL UNIQUE REFERENCES "Listing"("id") ON DELETE CASCADE,
- "channel" text NOT NULL DEFAULT 'FACEBOOK',
- "status" text NOT NULL DEFAULT 'PREPARED',
- "message" text NOT NULL,
- "linkUrl" text NOT NULL,
- "imageUrl" text,
- "externalId" text,
- "error" text,
- "createdAt" timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
- "updatedAt" timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
- "publishedAt" timestamptz
+   "id" text PRIMARY KEY,
+   "listingId" text NOT NULL UNIQUE REFERENCES "Listing"("id") ON DELETE CASCADE,
+   "channel" text NOT NULL DEFAULT 'FACEBOOK',
+   "status" text NOT NULL DEFAULT 'PREPARED',
+   "message" text NOT NULL,
+   "linkUrl" text NOT NULL,
+   "imageUrl" text,
+   "externalId" text,
+   "error" text,
+   "createdAt" timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   "updatedAt" timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   "publishedAt" timestamptz
  )`);
  await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "SocialGrowthPost_status_created_idx" ON "SocialGrowthPost" ("status","createdAt")`);
 }
@@ -27,9 +27,9 @@ function priceText(priceMinor:number|null,currency:string){
 export async function prepareListingSocialPost(listingId:string){
  await ensureSocialGrowthSchema();
  const rows=await prisma.$queryRawUnsafe<Array<{id:string;slug:string|null;title:string|null;priceMinor:number|null;currency:string;city:string|null;imageUrl:string|null}>>(
- `SELECT l."id",l."slug",l."title",l."priceMinor",l."currency",l."city",
- (SELECT lm."publicUrl" FROM "ListingMedia" lm WHERE lm."listingId"=l."id" AND lm."status"='READY' AND lm."publicUrl" IS NOT NULL ORDER BY lm."isCover" DESC,lm."sortOrder" ASC,lm."createdAt" ASC LIMIT 1) AS "imageUrl"
- FROM "Listing" l WHERE l."id"=$1 AND l."status"='PUBLISHED' LIMIT 1`,listingId);
+  `SELECT l."id",l."slug",l."title",l."priceMinor",l."currency",l."city",
+    (SELECT lm."publicUrl" FROM "ListingMedia" lm WHERE lm."listingId"=l."id" AND lm."status"='READY' AND lm."publicUrl" IS NOT NULL ORDER BY lm."isCover" DESC,lm."sortOrder" ASC,lm."createdAt" ASC LIMIT 1) AS "imageUrl"
+   FROM "Listing" l WHERE l."id"=$1 AND l."status"='PUBLISHED' LIMIT 1`,listingId);
  const listing=rows[0];
  if(!listing?.slug||!listing.imageUrl)return{prepared:false,reason:"missing_slug_or_image" as const};
  const linkUrl=`https://petitannonces.fr/annonce/${encodeURIComponent(listing.slug)}?utm_source=facebook&utm_medium=organic_social&utm_campaign=new_listing`;
