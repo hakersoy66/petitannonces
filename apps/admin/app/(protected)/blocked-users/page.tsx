@@ -5,4 +5,3 @@ export const metadata={title:"Utilisateurs bloqués | Petit Annonces Admin"};
 export default function BlockedUsersPage(){
  return <BlockedUsersClient/>;
 }
-
