@@ -120,11 +120,10 @@ export async function notifyFollowersForListing(listingId:string){
         eventKind:"LISTING",
         notificationKind:"LISTING",
         title:`Nouvelle annonce de ${sourceName}`,
-        body:`« ${listing.title??"Nouvelle annonce"} » vient d’être publiée.`,
+        body:`${sourceName} vient de publier « ${listing.title??"une nouvelle annonce"} ». Découvrez-la dès maintenant sur Petit Annonces.`,
         actionUrl:listing.slug?`/annonce/${encodeURIComponent(listing.slug)}`:"/recherche",
-        suppressEmail:true,
         dedupeKey:`followed-listing:${listing.id}:${follower.userId}`,
-        metadata:{purpose:"FOLLOWED_SELLER_NEW_LISTING",listingId:listing.id,sellerId:listing.sellerId,storeId:listing.storeId,followSource:follower.storeFollow?"STORE":"USER"},
+        metadata:{purpose:"FOLLOWED_SELLER_NEW_LISTING",listingId:listing.id,sellerId:listing.sellerId,storeId:listing.storeId,sellerName:sourceName,followSource:follower.storeFollow?"STORE":"USER"},
       });
     }));
     queued+=results.filter(result=>result.status==="fulfilled").length;

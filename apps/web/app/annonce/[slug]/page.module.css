@@ -846,3 +846,18 @@
   .mobileSpecsCard .spec small{font-size:9.5px!important}
 }
 @media(max-width:390px){.mobileSpecsCard .specGrid{grid-template-columns:1fr!important}}
+/* 2026-09-25 listing photo lightbox */
+.heroMainImage{cursor:zoom-in}
+.lightbox{position:fixed;inset:0;z-index:1200;background:rgba(10,10,16,.94);display:grid;grid-template-rows:minmax(0,1fr) auto;align-items:center;justify-items:center;padding:68px 24px 20px;backdrop-filter:blur(10px);animation:lightboxFade .16s ease}
+.lightboxStage{position:relative;width:min(1180px,calc(100vw - 48px));height:min(78vh,860px);display:grid;place-items:center;touch-action:pan-y}
+.lightboxImage{max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain;border-radius:12px;box-shadow:0 24px 80px rgba(0,0,0,.42);user-select:none;-webkit-user-select:none}
+.lightboxClose,.lightboxArrow{position:absolute;border:0;background:rgba(255,255,255,.12);color:#fff;display:grid;place-items:center;cursor:pointer;backdrop-filter:blur(8px);transition:.15s ease}
+.lightboxClose{right:22px;top:20px;width:46px;height:46px;border-radius:50%;font-size:19px;z-index:3}
+.lightboxArrow{top:50%;transform:translateY(-50%);width:52px;height:52px;border-radius:50%;font-size:19px;z-index:2}
+.lightboxPrev{left:14px}.lightboxNext{right:14px}.lightboxClose:hover,.lightboxArrow:hover{background:rgba(255,255,255,.22);transform:scale(1.04)}
+.lightboxArrow:hover{transform:translateY(-50%) scale(1.04)}
+.lightboxCounter{position:absolute;left:22px;top:24px;color:#fff;font-size:13px;font-weight:850;z-index:3;padding:8px 11px;border-radius:999px;background:rgba(255,255,255,.12)}
+.lightboxThumbs{width:min(980px,calc(100vw - 48px));display:flex;gap:8px;overflow-x:auto;padding:10px 4px 2px;scrollbar-width:none}
+.lightboxThumbs::-webkit-scrollbar{display:none}.lightboxThumb{width:70px;height:54px;flex:0 0 70px;border:2px solid transparent;border-radius:9px;padding:0;overflow:hidden;background:#24242d;cursor:pointer;opacity:.55}.lightboxThumb img{width:100%;height:100%;object-fit:cover}.lightboxThumbActive{border-color:#fff;opacity:1}
+@keyframes lightboxFade{from{opacity:0}to{opacity:1}}
+@media(max-width:620px){.lightbox{padding:58px 10px 14px}.lightboxStage{width:calc(100vw - 20px);height:min(76vh,720px)}.lightboxImage{border-radius:8px}.lightboxArrow{width:42px;height:42px}.lightboxPrev{left:5px}.lightboxNext{right:5px}.lightboxClose{right:12px;top:12px;width:42px;height:42px}.lightboxCounter{left:12px;top:15px;font-size:11px}.lightboxThumbs{width:calc(100vw - 20px)}.lightboxThumb{width:58px;height:45px;flex-basis:58px}}

@@ -16,6 +16,7 @@ import { evaluateListing } from "./publication.js";
 const MAX_HTML_BYTES = 1_500_000;
 const allowedProtocols = new Set(["http:", "https:"]);
 const supportedReferenceSources = new Set(["leboncoin"]);
+function extractPublicUrl(raw:string){const match=raw.match(/https?:\/\/[^\s<>"']+/i);return(match?.[0]??"").replace(/[\]),.;!?]+$/g,"")}
 function isFacebookHost(host:string){const h=host.toLowerCase();return h==="facebook.com"||h.endsWith(".facebook.com")||h==="fb.com"||h.endsWith(".fb.com")}
 function isVintedHost(host:string){const h=host.toLowerCase();return h==="vinted.fr"||h.endsWith(".vinted.fr")}
 function importSourceType(raw:string){try{const h=new URL(raw).hostname.toLowerCase();if(h==="leboncoin.fr"||h.endsWith(".leboncoin.fr"))return "LEBONCOIN";if(isVintedHost(h))return "VINTED";return "LINK"}catch{return "LINK"}}
@@ -652,7 +653,13 @@ async function importImageToListing(listingId:string, rawUrl:string, index:numbe
   const buf=Buffer.concat(chunks);if(!buf.length)throw new Error("image_empty");
   const metadata=await sharp(buf,{failOn:"none"}).metadata();const width=Number(metadata.width??0),height=Number(metadata.height??0);
   const sourceIsFacebook=isFacebookHost(sourceHost);
-  const minWidth=sourceIsFacebook?240:320,minHeight=sourceIsFacebook?180:240,minArea=sourceIsFacebook?120000:240000,minEdge=sourceIsFacebook?480:600;
+  // Leboncoin can legitimately serve older classified photos at 256px-500px.
+  // The URL is already restricted to lbcpb1 listing assets, so keep the
+  // anti-UI filter while accepting those real lower-resolution ad photos.
+  const minWidth=sourceIsLeboncoin?160:sourceIsFacebook?240:320;
+  const minHeight=sourceIsLeboncoin?160:sourceIsFacebook?180:240;
+  const minArea=sourceIsLeboncoin?40000:sourceIsFacebook?120000:240000;
+  const minEdge=sourceIsLeboncoin?240:sourceIsFacebook?480:600;
   if(!width||!height||width<minWidth||height<minHeight||width*height<minArea||Math.max(width,height)<minEdge)throw new Error("image_quality_too_low");
   const ratio=Math.max(width/height,height/width);if(ratio>4.5)throw new Error("image_not_listing_photo");
   const mediaId=randomUUID();const objectKey=`listings/${listingId}/${mediaId}.${ext}`;const publicUrl=await uploadStoredObject(objectKey,type,buf);
@@ -764,10 +771,12 @@ export async function registerListingImportRoutes(app:FastifyInstance){
   app.get("/listing-import/history",async(request,reply)=>{const user=await requireListingUser(request,reply);if(!user)return;return reply.send({imports:await importHistory(user.id)});});
   app.post("/listing-import/preview",async(request,reply)=>{
     const user=await requireListingUser(request,reply);if(!user)return;
-    const body=z.object({url:z.string().trim().url()}).safeParse(request.body);
+    const body=z.object({url:z.string().trim().min(1).max(5000)}).safeParse(request.body);
     if(!body.success)return reply.code(400).send({error:"invalid_request"});
+    const extractedUrl=extractPublicUrl(body.data.url);
+    if(!extractedUrl)return reply.code(400).send({error:"invalid_request"});
     try{
-      const url=(await safeUrl(body.data.url)).toString();
+      const url=(await safeUrl(extractedUrl)).toString();
       const host=new URL(url).hostname.toLowerCase();
       const isLeboncoin=host==="leboncoin.fr"||host.endsWith(".leboncoin.fr");
       const isVinted=isVintedHost(host);
@@ -824,7 +833,31 @@ export async function registerListingImportRoutes(app:FastifyInstance){
       }catch{}
     }
     const histovecUrl=d.histovecUrl?normalizeHistovecShareUrl(d.histovecUrl):null;if(d.histovecUrl&&!histovecUrl)return reply.code(400).send({error:"invalid_histovec_url"});
-    const cleanDescription=cleanImportedDescription(d.description,d.sourceUrl);const fingerprint=importFingerprint({sourceUrl:d.sourceUrl,category:category.slug,title:d.title,priceMinor:d.priceMinor,city:effectiveCity,postalCode:effectivePostalCode});const prior=await existingImport(user.id,fingerprint,d.sourceUrl);if(prior){const existing=await prisma.listing.findFirst({where:{id:prior.listingId,sellerId:user.id},select:{id:true,title:true,status:true}});if(existing){let recoveredMedia=0;if(sourceType==="VINTED"){const count=await prisma.$queryRawUnsafe<Array<{count:bigint}>>(`SELECT COUNT(*)::bigint AS count FROM "ListingMedia" WHERE "listingId"=$1 AND "status"='READY'`,existing.id).catch(()=>[]);if(Number(count[0]?.count??0n)===0){try{const fresh=summarizeVintedReader(await fetchVintedReader(d.sourceUrl),d.sourceUrl);const recovery=await importListingImages(existing.id,fresh.imageUrls??[],d.sourceUrl);recoveredMedia=recovery.imported;if(recoveredMedia>0)request.log.info({listingId:existing.id,source:"VINTED",recoveredMedia},"listing_import_duplicate_media_recovered");}catch(e){request.log.warn({listingId:existing.id,source:"VINTED",reason:e instanceof Error?e.message:"vinted_duplicate_recovery_failed"},"listing_import_duplicate_media_recovery_failed");}}}return reply.send({duplicate:true,duplicateKind:"exact",listing:existing,recoveredMedia,editUrl:`/deposer-une-annonce?listingId=${encodeURIComponent(existing.id)}`});}}
+    const cleanDescription=cleanImportedDescription(d.description,d.sourceUrl);
+    const fingerprint=importFingerprint({sourceUrl:d.sourceUrl,category:category.slug,title:d.title,priceMinor:d.priceMinor,city:effectiveCity,postalCode:effectivePostalCode});
+    const prior=await existingImport(user.id,fingerprint,d.sourceUrl);
+    if(prior){
+      const existing=await prisma.listing.findFirst({where:{id:prior.listingId,sellerId:user.id},select:{id:true,title:true,status:true}});
+      if(existing){
+        let recoveredMedia=0;
+        if(sourceType==="VINTED"||sourceType==="LEBONCOIN"){
+          const count=await prisma.$queryRawUnsafe<Array<{count:bigint}>>(`SELECT COUNT(*)::bigint AS count FROM "ListingMedia" WHERE "listingId"=$1 AND "status"='READY'`,existing.id).catch(()=>[]);
+          if(Number(count[0]?.count??0n)===0){
+            try{
+              const fresh=sourceType==="VINTED"
+                ?summarizeVintedReader(await fetchVintedReader(d.sourceUrl),d.sourceUrl)
+                :summarizeLeboncoinAdObject(await fetchLeboncoinApiAd(d.sourceUrl),d.sourceUrl,"leboncoin-api-duplicate-recovery");
+              const recovery=await importListingImages(existing.id,fresh.imageUrls??[],d.sourceUrl);
+              recoveredMedia=recovery.imported;
+              if(recoveredMedia>0)request.log.info({listingId:existing.id,source:sourceType,recoveredMedia},"listing_import_duplicate_media_recovered");
+            }catch(e){
+              request.log.warn({listingId:existing.id,source:sourceType,reason:e instanceof Error?e.message:"duplicate_media_recovery_failed"},"listing_import_duplicate_media_recovery_failed");
+            }
+          }
+        }
+        return reply.send({duplicate:true,duplicateKind:"exact",listing:existing,recoveredMedia,editUrl:`/deposer-une-annonce?listingId=${encodeURIComponent(existing.id)}`});
+      }
+    }
     if(d.title&&!d.allowSimilarDuplicate){const similar=await prisma.$queryRawUnsafe<Array<{id:string;title:string|null;status:string;priceMinor:number|null;city:string|null}>>(`SELECT "id","title","status","priceMinor","city" FROM "Listing" WHERE "sellerId"=$1 AND "status" NOT IN ('EXPIRED','DELETED') AND (lower(COALESCE("title",''))=lower($2) OR lower(COALESCE("title",'')) LIKE '%'||lower($2)||'%' OR lower($2) LIKE '%'||lower(COALESCE("title",''))||'%') AND ($3::int IS NULL OR "priceMinor" IS NULL OR abs("priceMinor"-$3)<=GREATEST(500,ROUND($3*0.08))) AND ($4::text IS NULL OR lower(COALESCE("city",''))=lower($4)) ORDER BY "updatedAt" DESC LIMIT 1`,user.id,d.title,d.priceMinor??null,effectiveCity).catch(()=>[]);if(similar[0])return reply.send({duplicate:true,duplicateKind:"similar",listing:similar[0],editUrl:`/deposer-une-annonce?listingId=${encodeURIComponent(similar[0].id)}`});}
     const listing=await prisma.listing.create({data:{sellerId:user.id,categoryId:category.id,title:d.title||undefined,description:cleanDescription&&cleanDescription.length>=20?cleanDescription:undefined,priceMinor:d.priceMinor??undefined,city:effectiveCity||undefined,postalCode:effectivePostalCode||undefined,draftSavedAt:new Date()},include:{category:true}});
     const recorded=await recordImport(user.id,listing.id,sourceType,d.sourceUrl,fingerprint);
@@ -834,7 +867,20 @@ export async function registerListingImportRoutes(app:FastifyInstance){
     const importedAttributes=await applyImportedCommonAttributes(listing.id,category.id,d.title??null,cleanDescription,sourceHints);
     const propertyHints=await applyImportedRealEstate(listing.id,category,d.title??null,cleanDescription,effectiveCity,effectivePostalCode,sourceHints);
     let effectiveImageUrls=d.imageUrls??[];
-    if(sourceType==="VINTED"&&effectiveImageUrls.length===0){try{const fresh=summarizeVintedReader(await fetchVintedReader(d.sourceUrl),d.sourceUrl);effectiveImageUrls=(fresh.imageUrls??[]).slice(0,20);if(effectiveImageUrls.length)request.log.info({listingId:listing.id,source:"VINTED",imageCount:effectiveImageUrls.length},"listing_import_media_recovered");}catch(e){request.log.warn({listingId:listing.id,source:"VINTED",reason:e instanceof Error?e.message:"vinted_media_recovery_failed"},"listing_import_media_recovery_failed");}}
+    if(sourceType==="VINTED"&&effectiveImageUrls.length===0){
+      try{
+        const fresh=summarizeVintedReader(await fetchVintedReader(d.sourceUrl),d.sourceUrl);
+        effectiveImageUrls=(fresh.imageUrls??[]).slice(0,20);
+        if(effectiveImageUrls.length)request.log.info({listingId:listing.id,source:"VINTED",imageCount:effectiveImageUrls.length},"listing_import_media_recovered");
+      }catch(e){request.log.warn({listingId:listing.id,source:"VINTED",reason:e instanceof Error?e.message:"vinted_media_recovery_failed"},"listing_import_media_recovery_failed");}
+    }
+    if(sourceType==="LEBONCOIN"&&effectiveImageUrls.length===0){
+      try{
+        const fresh=summarizeLeboncoinAdObject(await fetchLeboncoinApiAd(d.sourceUrl),d.sourceUrl,"leboncoin-api-media-recovery");
+        effectiveImageUrls=(fresh.imageUrls??[]).slice(0,20);
+        if(effectiveImageUrls.length)request.log.info({listingId:listing.id,source:"LEBONCOIN",imageCount:effectiveImageUrls.length},"listing_import_media_recovered");
+      }catch(e){request.log.warn({listingId:listing.id,source:"LEBONCOIN",reason:e instanceof Error?e.message:"leboncoin_media_recovery_failed"},"listing_import_media_recovery_failed");}
+    }
     let media:{imported:number;failed:number;reasons?:string[]}={imported:0,failed:0,reasons:[]};if(effectiveImageUrls.length&&d.sourceUrl){media=await importListingImages(listing.id,effectiveImageUrls,d.sourceUrl);}
     const preflight=await evaluateListing(listing.id,user.id);
     const preflightErrors=preflight?.errors??[];

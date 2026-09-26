@@ -109,6 +109,23 @@ function mergeOrganic(gsc:SearchConsoleOrganicReport,ga4:Ga4OrganicFunnel,firstP
 }
 
 export async function registerAdminAnalyticsRoutes(app:FastifyInstance){
+ app.get("/admin/analytics/summary",{preHandler:requireAdminRoles([...ROLES])},async(request,reply)=>{
+  const parsed=z.object({days:z.coerce.number().int().min(7).max(365).default(30)}).safeParse(request.query);
+  if(!parsed.success)return reply.code(400).send({error:"invalid_period"});
+  const days=parsed.data.days;
+  const rows=await prisma.$queryRawUnsafe<Array<any>>(`SELECT
+    (SELECT COUNT(*) FROM "User" WHERE "createdAt">=CURRENT_DATE-($1::int-1))::int AS "newUsers",
+    (SELECT COUNT(*) FROM "Listing" WHERE "createdAt">=CURRENT_DATE-($1::int-1))::int AS "newListings",
+    (SELECT COUNT(*) FROM "Listing" WHERE "publishedAt">=CURRENT_DATE-($1::int-1))::int AS "publishedListings",
+    (SELECT COUNT(*) FROM "MarketplaceOrder" WHERE "createdAt">=CURRENT_DATE-($1::int-1))::int AS "orders",
+    (SELECT COUNT(*) FROM "MarketplaceOrder" WHERE "paidAt">=CURRENT_DATE-($1::int-1))::int AS "paidOrders",
+    COALESCE((SELECT SUM("totalAmountMinor") FROM "MarketplaceOrder" WHERE "paidAt">=CURRENT_DATE-($1::int-1)),0)::bigint AS "gmvMinor",
+    COALESCE((SELECT SUM("platformCommissionMinor") FROM "MarketplaceOrder" WHERE "paidAt">=CURRENT_DATE-($1::int-1)),0)::bigint AS "revenueMinor",
+    (SELECT COUNT(*) FROM "MarketplaceDispute" WHERE "createdAt">=CURRENT_DATE-($1::int-1))::int AS "disputes",
+    (SELECT COUNT(*) FROM "SupportTicket" WHERE "createdAt">=CURRENT_DATE-($1::int-1))::int AS "supportTickets"`,days);
+  const s=rows[0]??{};
+  return reply.send({days,summary:{...s,gmvMinor:Number(s.gmvMinor??0),revenueMinor:Number(s.revenueMinor??0)}});
+ });
  app.get("/admin/analytics/overview",{preHandler:requireAdminRoles([...ROLES])},async(request,reply)=>{
   const parsed=z.object({days:z.coerce.number().int().min(7).max(365).default(30)}).safeParse(request.query);if(!parsed.success)return reply.code(400).send({error:"invalid_period"});const days=parsed.data.days;
   const [series,summary,listingStatuses,userKinds,audience,dailyAudience,trafficSources,signupSourcesToday,recentSignupSourcesToday,ga4,ga4Organic,gsc,firstPartyOrganic,keyEvents,metaStatus]=await Promise.all([

@@ -9,7 +9,7 @@ import {
   faMapLocationDot, faMessage, faPalette, faPhone, faPlus, faRectangleList,
   faRulerCombined, faShareNodes, faShieldHalved, faShirt, faStar,
   faStore, faTruck, faUser, faUserShield, faWallet, faWandMagicSparkles,
-  faScrewdriverWrench, faChildReaching, faCouch, faMotorcycle, faPaw, faWifi, faGripLines, faEllipsisVertical,
+  faScrewdriverWrench, faChildReaching, faCouch, faMotorcycle, faPaw, faWifi, faGripLines, faEllipsisVertical, faXmark,
 } from "@fortawesome/free-solid-svg-icons";
 import { faHeart } from "@fortawesome/free-regular-svg-icons";
 
@@ -24,7 +24,7 @@ export type AppIconName =
   | "map" | "message" | "palette" | "phone" | "plus" | "list" | "ruler"
   | "share" | "shield" | "shirt" | "sparkles" | "star" | "store" | "truck"
   | "user" | "user-shield" | "wallet" | "wand" | "tools" | "child" | "couch"
-  | "motorcycle" | "paw" | "wifi" | "grip" | "ellipsis";
+  | "motorcycle" | "paw" | "wifi" | "grip" | "ellipsis" | "xmark";
 
 const icons: Record<AppIconName, IconDefinition> = {
   "arrow-left": faArrowLeft, "arrow-right": faArrowRight, bell: faBell, bolt: faBolt,
@@ -40,7 +40,7 @@ const icons: Record<AppIconName, IconDefinition> = {
   shirt: faShirt, sparkles: faWandMagicSparkles, star: faStar, store: faStore, truck: faTruck,
   user: faUser, "user-shield": faUserShield, wallet: faWallet, wand: faWandMagicSparkles,
   tools: faScrewdriverWrench, child: faChildReaching, couch: faCouch, motorcycle: faMotorcycle,
-  paw: faPaw, wifi: faWifi, grip: faGripLines, ellipsis: faEllipsisVertical,
+  paw: faPaw, wifi: faWifi, grip: faGripLines, ellipsis: faEllipsisVertical, xmark: faXmark,
 };
 
 export function AppIcon({ name, className, title }: { name: AppIconName; className?: string; title?: string }) {

@@ -16,6 +16,7 @@ export type PublicListingDetail = {
   latitude: number | null;
   longitude: number | null;
   publishedAt: string | null;
+  expiresAt: string | null;
   category: { id: string; name: string; slug: string; domain: "GENERAL" | "VEHICLE" | "REAL_ESTATE" | "JOB" | "SERVICE" | "ANIMAL" };
   breadcrumb: Array<{ name: string; slug: string }>;
   attributes: Array<{ key: string; label: string; unit: string | null; value: unknown }>;
@@ -50,8 +51,10 @@ export type PublicListingDetail = {
 };
 
 export const fetchPublicListing = cache(async (slug: string): Promise<PublicListingDetail | null> => {
+  const normalizedSlug=String(slug??"").trim();
+  if(!normalizedSlug||normalizedSlug==="null"||normalizedSlug==="undefined")return null;
   const baseUrl = process.env.API_INTERNAL_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:4000";
-  const response = await fetch(`${baseUrl.replace(/\/$/, "")}/public/listings/${encodeURIComponent(slug)}`, { cache: "no-store" });
+  const response = await fetch(`${baseUrl.replace(/\/$/, "")}/public/listings/${encodeURIComponent(normalizedSlug)}`, { cache: "no-store" });
   if (response.status === 404) return null;
   if (!response.ok) throw new Error(`listing_api_${response.status}`);
   const payload = await response.json() as { listing: PublicListingDetail };

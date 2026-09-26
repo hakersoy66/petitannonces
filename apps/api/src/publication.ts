@@ -37,6 +37,11 @@ async function saveListingQualitySnapshot(listingId:string,sellerId:string,quali
   await prisma.$executeRawUnsafe(`INSERT INTO "ListingQualitySnapshot" ("listingId","sellerId","score","level","issues","assessedAt") VALUES ($1,$2,$3,$4,$5::jsonb,CURRENT_TIMESTAMP) ON CONFLICT ("listingId") DO UPDATE SET "sellerId"=EXCLUDED."sellerId","score"=EXCLUDED."score","level"=EXCLUDED."level","issues"=EXCLUDED."issues","assessedAt"=CURRENT_TIMESTAMP`,listingId,sellerId,quality.score,quality.level,JSON.stringify(quality.issues));
 }
 
+async function ensurePublicationReceiptSchema(){
+  await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "ListingPublicationReceipt" ("requestListingId" TEXT PRIMARY KEY,"targetListingId" TEXT NOT NULL,"userId" TEXT NOT NULL,"status" TEXT NOT NULL,"slug" TEXT,"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP)`);
+  await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "ListingPublicationReceipt_user_created_idx" ON "ListingPublicationReceipt"("userId","createdAt" DESC)`);
+}
+
 function issueStep(code:string){
   if(code==="title_required")return 0;
   if(code==="ready_photo_required")return 1;
@@ -218,6 +223,7 @@ export async function evaluateListing(listingId: string, userId: string) {
 
 export async function registerPublicationRoutes(app: FastifyInstance) {
   await ensureListingQualitySnapshotSchema();
+  await ensurePublicationReceiptSchema();
   app.get("/listings/:id/publication-check", async (request, reply) => {
     const user = await requireListingUser(request, reply); if (!user) return;
     const params = idParams.safeParse(request.params);
@@ -246,6 +252,9 @@ export async function registerPublicationRoutes(app: FastifyInstance) {
     const params = idParams.safeParse(request.params);
     const body = consentSchema.safeParse(request.body);
     if (!params.success || !body.success) return reply.code(400).send({ error: "publication_consents_required" });
+    const receiptRows=await prisma.$queryRawUnsafe<Array<{targetListingId:string;status:string;slug:string|null}>>(`SELECT "targetListingId","status","slug" FROM "ListingPublicationReceipt" WHERE "requestListingId"=$1 AND "userId"=$2 LIMIT 1`,params.data.id,user.id).catch(()=>[]);
+    const receipt=receiptRows[0];
+    if(receipt)return reply.send({ready:true,status:receipt.status,listing:{id:receipt.targetListingId,status:receipt.status,slug:receipt.slug},idempotent:true});
     const editSession=await editSessionByWorkingId(params.data.id,user.id);
     const policyBlock=await rejectListingAttemptForPolicy({request,userId:user.id,listingId:params.data.id});
     if(policyBlock)return reply.code(423).send({error:"listing_content_policy_violation",message:editSession?"Les modifications contiennent un contenu interdit. L’annonce active n’a pas été modifiée.":"L’annonce contient un contenu interdit ou des coordonnées directes. Elle n’a pas été publiée ni conservée comme brouillon.",reasons:policyBlock.signals,redirect:policyBlock.redirect});
@@ -286,6 +295,7 @@ export async function registerPublicationRoutes(app: FastifyInstance) {
       // released only by the delayed auto-approval worker; flagged listings stay pending.
       if(editSession)await tx.$executeRawUnsafe(`UPDATE "ModerationCase" SET "status"='CLOSED',"updatedAt"=CURRENT_TIMESTAMP WHERE "targetType"='LISTING' AND "targetId"=$1 AND "status" NOT IN ('RESOLVED','CLOSED')`,targetId).catch(()=>undefined);
       const pending = await tx.listing.update({ where: { id: targetId }, data: { status: "PENDING", slug, draftSavedAt:null } });
+      await tx.$executeRawUnsafe(`INSERT INTO "ListingPublicationReceipt" ("requestListingId","targetListingId","userId","status","slug","createdAt") VALUES ($1,$2,$3,$4,$5,CURRENT_TIMESTAMP) ON CONFLICT ("requestListingId") DO UPDATE SET "targetListingId"=EXCLUDED."targetListingId","userId"=EXCLUDED."userId","status"=EXCLUDED."status","slug"=EXCLUDED."slug"`,params.data.id,targetId,user.id,pending.status,pending.slug);
       await tx.$executeRawUnsafe(
         `INSERT INTO "ModerationCase" ("id","targetType","targetId","priority","riskScore")
          SELECT $1,'LISTING'::"ReportTargetType",$2,50,0

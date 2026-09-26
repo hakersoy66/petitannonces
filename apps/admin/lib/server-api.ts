@@ -1,2 +1,15 @@
 import { cookies } from "next/headers";
-export async function adminServerFetch<T>(path:string):Promise<T|null>{try{const store=await cookies();const token=store.get("pa_session")?.value;if(!token)return null;const base=process.env.API_INTERNAL_URL??"http://127.0.0.1:4000";const r=await fetch(`${base.replace(/\/$/,"")}${path}`,{headers:{cookie:`pa_session=${encodeURIComponent(token)}`},cache:"no-store"});if(!r.ok)return null;return await r.json() as T}catch{return null}}
+
+export async function adminServerFetch<T>(path:string):Promise<T|null>{
+ try{
+  const store=await cookies();
+  const token=store.get("pa_session")?.value;
+  if(!token)return null;
+  const base=process.env.API_INTERNAL_URL??"http://127.0.0.1:4000";
+  const lightweight=path==="/admin/analytics/overview?days=7"||path==="/admin/analytics/overview?days=30";
+  const effectivePath=lightweight?path.replace("/overview","/summary"):path;
+  const r=await fetch(`${base.replace(/\/$/,"")}${effectivePath}`,{headers:{cookie:`pa_session=${encodeURIComponent(token)}`},cache:"no-store"});
+  if(!r.ok)return null;
+  return await r.json() as T;
+ }catch{return null}
+}

@@ -49,6 +49,7 @@ function devicePlatform():Platform{
   return null;
 }
 function standaloneMode(){return nativeShellMode()||window.matchMedia("(display-mode: standalone)").matches||Boolean((navigator as Navigator&{standalone?:boolean}).standalone)}
+function criticalExperiencePath(pathname:string){return pathname.startsWith("/deposer-une-annonce")||pathname.startsWith("/importer-une-annonce")||pathname.startsWith("/checkout")||pathname.startsWith("/app/checkout")||pathname.startsWith("/commandes")||pathname.startsWith("/paiement")||pathname.startsWith("/payment")}
 type MessageSummary={unreadConversations?:number;pendingOffers?:number;unreadNotifications?:number};
 async function syncAppBadge():Promise<MessageSummary|null>{
   const nav=navigator as Navigator&{setAppBadge?:(count:number)=>Promise<void>;clearAppBadge?:()=>Promise<void>};
@@ -112,6 +113,7 @@ export function PwaClient({initialPwaIconUrl="/icons/icon-192.png",initialAppLog
   const [platform,setPlatform]=useState<Platform>(null);
   const [showInstall,setShowInstall]=useState(false);
   const [iosHelp,setIosHelp]=useState(false);
+  const [iosGuideStep,setIosGuideStep]=useState(0);
   const [accountAvatarUrl,setAccountAvatarUrl]=useState<string|null>(null);
   const [authenticated,setAuthenticated]=useState(false);
   const [unreadConversations,setUnreadConversations]=useState(0);
@@ -151,7 +153,7 @@ export function PwaClient({initialPwaIconUrl="/icons/icon-192.png",initialAppLog
       }catch{}
     };
     if("serviceWorker" in navigator){
-      const swReloadKey="pa_sw_reloaded_v45";
+      const swReloadKey="pa_sw_reloaded_v46";
       const onControllerChange=()=>{
         try{
           if(sessionStorage.getItem(swReloadKey)==="1")return;
@@ -161,7 +163,7 @@ export function PwaClient({initialPwaIconUrl="/icons/icon-192.png",initialAppLog
         if(!sensitivePath)window.location.reload();
       };
       navigator.serviceWorker.addEventListener("controllerchange",onControllerChange);
-      navigator.serviceWorker.register("/sw.js?v=45",{scope:"/",updateViaCache:"none"}).then(reg=>{const update=()=>void reg.update().catch(()=>undefined);if(typeof window.requestIdleCallback==="function")window.requestIdleCallback(update,{timeout:3000});else window.setTimeout(update,1400)}).catch(()=>undefined);
+      navigator.serviceWorker.register("/sw.js?v=46",{scope:"/",updateViaCache:"none"}).then(reg=>{const update=()=>void reg.update().catch(()=>undefined);if(typeof window.requestIdleCallback==="function")window.requestIdleCallback(update,{timeout:3000});else window.setTimeout(update,1400)}).catch(()=>undefined);
       navigator.serviceWorker.addEventListener("message",onServiceWorkerMessage);
     }
     let disposed=false;
@@ -172,7 +174,7 @@ export function PwaClient({initialPwaIconUrl="/icons/icon-192.png",initialAppLog
       if(isInstalled){rememberPwaInstalled();setInstalled(true);setShowInstall(false);return true;}
       setInstalled(false);
       const hiddenUntil=Number(localStorage.getItem(HIDDEN_UNTIL_KEY)??0);
-      if(currentPlatform&&(!Number.isFinite(hiddenUntil)||Date.now()>=hiddenUntil))setShowInstall(true);
+      if(currentPlatform&&!criticalExperiencePath(window.location.pathname)&&(!Number.isFinite(hiddenUntil)||Date.now()>=hiddenUntil))setShowInstall(true);
       return false;
     };
     void evaluateInstallState();
@@ -184,7 +186,7 @@ export function PwaClient({initialPwaIconUrl="/icons/icon-192.png",initialAppLog
         if(disposed)return;
         if(isInstalled){rememberPwaInstalled();setInstalled(true);setShowInstall(false);return;}
         const hiddenUntil=Number(localStorage.getItem(HIDDEN_UNTIL_KEY)??0);
-        if(Date.now()>=hiddenUntil)setShowInstall(true);
+        if(!criticalExperiencePath(window.location.pathname)&&Date.now()>=hiddenUntil)setShowInstall(true);
       });
     };
     const done=()=>{
@@ -204,6 +206,8 @@ export function PwaClient({initialPwaIconUrl="/icons/icon-192.png",initialAppLog
     displayQuery.addEventListener?.("change",displayChanged);
     return()=>{disposed=true;window.removeEventListener("beforeinstallprompt",before);window.removeEventListener("appinstalled",done);displayQuery.removeEventListener?.("change",displayChanged);if("serviceWorker" in navigator)navigator.serviceWorker.removeEventListener("message",onServiceWorkerMessage)};
   },[router]);
+
+  useEffect(()=>{if(criticalExperiencePath(pathname)){setShowInstall(false);setIosHelp(false);setShowPushPrompt(false)}},[pathname]);
 
   // Internal same-origin links are handled once by NavigationExperience.
   // Keeping a second capture-phase router interceptor here caused duplicate PWA transitions.
@@ -245,6 +249,13 @@ export function PwaClient({initialPwaIconUrl="/icons/icon-192.png",initialAppLog
   },[authenticated]);
 
   useEffect(()=>{
+    if(!iosHelp)return;
+    const unlock=lockBodyScroll();
+    document.body.classList.add("pa-pwa-ios-help-open");
+    return()=>{unlock();document.body.classList.remove("pa-pwa-ios-help-open")};
+  },[iosHelp]);
+
+  useEffect(()=>{
     if(!showPushPrompt)return;
     const unlock=lockBodyScroll();
     document.body.classList.add("pa-pwa-push-open");
@@ -252,9 +263,10 @@ export function PwaClient({initialPwaIconUrl="/icons/icon-192.png",initialAppLog
   },[showPushPrompt]);
 
   useEffect(()=>{
-    if(!authenticated||!standaloneMode())return;
+    if(!authenticated||!standaloneMode()||criticalExperiencePath(pathname))return;
     let timer:ReturnType<typeof setTimeout>|null=null;
     const maybeShow=()=>{
+      if(criticalExperiencePath(window.location.pathname))return;
       if(localStorage.getItem(ONBOARDING_COMPLETE_KEY)!=="1")return;
       if(localStorage.getItem(PUSH_PROMPT_SEEN_KEY)==="1")return;
       if(sessionStorage.getItem(PUSH_PROMPT_SESSION_KEY)==="1")return;
@@ -304,17 +316,27 @@ export function PwaClient({initialPwaIconUrl="/icons/icon-192.png",initialAppLog
     setShowInstall(false);
     setIosHelp(false);
   }
+  function closeIosGuide(){
+    setIosHelp(false);
+    setIosGuideStep(0);
+  }
   function hideIosInstallHelp(){
+    localStorage.setItem(HIDDEN_UNTIL_KEY,String(Date.now()+DAY_MS));
+    setShowInstall(false);
+    closeIosGuide();
+  }
+  function confirmIosInstalled(){
     localStorage.setItem(HIDDEN_UNTIL_KEY,String(Date.now()+IOS_INSTALL_INTENT_MS));
     setShowInstall(false);
-    setIosHelp(false);
+    closeIosGuide();
   }
 
   async function install(){
     if(platform==="ios"){
-      localStorage.setItem(HIDDEN_UNTIL_KEY,String(Date.now()+IOS_INSTALL_INTENT_MS));
       setShowInstall(false);
+      setIosGuideStep(0);
       setIosHelp(true);
+      void sendSiteAnalyticsEvent("PWA_INSTALL_GUIDE_OPENED");
       return;
     }
     if(!installPrompt){
@@ -349,34 +371,60 @@ export function PwaClient({initialPwaIconUrl="/icons/icon-192.png",initialAppLog
     finally{setPushBusy(false)}
   }
 
+  const iosGuide=[
+    {title:"Touchez Partager",text:"Dans Safari, touchez l’icône Partager. Elle se trouve généralement dans la barre en bas de l’écran.",icon:"share" as AppIconName},
+    {title:"Sur l’écran d’accueil",text:"Dans la feuille de partage, choisissez « Sur l’écran d’accueil ». Faites défiler si nécessaire.",icon:"plus" as AppIconName},
+    {title:"Ouvrir comme app",text:"Activez « Ouvrir comme app » pour que Petit Annonces s’ouvre plein écran, séparément de Safari.",icon:"home" as AppIconName},
+    {title:"Touchez Ajouter",text:"Validez avec « Ajouter ». L’icône Petit Annonces apparaîtra sur votre écran d’accueil.",icon:"check" as AppIconName},
+  ];
+  const iosCurrent=iosGuide[Math.min(iosGuideStep,iosGuide.length-1)]!;
+
   return <>
-    <PwaOnboarding appLogoUrl={appLogoUrl}/>
+    {!criticalExperiencePath(pathname)&&<PwaOnboarding appLogoUrl={appLogoUrl}/>}
     {!installed&&showInstall&&platform&&<aside className="pwa-install-flash" role="dialog" aria-label="Installer l’application Petit Annonces">
       <img src={pwaIconUrl} alt="" className="pwa-install-flash-icon"/>
       <div className="pwa-install-flash-copy">
         <strong>Petit Annonces sur votre téléphone</strong>
-        <span>{platform==="ios"?"Installez l’app sur votre iPhone ou iPad.":"Installez l’app Android pour un accès plus rapide et les notifications."}</span>
+        <span>{platform==="ios"?"Installez l’app sur votre iPhone, sans passer par l’App Store.":"Installez l’app Android pour un accès plus rapide et les notifications."}</span>
       </div>
-      <button type="button" className="pwa-install-action" onClick={()=>void install()}>Installer</button>
+      <button type="button" className="pwa-install-action" onClick={()=>void install()}>{platform==="ios"?"Installer sur iPhone":"Installer"}</button>
       <button type="button" className="pwa-install-close" onClick={hideForDay} aria-label="Fermer pendant 24 heures">×</button>
     </aside>}
-    {iosHelp&&<div className="pwa-ios-overlay" role="presentation" onClick={()=>setIosHelp(false)}>
+    {iosHelp&&<div className="pwa-ios-overlay pwa-ios-installer" role="presentation" onClick={hideIosInstallHelp}>
       <section className="pwa-ios-sheet" role="dialog" aria-modal="true" aria-labelledby="pwa-ios-title" onClick={e=>e.stopPropagation()}>
         <div className="pwa-ios-grabber"/>
-        <button type="button" className="pwa-ios-sheet-close" onClick={()=>setIosHelp(false)} aria-label="Fermer">×</button>
-        <img src={pwaIconUrl} alt="" className="pwa-ios-sheet-icon"/>
-        <div className="pwa-ios-sheet-head">
-          <span>Installation sur iPhone</span>
-          <h2 id="pwa-ios-title">Installer Petit Annonces</h2>
-          <p>Ajoutez Petit Annonces comme une vraie app sur votre écran d’accueil.</p>
+        <button type="button" className="pwa-ios-sheet-close" onClick={hideIosInstallHelp} aria-label="Fermer">×</button>
+        <div className="pwa-ios-installer-brand"><img src={pwaIconUrl} alt=""/><div><small>Petit Annonces</small><strong>Installation iPhone</strong></div><span>Sans App Store</span></div>
+        <div className="pwa-ios-progress" aria-label={`Étape ${iosGuideStep+1} sur 4`}>{iosGuide.map((item,index)=><i key={item.title} className={index<=iosGuideStep?"is-active":""}/>)}</div>
+        <div className={`pwa-ios-guide-visual pwa-ios-guide-step-${iosGuideStep+1}`} aria-hidden="true">
+          <div className="pwa-ios-phone">
+            <div className="pwa-ios-phone-screen">
+              <div className="pwa-ios-phone-app"><img src={pwaIconUrl} alt=""/><b>Petit Annonces</b></div>
+              {iosGuideStep===0&&<div className="pwa-ios-safari-bar">
+                <span className="pwa-ios-toolbar-icon pwa-ios-back" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M15.2 5.5 8.7 12l6.5 6.5"/></svg></span>
+                <span className="pwa-ios-toolbar-icon pwa-ios-forward" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m8.8 5.5 6.5 6.5-6.5 6.5"/></svg></span>
+                <b className="pwa-ios-toolbar-icon pwa-ios-share-real" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 15V3m0 0L8.4 6.6M12 3l3.6 3.6"/><path d="M7 10.5H5.8A1.8 1.8 0 0 0 4 12.3v6.9A1.8 1.8 0 0 0 5.8 21h12.4a1.8 1.8 0 0 0 1.8-1.8v-6.9a1.8 1.8 0 0 0-1.8-1.8H17"/></svg></b>
+                <span className="pwa-ios-toolbar-icon pwa-ios-book" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3.5 5.8c2.9-.8 5.7-.2 8.5 1.7v12c-2.8-1.9-5.6-2.5-8.5-1.7zM20.5 5.8c-2.9-.8-5.7-.2-8.5 1.7v12c2.8-1.9 5.6-2.5 8.5-1.7z"/></svg></span>
+                <span className="pwa-ios-toolbar-icon pwa-ios-tabs" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="7" y="4" width="13" height="15" rx="2"/><rect x="4" y="7" width="13" height="13" rx="2"/></svg></span>
+              </div>}
+              {iosGuideStep===1&&<div className="pwa-ios-share-sheet-mock"><span>Partager</span><b><AppIcon name="plus"/> Sur l’écran d’accueil</b><span>Ajouter aux favoris</span></div>}
+              {iosGuideStep===2&&<div className="pwa-ios-add-mock"><div><img src={pwaIconUrl} alt=""/><b>Petit Annonces</b></div><p>Ouvrir comme app <i>✓</i></p></div>}
+              {iosGuideStep===3&&<div className="pwa-ios-home-mock"><div><img src={pwaIconUrl} alt=""/><small>Petit Annonces</small></div><i><AppIcon name="check"/></i></div>}
+            </div>
+          </div>
+          {iosGuideStep===0&&<div className="pwa-ios-share-callout"><span>↓</span><strong>Touchez Partager dans Safari</strong></div>}
         </div>
-        <ol className="pwa-ios-steps">
-          <li><b>1</b><div><strong>Touchez Partager</strong><span>Dans Safari, utilisez l’icône de partage en bas de l’écran.</span></div><span className="pwa-ios-share-symbol">↥</span></li>
-          <li><b>2</b><div><strong>Choisissez « Sur l’écran d’accueil »</strong><span>Faites défiler la feuille de partage si nécessaire.</span></div></li>
-          <li><b>3</b><div><strong>Touchez Ajouter</strong><span>L’icône Petit Annonces apparaîtra comme une application.</span></div></li>
-        </ol>
-        <div className="pwa-ios-tip">Après l’installation, ouvrez Petit Annonces depuis l’icône créée pour profiter du mode application et des notifications.</div>
-        <button type="button" className="pwa-ios-done" onClick={hideIosInstallHelp}>J’ai compris</button>
+        <div className="pwa-ios-sheet-head">
+          <span>Étape {iosGuideStep+1} sur 4</span>
+          <h2 id="pwa-ios-title">{iosCurrent.title}</h2>
+          <p>{iosCurrent.text}</p>
+        </div>
+        {iosGuideStep===0&&<div className="pwa-ios-tip"><strong>Astuce :</strong> la barre Safari reste accessible sous cette fenêtre. Touchez directement l’icône Partager pour commencer l’installation.</div>}
+        {iosGuideStep===3&&<div className="pwa-ios-tip"><strong>Après installation :</strong> ouvrez Petit Annonces depuis sa nouvelle icône. Le mode application et les notifications seront alors disponibles.</div>}
+        <div className="pwa-ios-actions">
+          {iosGuideStep===0?<button type="button" className="pwa-ios-later" onClick={hideIosInstallHelp}>Plus tard</button>:<button type="button" className="pwa-ios-later" onClick={()=>setIosGuideStep(step=>Math.max(0,step-1))}>Retour</button>}
+          {iosGuideStep<3?<button type="button" className="pwa-ios-done" onClick={()=>setIosGuideStep(step=>Math.min(3,step+1))}>{iosGuideStep===0?"Voir la suite":"Suivant"}</button>:<button type="button" className="pwa-ios-done" onClick={confirmIosInstalled}>C’est installé</button>}
+        </div>
       </section>
     </div>}
     {authenticated&&showPushPrompt&&<div className="pwa-push-overlay" role="presentation" onClick={dismissPushPrompt}>

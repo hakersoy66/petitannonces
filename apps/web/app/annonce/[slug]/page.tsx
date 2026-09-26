@@ -28,6 +28,8 @@ type HeaderCategory={id:string;name:string;slug:string;domain:string;children?:H
 type HeaderBrand={siteName:string;tagline:string;logoUrl:string|null;mobileLogoUrl:string|null;accentColor:string;navigationCategorySlugs?:string[]};
 const FALLBACK_BRAND:HeaderBrand={siteName:"Petit Annonces",tagline:"",logoUrl:null,mobileLogoUrl:null,accentColor:"#5b4cf0"};
 const apiBase=()=> (process.env.API_INTERNAL_URL??process.env.NEXT_PUBLIC_API_URL??"http://127.0.0.1:4000").replace(/\/$/,"");
+const protectedMediaPath=(mediaId:string)=>`/api/media/watermark/${encodeURIComponent(mediaId)}`;
+const protectedMediaAbsolute=(mediaId:string)=>`https://petitannonces.fr${protectedMediaPath(mediaId)}`;
 
 async function headerData(){
  const safe=(promise:Promise<Response>)=>promise.catch(()=>null);
@@ -136,7 +138,7 @@ export async function generateMetadata({params}:Props):Promise<Metadata>{
   const context=[listing.category.name,listing.city].filter(Boolean).join(" à ");
   const description=(baseDescription.length>=105?baseDescription:`${baseDescription}${baseDescription?" ":""}Découvrez cette annonce ${context?context.toLowerCase():listing.category.name.toLowerCase()} sur Petit Annonces et contactez le vendeur en toute simplicité.`).slice(0,155);
   const coverMedia=listing.media.find(m=>m.isCover)??listing.media[0]??null;
-  const image=coverMedia?.url;
+  const image=coverMedia?.id?protectedMediaAbsolute(coverMedia.id):undefined;
   const indexable=listing.status==="PUBLISHED";
   return{title:{absolute:`${title} | Petit Annonces`},description,alternates:{canonical:`/annonce/${slug}`},robots:{index:indexable,follow:true,...(indexable?{googleBot:{index:true,follow:true,"max-image-preview":"large","max-snippet":-1,"max-video-preview":-1}}:{})},openGraph:{type:"website",url:`/annonce/${slug}`,title:rawTitle,description,...(image?{images:[{url:image,alt:coverMedia?.altText??rawTitle,...(coverMedia?.width?{width:coverMedia.width}:{}),...(coverMedia?.height?{height:coverMedia.height}:{})}]}:{})},twitter:{card:image?"summary_large_image":"summary",title:rawTitle,description,...(image?{images:[{url:image,alt:coverMedia?.altText??rawTitle}]}:{})}};
  }catch{return{title:"Petit Annonces"}}
@@ -159,7 +161,8 @@ export default async function ListingPage({params}:Props){
  const checkoutHref=`/checkout?listingId=${encodeURIComponent(listing.id)}`;
  const title=listing.title??listing.category.name;
  const canonical=`https://petitannonces.fr/annonce/${slug}`;
- const cover=listing.media.find((m:any)=>m.isCover)?.url??listing.media[0]?.url??null;
+ const coverMedia=listing.media.find((m:any)=>m.isCover)??listing.media[0]??null;
+ const cover=coverMedia?.id?protectedMediaPath(coverMedia.id):null;
  if(cover)preload(cover,{as:"image",fetchPriority:"high"});
  const breadcrumbJsonLd={"@context":"https://schema.org","@type":"BreadcrumbList",itemListElement:[{ "@type":"ListItem",position:1,name:"Accueil",item:"https://petitannonces.fr/"},...listing.breadcrumb.map((b:any,i:number)=>({"@type":"ListItem",position:i+2,name:b.name,item:`https://petitannonces.fr/categorie/${b.slug}`})),{"@type":"ListItem",position:listing.breadcrumb.length+2,name:title,item:canonical}]};
  const attributeValue=(...keys:string[])=>listing.attributes.find(attribute=>keys.includes(attribute.key))?.value;
@@ -179,7 +182,7 @@ export default async function ListingPage({params}:Props){
   "@type":isVehicle?["Product","Car"]:"Product",
   name:title,
   description:listing.description??undefined,
-  image:listing.media.map((m:any)=>m.url).filter(Boolean).slice(0,8),
+  image:listing.media.filter((m:any)=>Boolean(m.id)).map((m:any)=>protectedMediaAbsolute(m.id)).slice(0,8),
   category:listing.category.name,
   url:canonical,
   sku:listing.id,
@@ -212,6 +215,12 @@ export default async function ListingPage({params}:Props){
  ].filter((value,index,array)=>array.indexOf(value)===index);
  const remoteOnly=/total|100%|complet/.test(remote);
  const hiringName=listing.seller.kind==="PROFESSIONNEL"?(listing.seller.store?.name??listing.seller.name):"confidential";
+ const salaryAttribute=listing.attributes.find(attribute=>["salaryMin","salary","remuneration","rémunération"].includes(attribute.key));
+ const salaryValue=typeof salaryAttribute?.value==="number"?salaryAttribute.value:Number(String(salaryAttribute?.value??"").replace(",", "."));
+ const salaryUnitRaw=String(salaryAttribute?.unit??"").toLowerCase();
+ const salaryUnitText=salaryUnitRaw.includes("mois")?"MONTH":salaryUnitRaw.includes("heure")||salaryUnitRaw.includes("/h")?"HOUR":salaryUnitRaw.includes("jour")?"DAY":salaryUnitRaw.includes("semaine")?"WEEK":"YEAR";
+ const streetAddress=textAttribute("streetAddress","jobStreetAddress","workplaceAddress","adresseTravail");
+ const fallbackValidThrough=listing.publishedAt?new Date(new Date(listing.publishedAt).getTime()+30*24*60*60*1000).toISOString():null;
  const jobJsonLd=isJob&&isActive&&Boolean(listing.publishedAt)&&Boolean(listing.description?.trim())&&Boolean(title.trim())&&(Boolean(listing.city)||remoteOnly)?{
   "@context":"https://schema.org",
   "@type":"JobPosting",
@@ -219,9 +228,11 @@ export default async function ListingPage({params}:Props){
   description:schemaDescriptionHtml(listing.description!.trim()),
   identifier:{"@type":"PropertyValue",name:hiringName,value:listing.id},
   datePosted:listing.publishedAt,
+  ...((listing.expiresAt??fallbackValidThrough)?{validThrough:listing.expiresAt??fallbackValidThrough}:{}),
   hiringOrganization:{"@type":"Organization",name:hiringName,...(listing.seller.store?.slug?{sameAs:`https://petitannonces.fr/boutique/${listing.seller.store.slug}`}:{}) ,...(listing.seller.store?.logoUrl?{logo:listing.seller.store.logoUrl}:{})},
   ...(employmentTypes.length?{employmentType:employmentTypes.length===1?employmentTypes[0]:employmentTypes}:{}),
-  ...(remoteOnly?{jobLocationType:"TELECOMMUTE",applicantLocationRequirements:{"@type":"Country",name:"France"}}:{jobLocation:{"@type":"Place",address:{"@type":"PostalAddress",addressCountry:"FR",...(listing.city?{addressLocality:listing.city}:{}),...(listing.region?{addressRegion:listing.region}:{}),...(listing.postalCode?{postalCode:listing.postalCode}:{})}}}),
+  ...(Number.isFinite(salaryValue)&&salaryValue>0?{baseSalary:{"@type":"MonetaryAmount",currency:listing.currency||"EUR",value:{"@type":"QuantitativeValue",value:salaryValue,unitText:salaryUnitText}}}:{}),
+  ...(remoteOnly?{jobLocationType:"TELECOMMUTE",applicantLocationRequirements:{"@type":"Country",name:"France"}}:{jobLocation:{"@type":"Place",address:{"@type":"PostalAddress",addressCountry:"FR",...(streetAddress?{streetAddress}:{}),...(listing.city?{addressLocality:listing.city}:{}),...(listing.region?{addressRegion:listing.region}:{}),...(listing.postalCode?{postalCode:listing.postalCode}:{})}}}),
   url:canonical
  }:null;
  const priceContext={domain:listing.category.domain,transactionType:typeof listing.property?.transactionType==="string"?listing.property.transactionType:null,isVacation};
@@ -268,7 +279,7 @@ export default async function ListingPage({params}:Props){
   <nav className={styles.breadcrumb} aria-label="Fil d’Ariane"><a href="/">Petit Annonces</a>{listing.breadcrumb.map(item=><span key={item.slug}><AppIcon name="chevron-right"/><a href={`/categorie/${item.slug}`}>{item.name}</a></span>)}<span><AppIcon name="chevron-right"/>{title}</span></nav>
   <div className={styles.layout}><section className={styles.main}>
    {!isActive&&<section className={styles.lifecycleBanner}><AppIcon name="info"/><div><strong>{listing.status==="SOLD"?"Cette annonce a été vendue":"Cette annonce a expiré"}</strong><span>{listing.status==="SOLD"?"L’article n’est plus disponible. Consultez les annonces similaires ci-dessous.":"Cette annonce n’est plus active. Le vendeur peut la renouveler depuis son compte."}</span></div></section>}
-   <ListingGallery media={listing.media} title={title} classes={styles} category={listing.category}/>
+   <ListingGallery media={listing.media.map((item:any)=>({...item,url:protectedMediaPath(item.id)}))} title={title} classes={styles} category={listing.category}/>
    <section className={styles.titleArea}><div className={styles.mobilePriceSummary}><div><small>{priceCopy.shortLabel}</small><strong>{price}</strong></div><span><AppIcon name="location"/>{location}</span></div>{canCheckout&&listing.priceMinor!=null&&<PayPalPayLaterBadge priceMinor={listing.priceMinor} currency={listing.currency} compact className={styles.mobilePaymentOptions}/>}<div className={styles.titleRow}><div><h1>{title}</h1><div className={styles.meta}><span><AppIcon name="location"/>{location}</span>{listing.publishedAt&&<span><AppIcon name="calendar"/>Mise en ligne le {new Intl.DateTimeFormat("fr-FR",{day:"2-digit",month:"long",year:"numeric"}).format(new Date(listing.publishedAt))}</span>}<span><AppIcon name="list"/>Annonce n° {listing.id.slice(-8).toUpperCase()}</span></div></div><div className={styles.desktopActions}><FavoriteButton listingId={listing.id} className={styles.favoriteOverride}/><ShareListingButton title={title} listingId={listing.id} className={styles.shareButton}/></div></div>
     <div className={styles.chips}><span className={styles.viewChip}><AppIcon name="eye"/><strong>{Number(listing.viewCount??0).toLocaleString("fr-FR")}</strong><span>vue{Number(listing.viewCount??0)===1?"":"s"}</span></span><span className={styles.goodChip}><AppIcon name={isActive?"circle-check":"info"}/>{listing.status==="SOLD"?"Vendue":listing.status==="EXPIRED"?"Expirée":"En ligne"}</span>{listing.promotions.filter(p=>p.type==="URGENT").map(p=><span key={p.id} className={`${styles.promotionChip} ${styles.urgent}`}><AppIcon name="bolt"/>{promotionLabel(p.type)}</span>)}{listing.promotions.filter(p=>p.type==="FEATURED").map(p=><span key={p.id} className={`${styles.promotionChip} ${styles.featured}`}><AppIcon name="star"/>{promotionLabel(p.type)}</span>)}{listing.promotions.filter(p=>p.type!=="URGENT"&&p.type!=="FEATURED").map(p=><span key={p.id} className={`${styles.promotionChip} ${styles[promotionClass(p.type)]??""}`}><AppIcon name={p.type==="GALLERY"?"image":p.type==="SPONSORED"?"shield":"arrow-right"}/>{promotionLabel(p.type)}</span>)}{chips.map((chip,i)=><span key={chip} className={styles.chip}><AppIcon name={i===0?"fuel":i===1?"gauge":"gears"}/>{chip}</span>)}</div>
     <div className={styles.mobileUtilityActions} aria-label="Actions secondaires de l’annonce"><FavoriteButton listingId={listing.id} className={styles.mobileUtilityFavorite}/>{canBookAppointment&&<ListingAppointmentButton listingId={listing.id} domain={listing.category.domain} compact className={styles.mobileUtilityAppointment}/>}</div>

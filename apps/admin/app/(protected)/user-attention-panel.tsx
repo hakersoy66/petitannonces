@@ -5,9 +5,9 @@ import {AdminIcon} from "../../components/admin-icon";
 
 export type UserAttention={
  config:{draftFirstDelayMinutes:number;draftSecondDelayHours:number};
- summary:{technicalAlerts:number;abandonedDrafts:number;abandonedCheckouts:number;lowQualityDrafts:number;firstDraftReminders:number;secondDraftReminders:number};
+ summary:{technicalAlerts:number;abandonedDrafts:number;readyDrafts:number;highCompletionDrafts:number;abandonedCheckouts:number;lowQualityDrafts:number;firstDraftReminders:number;secondDraftReminders:number};
  technical:Array<{userId:string;email:string;name:string;event:string;label:string;count:number;lastAt:string;path:string|null}>;
- drafts:Array<{listingId:string;userId:string;title:string|null;updatedAt:string;draftSavedAt:string|null;email:string;name:string;reminded:boolean}>;
+ drafts:Array<{listingId:string;userId:string;title:string|null;updatedAt:string;draftSavedAt:string|null;email:string;name:string;reminded:boolean;readyToPublish:boolean;completionScore:number|null;resumeStep:number|null}>;
  checkouts:Array<{orderId:string;userId:string;orderNumber:string;createdAt:string;totalAmountMinor:number;currency:string;title:string|null;email:string;name:string}>;
  quality:Array<{listingId:string;userId:string;score:number;level:string;issues:Array<{label?:string;severity?:string}>;assessedAt:string;title:string|null;email:string;name:string}>;
 };
@@ -27,7 +27,7 @@ export function UserAttentionPanel({initialData}:{initialData:UserAttention|null
   const out:Array<{key:string;kind:"error"|"draft"|"checkout"|"quality";title:string;name:string;detail:string;time:string;href:string;badge:string}>=[];
   for(const x of data.technical)out.push({key:"tech-"+x.userId+"-"+x.event,kind:"error",title:x.label,name:x.name||x.email,detail:x.count+" tentative(s) en 24 h"+(x.path?" · "+x.path:""),time:x.lastAt,href:"/users/"+x.userId,badge:String(x.count)});
   for(const x of data.checkouts)out.push({key:"checkout-"+x.orderId,kind:"checkout",title:"Checkout abandonné",name:x.name||x.email,detail:(x.title||x.orderNumber)+" · "+money(x.totalAmountMinor,x.currency),time:x.createdAt,href:"/analytics",badge:"Paiement"});
-  for(const x of data.drafts)out.push({key:"draft-"+x.listingId,kind:"draft",title:"Annonce laissée en brouillon",name:x.name||x.email,detail:(x.title||"Annonce sans titre")+(x.reminded?" · rappel envoyé":""),time:x.updatedAt,href:"/users/"+x.userId,badge:x.reminded?"Relancé":"À relancer"});
+  for(const x of data.drafts)out.push({key:"draft-"+x.listingId,kind:"draft",title:x.readyToPublish?"Annonce prête à publier":"Annonce laissée en brouillon",name:x.name||x.email,detail:(x.title||"Annonce sans titre")+(x.completionScore!=null?` · ${x.completionScore}% complété`:"")+(x.reminded?" · rappel envoyé":""),time:x.updatedAt,href:"/users/"+x.userId,badge:x.readyToPublish?"Prête":x.completionScore!=null?`${x.completionScore}%`:x.reminded?"Relancé":"À relancer"});
   for(const x of data.quality)out.push({key:"quality-"+x.listingId,kind:"quality",title:"Qualité d’annonce faible",name:x.name||x.email,detail:(x.title||"Annonce")+(x.issues?.[0]?.label?" · "+x.issues[0].label:""),time:x.assessedAt,href:"/users/"+x.userId,badge:x.score+"/100"});
   const rank={error:0,checkout:1,draft:2,quality:3};
   return out.sort((a,b)=>rank[a.kind]-rank[b.kind]||new Date(b.time).getTime()-new Date(a.time).getTime()).slice(0,10);
@@ -38,6 +38,8 @@ export function UserAttentionPanel({initialData}:{initialData:UserAttention|null
   <div className="admin-attention-kpis">
    <a href="#attention-list"><small>Erreurs répétées</small><strong>{n(data?.summary.technicalAlerts??0)}</strong><span>2+ en 24 h</span></a>
    <a href="#attention-list"><small>Brouillons abandonnés</small><strong>{n(data?.summary.abandonedDrafts??0)}</strong><span>≥ {data?.config.draftFirstDelayMinutes??90} min</span></a>
+   <a href="#attention-list"><small>Prêts à publier</small><strong>{n(data?.summary.readyDrafts??0)}</strong><span>dernière confirmation seulement</span></a>
+   <a href="#attention-list"><small>Complétés à 80–100%</small><strong>{n(data?.summary.highCompletionDrafts??0)}</strong><span>à récupérer en priorité</span></a>
    <a href="/analytics"><small>Checkouts abandonnés</small><strong>{n(data?.summary.abandonedCheckouts??0)}</strong><span>≥ 30 min</span></a>
    <a href="#attention-list"><small>Qualité faible</small><strong>{n(data?.summary.lowQualityDrafts??0)}</strong><span>score &lt; 70</span></a>
   </div>

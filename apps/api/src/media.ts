@@ -9,7 +9,10 @@ import type { FastifyInstance } from "fastify";
 import sharp from "sharp";
 import { z } from "zod";
 import { requireListingUser } from "./listing-auth.js";
-import { createPresignedUpload, deleteStoredObject, makeStoredObjectPublic, publicObjectUrl, storageConfigured, uploadStoredObject, verifyStoredObject } from "./storage.js";
+import { getSiteSettings } from "./admin-control.js";
+import { compareFingerprintBits, embedInvisibleFingerprint, expectedFingerprintBits, imageFingerprintSecret, observeInvisibleFingerprint } from "./image-fingerprint.js";
+import { requireAdminRoles } from "./rbac.js";
+import { createPresignedUpload, deleteStoredObject, makeStoredObjectPublic, publicObjectUrl, readStoredObjectBuffer, storageConfigured, uploadStoredObject, verifyStoredObject } from "./storage.js";
 
 const IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/avif", "image/heic", "image/heif"]);
 const HEIC_MIME_TYPES = new Set(["image/heic", "image/heif"]);
@@ -57,9 +60,76 @@ function extensionForMime(mimeType: string) {
 }
 
 export async function registerMediaRoutes(app: FastifyInstance) {
+  app.get("/media/watermark/:mediaId", async (request, reply) => {
+    const parsed=z.object({mediaId:z.string().uuid()}).safeParse(request.params);
+    if(!parsed.success)return reply.code(400).send({error:"invalid_media_id"});
+    const rows=await prisma.$queryRawUnsafe<Array<{objectKey:string;mimeType:string;listingId:string}>>(
+      `SELECT m."objectKey",m."mimeType",m."listingId" FROM "ListingMedia" m JOIN "Listing" l ON l."id"=m."listingId" WHERE m."id"=$1 AND m."status"='READY' AND l."status"='PUBLISHED' LIMIT 1`,parsed.data.mediaId,
+    );
+    const row=rows[0];if(!row)return reply.code(404).send({error:"image_not_found"});
+    const input=await readStoredObjectBuffer(row.objectKey,MAX_IMAGE_BYTES).catch(()=>null);if(!input)return reply.code(404).send({error:"image_unavailable"});
+    const settings=await getSiteSettings().catch(()=>({watermarkEnabled:true,watermarkReinforced:true,watermarkOpacity:.88,fingerprintEnabled:true,fingerprintStrength:2,fingerprintVersion:1} as any));
+    const secret=imageFingerprintSecret();
+    const fingerprintEnabled=settings.fingerprintEnabled!==false&&Boolean(secret);
+    if(!settings.watermarkEnabled&&!fingerprintEnabled){reply.header("Cache-Control","public, max-age=3600, s-maxage=3600");return reply.type(row.mimeType).send(input);}
+    const image=sharp(input,{failOn:"none",limitInputPixels:80_000_000}).rotate();
+    const metadata=await image.metadata();const width=Math.max(1,Number(metadata.width??1200)),height=Math.max(1,Number(metadata.height??900));
+    const opacity=Math.max(.35,Math.min(1,Number(settings.watermarkOpacity??.88)));
+    const unit=Math.max(10,Math.round(Math.min(width,height)*.018)),pad=Math.max(14,Math.round(unit*.9));
+    const badgeW=Math.min(Math.round(width*.34),unit*17),badgeH=Math.round(unit*3.15),x=pad,y=height-pad-badgeH;
+    const ghost=settings.watermarkReinforced?`<text x="${width/2}" y="${height/2}" text-anchor="middle" dominant-baseline="middle" transform="rotate(-14 ${width/2} ${height/2})" font-family="Arial,Helvetica,sans-serif" font-size="${Math.round(Math.min(width,height)*.085)}" font-weight="800" fill="white" fill-opacity="${(0.09*opacity).toFixed(3)}">petitannonces.fr</text>`:"";
+    const overlay=Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">${ghost}<g opacity="${opacity.toFixed(2)}"><rect x="${x}" y="${y}" width="${badgeW}" height="${badgeH}" rx="${badgeH/2}" fill="#171522" fill-opacity=".42" stroke="white" stroke-opacity=".28"/><rect x="${x+unit*.55}" y="${y+unit*.55}" width="${unit*2.05}" height="${unit*2.05}" rx="${unit*.62}" fill="white" fill-opacity=".18"/><text x="${x+unit*1.58}" y="${y+badgeH/2}" text-anchor="middle" dominant-baseline="middle" font-family="Arial,Helvetica,sans-serif" font-size="${unit*.82}" font-weight="900" fill="white">PA</text><text x="${x+unit*3.25}" y="${y+badgeH/2}" dominant-baseline="middle" font-family="Arial,Helvetica,sans-serif" font-size="${unit}" font-weight="800" fill="white">petitannonces.fr</text></g></svg>`);
+    let protectedImage=settings.watermarkEnabled?image.composite([{input:overlay,top:0,left:0}]):image;
+    const raw=await protectedImage.removeAlpha().raw().toBuffer({resolveWithObject:true});
+    if(fingerprintEnabled&&secret){
+      embedInvisibleFingerprint({data:raw.data,width:raw.info.width,height:raw.info.height,channels:raw.info.channels,mediaId:parsed.data.mediaId,listingId:row.listingId,secret,strength:Number(settings.fingerprintStrength??2),version:Math.max(2,Number(settings.fingerprintVersion??2))});
+    }
+    const output=await sharp(raw.data,{raw:{width:raw.info.width,height:raw.info.height,channels:raw.info.channels}}).webp({quality:84,effort:3}).toBuffer();
+    reply.header("Cache-Control","public, max-age=300, s-maxage=3600, stale-while-revalidate=3600");
+    reply.header("X-Content-Type-Options","nosniff");
+    return reply.type("image/webp").send(output);
+  });
+
   for (const mime of IMAGE_MIME_TYPES) {
     if (!app.hasContentTypeParser(mime)) app.addContentTypeParser(mime, { parseAs: "buffer", bodyLimit: MAX_IMAGE_BYTES }, (_request, body, done) => done(null, body));
   }
+
+  app.post("/admin/media/fingerprint/verify",{preHandler:requireAdminRoles(["SUPER_ADMIN","ADMIN","MODERATOR","COMPLIANCE"]),bodyLimit:MAX_IMAGE_BYTES},async(request,reply)=>{
+    const mimeType=String(request.headers["content-type"]??"").split(";")[0]?.trim().toLowerCase();
+    if(!mimeType||!IMAGE_MIME_TYPES.has(mimeType))return reply.code(415).send({error:"unsupported_media_type"});
+    if(!Buffer.isBuffer(request.body)||request.body.length<1)return reply.code(400).send({error:"empty_media"});
+    const secret=imageFingerprintSecret();if(!secret)return reply.code(503).send({error:"fingerprint_key_unavailable"});
+    let decodable=Buffer.from(request.body);if(HEIC_MIME_TYPES.has(mimeType))decodable=await decodeHeicToJpeg(decodable);
+    let raw;
+    try{raw=await sharp(decodable,{failOn:"none",limitInputPixels:80_000_000}).rotate().removeAlpha().raw().toBuffer({resolveWithObject:true})}
+    catch{return reply.code(422).send({error:"image_processing_failed"})}
+    const settings=await getSiteSettings().catch(()=>({fingerprintVersion:2} as any));
+    const currentVersion=Math.max(2,Number(settings.fingerprintVersion??2));
+    const versions=Array.from({length:Math.min(3,currentVersion-1)},(_,i)=>currentVersion-i).filter(v=>v>=2);
+    const observations=versions.map(version=>({version,...observeInvisibleFingerprint({data:raw.data,width:raw.info.width,height:raw.info.height,channels:raw.info.channels,secret,version})}));
+    const candidates=await prisma.$queryRawUnsafe<Array<{mediaId:string;listingId:string;title:string|null;slug:string|null;status:string;createdAt:Date}>>(
+      `SELECT m."id" AS "mediaId",m."listingId",l."title",l."slug",l."status"::text AS "status",m."createdAt"
+       FROM "ListingMedia" m JOIN "Listing" l ON l."id"=m."listingId"
+       WHERE m."status"='READY' ORDER BY m."createdAt" DESC LIMIT 50000`
+    );
+    const matches:Array<{mediaId:string;listingId:string;title:string|null;slug:string|null;status:string;version:number;matchRate:number;confidence:number;signal:number;createdAt:Date}>=[];
+    for(const candidate of candidates)for(const observation of observations){
+      const expected=expectedFingerprintBits(secret,candidate.mediaId,candidate.listingId,observation.version);
+      const compared=compareFingerprintBits(observation.bits,expected);
+      const confidence=Math.max(0,Math.min(1,(compared.matchRate-.5)*2));
+      matches.push({...candidate,version:observation.version,matchRate:compared.matchRate,confidence,signal:observation.signal});
+    }
+    matches.sort((a,b)=>b.matchRate-a.matchRate||b.signal-a.signal);
+    const top=matches.slice(0,5);
+    const best=top[0]??null;
+    return reply.send({
+      matched:Boolean(best&&best.matchRate>=.78),
+      image:{width:raw.info.width,height:raw.info.height,channels:raw.info.channels},
+      candidateCount:candidates.length,
+      best,
+      matches:top,
+    });
+  });
 
   app.get("/listings/:id/media", async (request, reply) => {
     const user = await requireListingUser(request, reply); if (!user) return;

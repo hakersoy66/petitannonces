@@ -296,7 +296,7 @@ export async function registerSeoPublicRoutes(app: FastifyInstance) {
        ORDER BY COUNT(l."id") DESC,a."name" ASC LIMIT 10`,variants),
       prisma.$queryRawUnsafe<Array<{id:string;slug:string|null;title:string|null;priceMinor:number|null;currency:string;city:string|null;categoryName:string;categorySlug:string;categoryDomain:string;imageUrl:string|null;propertyTransactionType:string|null}>>(
         `SELECT l."id",l."slug",l."title",l."priceMinor",l."currency",l."city",c."name" AS "categoryName",c."slug" AS "categorySlug",c."domain"::text AS "categoryDomain",p."transactionType"::text AS "propertyTransactionType",
-                (SELECT lm."publicUrl" FROM "ListingMedia" lm WHERE lm."listingId"=l."id" AND lm."status"='READY' AND lm."publicUrl" IS NOT NULL ORDER BY lm."isCover" DESC,lm."sortOrder" ASC,lm."createdAt" ASC LIMIT 1) AS "imageUrl"
+                (SELECT 'https://petitannonces.fr/api/media/watermark/' || lm."id" FROM "ListingMedia" lm WHERE lm."listingId"=l."id" AND lm."status"='READY' AND lm."publicUrl" IS NOT NULL ORDER BY lm."isCover" DESC,lm."sortOrder" ASC,lm."createdAt" ASC LIMIT 1) AS "imageUrl"
          FROM "Listing" l JOIN "Category" c ON c."id"=l."categoryId" LEFT JOIN "PropertyDetails" p ON p."listingId"=l."id"
          WHERE l."status"='PUBLISHED' AND l."slug" IS NOT NULL AND l."city" = ANY($1::text[])
          ORDER BY l."publishedAt" DESC NULLS LAST,l."updatedAt" DESC LIMIT 24`,variants),

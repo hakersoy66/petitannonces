@@ -165,16 +165,6 @@ export default function ActivityCenter(){
           <Pressable style={[s.tab,mode==='activity'&&s.tabOn]} onPress={()=>setMode('activity')}><Text style={[s.tabText,mode==='activity'&&s.tabTextOn]}>Activité</Text></Pressable>
         </View>
         {mode==='notifications'?<>
-          <View style={s.settings}>
-            <View style={s.settingRow}>
-              <View style={s.settingCopy}><Text style={s.settingTitle}>Notifications sur cet appareil</Text><Text style={s.settingText}>{push.subscribed?'Notifications activées.':push.permission==='denied'?'Notifications bloquées dans les réglages de l’appareil.':'Notifications désactivées sur cet appareil.'}</Text></View>
-              <Switch value={push.subscribed} disabled={push.busy||!push.projectReady} onValueChange={()=>void togglePush()}/>
-            </View>
-            {(['messages','searches','favorites','sales','system'] as const).map(group=><View key={group} style={s.settingRow}>
-              <View style={s.settingCopy}><Text style={s.settingTitle}>{groupLabels[group]}</Text><Text style={s.settingText}>{group==='messages'?'Nouveaux messages':group==='searches'?'Recherches enregistrées':group==='favorites'?'Favoris et comptes suivis':group==='sales'?'Offres, annonces, commandes et portefeuille':'Sécurité et informations système'}</Text></View>
-              <Switch value={groupEnabled(group)} disabled={!prefsReady||savingGroup!==null} onValueChange={()=>void toggleGroup(group)}/>
-            </View>)}
-          </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.filters}>
             {(['all','messages','searches','favorites','sales','system'] as Group[]).map(group=><Pressable key={group} style={[s.filter,filter===group&&s.filterOn]} onPress={()=>setFilter(group)}><Text style={[s.filterText,filter===group&&s.filterTextOn]}>{groupLabels[group]} · {counts[group]}</Text></Pressable>)}
           </ScrollView>
@@ -183,6 +173,16 @@ export default function ActivityCenter(){
         {error?<Text style={s.error}>{error}</Text>:null}
       </>}
       ListEmptyComponent={<View style={s.empty}><View style={s.emptyIcon}><AppIcon name="circle-check" size={24} color={PA.success}/></View><Text style={s.emptyTitle}>{mode==='notifications'?'Vous êtes à jour':'Aucune activité récente'}</Text><Text style={s.muted}>{mode==='notifications'?'Aucune notification pour le moment.':'Vos messages, offres, achats, ventes et versements apparaîtront ici.'}</Text></View>}
+      ListFooterComponent={mode==='notifications'?<View style={s.settings}>
+        <View style={s.settingRow}>
+          <View style={s.settingCopy}><Text style={s.settingTitle}>Notifications sur cet appareil</Text><Text style={s.settingText}>{push.subscribed?'Notifications activées.':push.permission==='denied'?'Notifications bloquées dans les réglages de l’appareil.':'Notifications désactivées sur cet appareil.'}</Text></View>
+          <Switch value={push.subscribed} disabled={push.busy||!push.projectReady} onValueChange={()=>void togglePush()}/>
+        </View>
+        {(['messages','searches','favorites','sales','system'] as const).map(group=><View key={group} style={s.settingRow}>
+          <View style={s.settingCopy}><Text style={s.settingTitle}>{groupLabels[group]}</Text><Text style={s.settingText}>{group==='messages'?'Nouveaux messages':group==='searches'?'Recherches enregistrées':group==='favorites'?'Favoris et comptes suivis':group==='sales'?'Offres, annonces, commandes et portefeuille':'Sécurité et informations système'}</Text></View>
+          <Switch value={groupEnabled(group)} disabled={!prefsReady||savingGroup!==null} onValueChange={()=>void toggleGroup(group)}/>
+        </View>)}
+      </View>:null}
       renderItem={({item})=>mode==='notifications'?<NotificationRow item={item as N} open={()=>void markRead(item as N,true)} mark={()=>void markRead(item as N,false)}/>:<ActivityRow item={item as A} open={()=>openActivity(item as A)}/>}
     />
   </SafeAreaView>;

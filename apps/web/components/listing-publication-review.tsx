@@ -81,6 +81,13 @@ function readable(code: string) {
   return labels[code] ?? code.replaceAll("_", " ");
 }
 
+async function fetchWithNetworkRetry(input:RequestInfo|URL,init?:RequestInit){
+  try{return await fetch(input,init)}catch{
+    await new Promise(resolve=>setTimeout(resolve,650));
+    return fetch(input,init);
+  }
+}
+
 export function ListingPublicationReview({ listingId, promotionCode="", promotionName="Sans option", onFixStep }: { listingId?: string; promotionCode?:string; promotionName?:string; onFixStep?: (step:number)=>void }) {
   const router = useRouter();
   const [check, setCheck] = useState<PublicationCheck | null>(null);
@@ -152,6 +159,7 @@ export function ListingPublicationReview({ listingId, promotionCode="", promotio
     if (!listingId || !canPublish) return;
     setPublishing(true);
     setMessage("");
+    void sendSiteAnalyticsEvent("LISTING_PUBLISH_CLICKED",typeof window!=="undefined"?window.location.pathname:"/deposer-une-annonce");
     try {
       if(!await saveCompliance())return;
       if(promotionCode){
@@ -177,6 +185,7 @@ export function ListingPublicationReview({ listingId, promotionCode="", promotio
         }
         if(payload.url){window.location.assign(payload.url);return}
         if(payload.activated&&payload.submitted){
+          void sendSiteAnalyticsEvent("LISTING_PUBLISH_SUCCEEDED",typeof window!=="undefined"?window.location.pathname:"/deposer-une-annonce");
           trackSiteConversion("LISTING_SUBMITTED","listing_submitted",{status:"PENDING",listing_id:listingId,promotion_code:promotionCode,promotion_name:promotionName,payment_method:payload.paidWith??"PROMOTION"});
           setMessage("Visibilité activée. Annonce envoyée en modération.");
           navigateApp(router,"/annonce-ajoutee?status=PENDING&promotion=success&listingId="+encodeURIComponent(listingId));return;
@@ -184,7 +193,7 @@ export function ListingPublicationReview({ listingId, promotionCode="", promotio
         setMessage("L’option de visibilité a été préparée mais l’annonce n’a pas pu être envoyée en modération. Réessayez.");
         return;
       }
-      const response = await fetch(apiBase()+"/listings/"+encodeURIComponent(listingId)+"/publish", {
+      const response = await fetchWithNetworkRetry(apiBase()+"/listings/"+encodeURIComponent(listingId)+"/publish", {
         method: "POST",
         credentials: "include",
         headers: { "content-type": "application/json" },
@@ -206,6 +215,7 @@ export function ListingPublicationReview({ listingId, promotionCode="", promotio
         await refresh();
         return;
       }
+      void sendSiteAnalyticsEvent("LISTING_PUBLISH_SUCCEEDED",typeof window!=="undefined"?window.location.pathname:"/deposer-une-annonce");
       trackSiteConversion("LISTING_SUBMITTED","listing_submitted",{status:payload.status??"PENDING",listing_id:listingId});
       setMessage("Annonce envoyée en modération avec succès.");
       navigateApp(router,`/annonce-ajoutee?status=${encodeURIComponent(payload.status??"PENDING")}${payload.listing?.slug?`&slug=${encodeURIComponent(payload.listing.slug)}`:""}`);
@@ -260,7 +270,7 @@ export function ListingPublicationReview({ listingId, promotionCode="", promotio
       {promotionCode&&<section className={styles.promotionSummary}><span><AppIcon name="sparkles"/></span><div><small>Visibilité sélectionnée</small><strong>{promotionName}</strong><p>Après confirmation, votre crédit Petit Annonces sera utilisé s’il couvre entièrement cette option. Sinon, vous serez redirigé vers le paiement sécurisé. Le badge sera activé avant l’envoi en modération.</p></div></section>}
 
       <div className={styles.consentBox}>
-        <h3>Dernières confirmations</h3>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}><h3 style={{margin:0}}>Dernières confirmations</h3><label style={{fontWeight:800,cursor:"pointer"}}><input type="checkbox" checked={allConsents} onChange={(e)=>{const value=e.target.checked;setAccuracy(value);setRules(value);setTerms(value);setDisclosure(value)}}/><span>Tout confirmer</span></label></div>
         <label><input type="checkbox" checked={accuracy} onChange={(e) => setAccuracy(e.target.checked)} /><span>Je confirme que les informations, le prix et les photos décrivent fidèlement l’annonce.</span></label>
         <label><input type="checkbox" checked={rules} onChange={(e) => setRules(e.target.checked)} /><span>Je respecte les <a href="/conformite" target="_blank" rel="noopener noreferrer">règles de diffusion et de conformité</a> ainsi que les produits ou services interdits de Petit Annonces.</span></label>
         <label><input type="checkbox" checked={terms} onChange={(e) => setTerms(e.target.checked)} /><span>J’accepte les <a href="/conditions-generales" target="_blank" rel="noopener noreferrer">Conditions générales</a> et reconnais avoir pris connaissance de la <a href="/confidentialite" target="_blank" rel="noopener noreferrer">Politique de confidentialité</a> et de la <a href="/cookies" target="_blank" rel="noopener noreferrer">Politique de cookies</a>.</span></label>

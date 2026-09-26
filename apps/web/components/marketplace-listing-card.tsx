@@ -22,6 +22,16 @@ type CardItem={
   commerce?:{securePaymentEnabled?:boolean;shippingEnabled?:boolean};
 };
 
+function publicImageUrl(url:string|null){
+  if(!url)return null;
+  try{
+    const parsed=new URL(url);
+    if(parsed.hostname!=="media.petitannonces.fr")return url;
+    const match=decodeURIComponent(parsed.pathname).match(/\/listings\/[^/]+\/([0-9a-f-]{36})\.(?:webp|jpe?g|png|avif|heic|heif)$/i);
+    return match?.[1]?`/api/media/watermark/${encodeURIComponent(match[1])}`:url;
+  }catch{return url}
+}
+
 function meta(item:CardItem){
   const vehicle=item.vehicle as {modelYear?:number|null;mileageKm?:number|null;fuel?:string|null}|null|undefined;
   if(vehicle){return [vehicle.modelYear,vehicle.mileageKm!=null?`${Number(vehicle.mileageKm).toLocaleString("fr-FR")} km`:null,vehicle.fuel].filter(Boolean).slice(0,2).join(" · ")}
@@ -41,9 +51,10 @@ export function MarketplaceListingCard({item,variant="default",showFavorite=true
   const shippingAvailable=item.commerce?.shippingEnabled===true;
   const securePaymentAvailable=item.commerce?.securePaymentEnabled===true;
   const transactionType=typeof (item.property as any)?.transactionType==="string"?(item.property as any).transactionType:null;
+  const imageUrl=publicImageUrl(item.imageUrl);
   return <article className={`${styles.card} ${variant==="similar"?styles.similar:""}`}>
     <div className={styles.visual}>
-      <a className={styles.imageLink} href={href} aria-label={item.title??item.category.name}>{item.imageUrl?<Image src={item.imageUrl} alt={item.title??item.category.name} fill sizes="(max-width:700px) 50vw, (max-width:1180px) 33vw, 260px" quality={68} priority={imagePriority} fetchPriority={imagePriority?"high":"auto"}/>:<ListingCategoryPlaceholder category={item.category}/>}</a>
+      <a className={styles.imageLink} href={href} aria-label={item.title??item.category.name}>{imageUrl?<Image src={imageUrl} alt={item.title??item.category.name} fill sizes="(max-width:700px) 50vw, (max-width:1180px) 33vw, 260px" quality={68} priority={imagePriority} fetchPriority={imagePriority?"high":"auto"} unoptimized={imageUrl.includes("/api/media/watermark/")}/>:<ListingCategoryPlaceholder category={item.category}/>}</a>
       <div className={styles.badges}>{item.promotions?.slice(0,2).map(p=>p.type==="URGENT"?<b key={`${p.code}-${p.type}`} className={`${styles.desktopIconBadge} ${styles.urgentIconBadge}`} data-tooltip="Urgent" aria-label="Urgent"><AppIcon name="bolt"/></b>:<b key={`${p.code}-${p.type}`} className={`${styles.badge} ${styles[promotionClass(p.type)]??""}`}>{promotionLabel(p.type)}</b>)}{isPro&&<b className={`${styles.desktopIconBadge} ${styles.proIconBadge}`} data-tooltip="Professionnel" aria-label="Professionnel"><AppIcon name="store"/></b>}</div>
       {showFavorite&&<div className={styles.favorite}><FavoriteButton listingId={item.id} compact/></div>}
       {(shippingAvailable||securePaymentAvailable)&&<div className={styles.serviceIcons}>{shippingAvailable&&<span className={`${styles.serviceIcon} ${styles.shippingIcon}`} title="Livraison possible" aria-label="Livraison possible"><AppIcon name="truck"/></span>}{securePaymentAvailable&&<span className={`${styles.serviceIcon} ${styles.paymentIcon}`} title="Paiement sécurisé" aria-label="Paiement sécurisé"><AppIcon name="shield"/></span>}</div>}

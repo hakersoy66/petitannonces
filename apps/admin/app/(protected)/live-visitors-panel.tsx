@@ -33,7 +33,7 @@ export function LiveVisitorsPanel({initialData}:{initialData:LiveAnalytics|null}
   if(!silent)setRefreshing(true);
   try{const r=await fetch("/api/admin/analytics/live",{credentials:"include",cache:"no-store"});if(r.ok)setData(await r.json() as LiveAnalytics)}catch{}finally{if(!silent)setRefreshing(false)}
  }
- useEffect(()=>{const id=window.setInterval(()=>void refresh(true),15000);return()=>window.clearInterval(id)},[]);
+ useEffect(()=>{const id=window.setInterval(()=>void refresh(true),30000);return()=>window.clearInterval(id)},[]);
  const members=data?.summary?.onlineMembers??sessions.filter(x=>x.userId).length;
  const anonymous=Math.max(0,sessions.length-members);
  return <section className="admin-card admin-section admin-live-panel">

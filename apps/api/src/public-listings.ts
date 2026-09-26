@@ -77,6 +77,7 @@ export async function registerPublicListingRoutes(app: FastifyInstance) {
       prisma.$queryRawUnsafe<Array<{manufacturerName:string|null;productIdentifier:string|null;model:string|null;ean:string|null}>>(`SELECT "manufacturerName","productIdentifier","model","ean" FROM "ListingProductSafety" WHERE "listingId"=$1 LIMIT 1`,listing.id).catch(()=>[]),
       prisma.$queryRawUnsafe<Array<{sellerIsTrader:boolean;withdrawalRightApplies:boolean|null;withdrawalPeriodDays:number|null;withdrawalExceptionCode:string|null}>>(`SELECT "sellerIsTrader","withdrawalRightApplies","withdrawalPeriodDays","withdrawalExceptionCode" FROM "TraderConsumerDisclosure" WHERE "listingId"=$1 LIMIT 1`,listing.id).catch(()=>[]),
     ]);
+    const lifecycleRows=await prisma.$queryRawUnsafe<Array<{expiresAt:Date}>>(`SELECT "expiresAt" FROM "ListingLifecycle" WHERE "listingId"=$1 LIMIT 1`,listing.id).catch(()=>[]);
     await ensureListingViewTable();
     const viewRows=await prisma.$queryRawUnsafe<Array<{count:bigint}>>(`SELECT COUNT(*)::bigint AS "count" FROM "ListingView" WHERE "listingId"=$1`,listing.id);
     const viewCount=Number(viewRows[0]?.count??0n);
@@ -116,9 +117,9 @@ export async function registerPublicListingRoutes(app: FastifyInstance) {
     }:null;
     return reply.send({ listing: {
       id: listing.id, slug: listing.slug, title: listing.title, description: listing.description, priceMinor: listing.priceMinor, currency: listing.currency, status: listing.status, updatedAt: listing.updatedAt, viewCount,
-      city: listing.city, postalCode: listing.postalCode, region: listing.region, latitude: listing.latitude, longitude: listing.longitude, publishedAt: listing.publishedAt,
+      city: listing.city, postalCode: listing.postalCode, region: listing.region, latitude: listing.latitude, longitude: listing.longitude, publishedAt: listing.publishedAt, expiresAt: lifecycleRows[0]?.expiresAt ?? null,
       category: { id: listing.category.id, name: listing.category.name, slug: listing.category.slug, domain: listing.category.domain }, breadcrumb, attributes,
-      media: media.map((item) => ({ id: item.id, url: item.publicUrl, mimeType: item.mimeType, width: item.width, height: item.height, altText: item.altText, isCover: item.isCover })),
+      media: media.map((item) => ({ id: item.id, url: `https://petitannonces.fr/api/media/watermark/${encodeURIComponent(item.id)}`, mimeType: "image/webp", width: item.width, height: item.height, altText: item.altText, isCover: item.isCover })),
       vehicle: publicVehicle, vehicleHistory, property: listing.property, energy: listing.energy, promotions,
       priceHistory: priceHistory.map(item=>({oldPriceMinor:item.oldPriceMinor,newPriceMinor:item.newPriceMinor,currency:item.currency,changedAt:item.changedAt})),
       productSafety: productSafetyRows[0]??null,

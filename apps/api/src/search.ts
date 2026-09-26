@@ -48,7 +48,7 @@ function readGeoToken(value:string|undefined){if(!value)return null;const key=ge
 type SearchItemBase = { id: string; sellerId: string };
 type ReputationRow = { id:string; kind:string; createdAt:Date; emailVerified:boolean; phoneVerified:boolean; avatarUrl:string|null; sellerName:string|null; verified:boolean; hasStore:boolean; paymentReady:boolean; reviewCount:bigint; reviewAverage:number|null; completedSales:bigint; canceledSales:bigint; disputedSales:bigint; responseSamples:bigint; responseWithin2h:bigint; averageResponseMinutes:number|null; shipmentSamples:bigint; shipmentWithin48h:bigint };
 type CommerceRow = { listingId:string; securePaymentEnabled:boolean; mondialRelayEnabled:boolean; colissimoEnabled:boolean };
-type MediaRow = { listingId:string; publicUrl:string };
+type MediaRow = { listingId:string; mediaId:string };
 type PromotionRow = { listingId:string; code:string; type:string; name:string; endsAt:Date|null };
 type PromotionRankRow = { listingId:string; priority:number; boostedAt:Date|null };
 
@@ -108,7 +108,7 @@ export async function enrichItems<T extends SearchItemBase>(items:T[]){
       LEFT JOIN LATERAL (WITH samples AS (SELECT EXTRACT(EPOCH FROM (sm.first_seller-bm.first_buyer))/60.0 AS minutes FROM "Conversation" c JOIN LATERAL (SELECT MIN(m."createdAt") AS first_buyer FROM "Message" m WHERE m."conversationId"=c."id" AND m."senderId"=c."buyerId" AND m."createdAt">=CURRENT_TIMESTAMP-INTERVAL '90 days') bm ON bm.first_buyer IS NOT NULL JOIN LATERAL (SELECT MIN(m."createdAt") AS first_seller FROM "Message" m WHERE m."conversationId"=c."id" AND m."senderId"=c."sellerId" AND m."createdAt">bm.first_buyer) sm ON sm.first_seller IS NOT NULL WHERE c."sellerId"=u."id") SELECT COUNT(*)::bigint AS samples,COUNT(*) FILTER(WHERE minutes<=120)::bigint AS within2h,AVG(minutes)::float AS "averageResponseMinutes" FROM samples) resp ON TRUE
       LEFT JOIN LATERAL (SELECT COUNT(*)::bigint AS samples,COUNT(*) FILTER(WHERE ms."shippedAt"<=mo2."paidAt"+INTERVAL '48 hours')::bigint AS within48h FROM "MarketplaceShipment" ms JOIN "MarketplaceOrder" mo2 ON mo2."id"=ms."orderId" WHERE mo2."sellerId"=u."id" AND mo2."paidAt" IS NOT NULL AND ms."shippedAt" IS NOT NULL) ship ON TRUE
       WHERE u."id" = ANY($1::text[])`,sellerIds),
-    prisma.$queryRawUnsafe<MediaRow[]>(`SELECT DISTINCT ON (lm."listingId") lm."listingId",lm."publicUrl" FROM "ListingMedia" lm WHERE lm."listingId" = ANY($1::text[]) AND lm."status"='READY' AND lm."publicUrl" IS NOT NULL ORDER BY lm."listingId",lm."isCover" DESC,lm."sortOrder" ASC,lm."createdAt" ASC`,listingIds),
+    prisma.$queryRawUnsafe<MediaRow[]>(`SELECT DISTINCT ON (lm."listingId") lm."listingId",lm."id" AS "mediaId" FROM "ListingMedia" lm WHERE lm."listingId" = ANY($1::text[]) AND lm."status"='READY' AND lm."publicUrl" IS NOT NULL ORDER BY lm."listingId",lm."isCover" DESC,lm."sortOrder" ASC,lm."createdAt" ASC`,listingIds),
     prisma.$queryRawUnsafe<CommerceRow[]>(`SELECT "listingId","securePaymentEnabled","mondialRelayEnabled","colissimoEnabled" FROM "ListingCommerceSettings" WHERE "listingId" = ANY($1::text[])`,listingIds),
     prisma.$queryRawUnsafe<PromotionRow[]>(`SELECT lp."listingId",pp."code",pp."type"::text AS "type",pp."name",lp."endsAt" FROM "ListingPromotion" lp JOIN "PromotionProduct" pp ON pp."id"=lp."productId" WHERE lp."listingId" = ANY($1::text[]) AND lp."status"='ACTIVE' AND (lp."startsAt" IS NULL OR lp."startsAt"<=CURRENT_TIMESTAMP) AND (lp."endsAt" IS NULL OR lp."endsAt">CURRENT_TIMESTAMP) ORDER BY lp."createdAt" DESC`,listingIds)
   ]);
@@ -117,7 +117,7 @@ export async function enrichItems<T extends SearchItemBase>(items:T[]){
     const reputation=buildReputation({verified:row.verified,emailVerified:row.emailVerified,phoneVerified:row.phoneVerified,kind:row.kind,memberSince:row.createdAt,reviewCount,reviewAverage:row.reviewAverage,completedSales,canceledSales:Number(row.canceledSales),disputedSales:Number(row.disputedSales),responseSamples,responseWithinTwoHoursRate:responseSamples?Number(row.responseWithin2h)/responseSamples:0,averageResponseMinutes:row.averageResponseMinutes,shipmentSamples,shipmentWithin48HoursRate:shipmentSamples?Number(row.shipmentWithin48h)/shipmentSamples:0});
     return [row.id,{verified:row.verified,emailVerified:row.emailVerified,kind:row.kind,hasStore:row.hasStore,paymentReady:row.paymentReady,avatarUrl:row.avatarUrl,sellerName:row.sellerName??"Membre",reviewCount,reviewAverage:row.reviewAverage,completedSales,trust:reputation.trust,badges:reputation.badges,cardBadges:reputation.cardBadges}] as const;
   }));
-  const media=new Map(mediaRows.map((row)=>[row.listingId,row.publicUrl] as const));
+  const media=new Map(mediaRows.map((row)=>[row.listingId,`https://petitannonces.fr/api/media/watermark/${encodeURIComponent(row.mediaId)}`] as const));
   const commerce=new Map(commerceRows.map((row)=>[row.listingId,{securePaymentEnabled:row.securePaymentEnabled,shippingEnabled:row.mondialRelayEnabled||row.colissimoEnabled}] as const));
   const promotions=new Map<string,PromotionRow[]>();
   for(const row of promotionRows){const current=promotions.get(row.listingId)??[];current.push(row);promotions.set(row.listingId,current)}
@@ -351,8 +351,8 @@ export async function registerSearchRoutes(app: FastifyInstance) {
       prisma.listing.findMany({ where: { status: "PUBLISHED", city: { contains: q, mode: "insensitive" } }, select: { city: true }, distinct: ["city"], take: 5 }),
     ]);
     const listingIds=listings.map(item=>item.id);
-    const covers=listingIds.length?await prisma.$queryRawUnsafe<Array<{listingId:string;publicUrl:string}>>(`SELECT DISTINCT ON (lm."listingId") lm."listingId",lm."publicUrl" FROM "ListingMedia" lm WHERE lm."listingId"=ANY($1::text[]) AND lm."status"='READY' AND lm."publicUrl" IS NOT NULL ORDER BY lm."listingId",lm."isCover" DESC,lm."sortOrder" ASC,lm."createdAt" ASC`,listingIds):[];
-    const coverByListing=new Map(covers.map(item=>[item.listingId,item.publicUrl] as const));
+    const covers=listingIds.length?await prisma.$queryRawUnsafe<Array<{listingId:string;mediaId:string}>>(`SELECT DISTINCT ON (lm."listingId") lm."listingId",lm."id" AS "mediaId" FROM "ListingMedia" lm WHERE lm."listingId"=ANY($1::text[]) AND lm."status"='READY' AND lm."publicUrl" IS NOT NULL ORDER BY lm."listingId",lm."isCover" DESC,lm."sortOrder" ASC,lm."createdAt" ASC`,listingIds):[];
+    const coverByListing=new Map(covers.map(item=>[item.listingId,`https://petitannonces.fr/api/media/watermark/${encodeURIComponent(item.mediaId)}`] as const));
     return reply.send({ suggestions: [
       ...categories.map((item) => ({ type: "category", label: item.name, value: item.slug })),
       ...listings.filter((item) => item.title && item.slug).map((item) => ({ type: "listing",id:item.id,label:item.title!,value:item.slug!,imageUrl:coverByListing.get(item.id)??null,priceMinor:item.priceMinor,currency:item.currency,city:item.city })),

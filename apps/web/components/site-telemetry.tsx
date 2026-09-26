@@ -5,11 +5,11 @@ import { usePathname } from "next/navigation";
 const CONSENT_KEY="pa_cookie_consent_v1";
 export type SiteAnalyticsEvent=
  | "PAGE_VIEW" | "HEARTBEAT" | "PWA_INSTALLED" | "PWA_STANDALONE"
- | "PWA_ONBOARDING_STARTED" | "PWA_ONBOARDING_COMPLETED"
+ | "PWA_ONBOARDING_STARTED" | "PWA_ONBOARDING_COMPLETED" | "PWA_INSTALL_GUIDE_OPENED"
  | "PWA_PUSH_PROMPTED" | "PWA_PUSH_ACCEPTED" | "PWA_PUSH_DECLINED"
  | "SIGN_UP_COMPLETED" | "PHONE_VERIFIED" | "LISTING_SUBMITTED" | "MESSAGE_SENT"
  | "CHECKOUT_STARTED" | "PURCHASE_COMPLETED" | "PRO_TRIAL_STARTED" | "LANDING_CTA_CLICKED"
- | "PHOTO_UPLOAD_FAILED" | "LISTING_PUBLISH_FAILED" | "CHECKOUT_FAILED";
+ | "PHOTO_UPLOAD_FAILED" | "LISTING_PUBLISH_CLICKED" | "LISTING_PUBLISH_SUCCEEDED" | "LISTING_PUBLISH_FAILED" | "CHECKOUT_FAILED";
 export function analyticsAllowed(){try{const raw=localStorage.getItem(CONSENT_KEY);if(!raw)return false;return Boolean(JSON.parse(raw)?.analytics)}catch{return false}}
 function advertisingAllowed(){try{const raw=localStorage.getItem(CONSENT_KEY);if(!raw)return false;return Boolean(JSON.parse(raw)?.advertising)}catch{return false}}
 function id(storage:Storage,key:string){const old=storage.getItem(key);if(old)return old;const v=typeof crypto!=="undefined"&&crypto.randomUUID?crypto.randomUUID():`${Date.now()}-${Math.random().toString(36).slice(2)}`;storage.setItem(key,v);return v}

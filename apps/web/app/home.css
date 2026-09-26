@@ -1306,3 +1306,92 @@
 
 /* 2026-09-22 homepage SEO FAQ */
 .home-seo-faq{grid-column:1/-1;margin-top:6px;padding-top:22px;border-top:1px solid #ece9f3}.home-seo-faq-head>span{display:block;color:#5b4cf0;font-size:10px;font-weight:950;letter-spacing:.09em;text-transform:uppercase}.home-seo-faq-head h3{margin:5px 0 14px;color:#262433;font-size:22px;letter-spacing:-.025em}.home-seo-faq-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.home-seo-faq details{padding:13px 14px;border:1px solid #e6e2ef;border-radius:14px;background:#fff}.home-seo-faq summary{cursor:pointer;color:#34323f;font-size:12px;font-weight:900;line-height:1.4}.home-seo-faq details p{margin:8px 0 0;color:#6c6877;font-size:12px;line-height:1.6}@media(max-width:760px){.home-seo-faq{margin-top:4px;padding-top:16px}.home-seo-faq-grid{grid-template-columns:1fr}.home-seo-faq-head h3{font-size:18px}.home-seo-faq details{padding:12px}.home-seo-faq summary,.home-seo-faq details p{font-size:11px}}
+
+/* 2026-09-25 unify homepage with global mobile/PWA footer */
+@media(max-width:720px),(display-mode:standalone){
+  body:has(.home-page-shell) .site-footer{display:block!important}
+  .home-page-shell .mobile-home-mini-footer,
+  .mobile-home-mini-footer{display:none!important}
+}
+
+/* 2026-09-25 homepage footer unification FINAL */
+@media(max-width:720px),(display-mode:standalone){
+  body:has(.home-page-shell) .site-footer{
+    display:block!important;
+    visibility:visible!important;
+    opacity:1!important;
+  }
+  .home-page-shell .mobile-home-mini-footer,
+  .mobile-home-mini-footer{
+    display:none!important;
+    height:0!important;
+    min-height:0!important;
+    padding:0!important;
+    margin:0!important;
+    overflow:hidden!important;
+  }
+}
+
+/* 2026-09-25 force unified footer on homepage */
+@media(max-width:760px),(display-mode:standalone){
+  body:has(.home-page-shell) .site-footer{
+    display:block!important;
+    visibility:visible!important;
+    opacity:1!important;
+    margin-top:0!important;
+    padding:0 0 max(8px,env(safe-area-inset-bottom,0px))!important;
+    min-height:0!important;
+    background:#12121c!important;
+  }
+  body:has(.home-page-shell) .footer-mobile-simple{
+    display:block!important;
+    width:calc(100% - 28px)!important;
+    max-width:560px!important;
+    margin:0 auto!important;
+    padding:22px 0 10px!important;
+    min-height:0!important;
+  }
+  body:has(.home-page-shell) .footer-mobile-legal{
+    display:grid!important;
+    grid-template-columns:repeat(4,max-content)!important;
+    justify-content:space-between!important;
+    align-items:center!important;
+    gap:6px!important;
+    margin:15px 0 0!important;
+    padding:13px 0 0!important;
+    border-top:1px solid rgba(255,255,255,.075)!important;
+  }
+  body:has(.home-page-shell) .footer-mobile-legal a{
+    font-size:clamp(7.6px,2.25vw,9.8px)!important;
+    white-space:nowrap!important;
+    text-align:center!important;
+  }
+  body:has(.home-page-shell) .footer-mobile-bottom{
+    display:flex!important;
+    justify-content:center!important;
+    align-items:center!important;
+    width:100%!important;
+    margin:13px 0 0!important;
+    padding:12px 0 0!important;
+    border-top:1px solid rgba(255,255,255,.055)!important;
+    text-align:center!important;
+  }
+  body:has(.home-page-shell) .footer-mobile-bottom>span{
+    width:100%!important;
+    margin:0!important;
+    color:#858593!important;
+    font-size:clamp(10.5px,3vw,12.5px)!important;
+    line-height:1.25!important;
+    white-space:nowrap!important;
+    text-align:center!important;
+  }
+  body:has(.home-page-shell) .home-page-shell .mobile-home-mini-footer,
+  body:has(.home-page-shell) .mobile-home-mini-footer{
+    display:none!important;
+    height:0!important;
+    min-height:0!important;
+    padding:0!important;
+    margin:0!important;
+    overflow:hidden!important;
+  }
+}

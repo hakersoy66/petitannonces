@@ -4,6 +4,7 @@ import { prisma } from "@pa/database";
 import webpush from "web-push";
 import { sendApplicationEmail, type EmailSendResult } from "./email-provider.js";
 import { getNotificationPresentation } from "./admin-notifications.js";
+import { getSiteSettings } from "./admin-control.js";
 
 const MAX_ATTEMPTS = 5;
 const DEFAULT_BATCH_SIZE = 25;
@@ -18,19 +19,45 @@ function payloadOf(value:unknown):DeliveryPayload{if(!value||typeof value!=="obj
 function retryDelayMs(attempts:number){const s=[60000,300000,1800000,7200000,43200000];return s[Math.min(Math.max(attempts-1,0),s.length-1)]??43200000;}
 function absoluteActionUrl(actionUrl?:string|null){if(!actionUrl)return null;if(/^https?:\/\//i.test(actionUrl))return actionUrl;const base=(process.env.PUBLIC_WEB_URL??"https://petitannonces.fr").replace(/\/$/,"");return `${base}${actionUrl.startsWith("/")?actionUrl:`/${actionUrl}`}`;}
 function escapeHtml(value:string){return value.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]??c));}
+type ListingEmailCard={id:string;title:string|null;slug:string|null;status:string;priceMinor:number|null;currency:string;city:string|null;postalCode:string|null;mediaId:string|null;publicUrl:string|null};
+async function listingEmailCard(payload:DeliveryPayload):Promise<ListingEmailCard|null>{
+  const listingId=String(payload.metadata?.listingId??"").trim();
+  if(!listingId)return null;
+  const rows=await prisma.$queryRawUnsafe<ListingEmailCard[]>(`
+    SELECT l."id",l."title",l."slug",l."status"::text AS "status",l."priceMinor",l."currency",l."city",l."postalCode",
+      m."id" AS "mediaId",m."publicUrl"
+    FROM "Listing" l
+    LEFT JOIN LATERAL (
+      SELECT lm."id",lm."publicUrl" FROM "ListingMedia" lm
+      WHERE lm."listingId"=l."id" AND lm."status"='READY' AND lm."publicUrl" IS NOT NULL
+      ORDER BY lm."isCover" DESC,lm."sortOrder" ASC,lm."createdAt" ASC LIMIT 1
+    ) m ON TRUE
+    WHERE l."id"=$1 LIMIT 1`,listingId).catch(()=>[]);
+  return rows[0]??null;
+}
+function moneyLabel(minor:number|null,currency:string){if(minor===null)return null;try{return new Intl.NumberFormat("fr-FR",{style:"currency",currency:currency||"EUR",maximumFractionDigits:2}).format(minor/100)}catch{return `${(minor/100).toFixed(2)} €`}}
+function emailAssetUrl(value:string|null|undefined){const v=String(value??"").trim();if(!v)return null;if(/^https?:\/\//i.test(v))return v;return absoluteActionUrl(v);}
 async function sendEmail(row:OutboxRow,payload:DeliveryPayload):Promise<EmailSendResult>{
-  const user=await prisma.user.findUnique({where:{id:row.userId},select:{email:true}});
+  const [user,presentation,site,listing]=await Promise.all([
+    prisma.user.findUnique({where:{id:row.userId},select:{email:true}}),
+    getNotificationPresentation(),
+    getSiteSettings().catch(()=>null),
+    listingEmailCard(payload),
+  ]);
   if(!user?.email)throw new Error("recipient_email_missing");
   const actionUrl=absoluteActionUrl(payload.actionUrl);
   const transactional=payload.metadata?.transactional===true;
-  const presentation=await getNotificationPresentation();
   const footer=transactional?presentation.transactionalFooter:presentation.generalFooter;
-  const html=`<!doctype html><html><body style="margin:0;background:#f6f5fb;font-family:Arial,Helvetica,sans-serif;color:#252033"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f6f5fb;padding:32px 12px"><tr><td align="center"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:620px;background:#ffffff;border-radius:18px;overflow:hidden;border:1px solid #ebe8f4"><tr><td style="padding:24px 30px;background:#5b21b6;color:#ffffff"><div style="font-size:22px;font-weight:800;letter-spacing:-.3px">Petit Annonces</div><div style="margin-top:4px;font-size:13px;opacity:.9">Achetez, vendez et échangez simplement en France</div></td></tr><tr><td style="padding:32px 30px"><h1 style="margin:0 0 18px;font-size:26px;line-height:1.25;color:#24163d">${escapeHtml(payload.title)}</h1><p style="margin:0;font-size:16px;line-height:1.7;color:#494052">${escapeHtml(payload.body)}</p>${actionUrl?`<div style="margin:28px 0 8px"><a href="${escapeHtml(actionUrl)}" style="display:inline-block;padding:14px 22px;background:#6d28d9;color:#ffffff;text-decoration:none;border-radius:12px;font-weight:700;font-size:15px">${escapeHtml(presentation.buttonLabel)}</a></div>`:""}<div style="height:1px;background:#ece8f2;margin:30px 0 20px"></div><p style="margin:0;color:#756d80;font-size:12px;line-height:1.6">${escapeHtml(footer)}</p><p style="margin:12px 0 0;color:#9a93a3;font-size:11px;line-height:1.5">© ${new Date().getFullYear()} Petit Annonces · petitannonces.fr</p></td></tr></table></td></tr></table></body></html>`;
+  const accent=/^#[0-9a-f]{6}$/i.test(String(site?.accentColor??""))?String(site!.accentColor):"#5b4cf0";
+  const logo=emailAssetUrl(site?.footerLogoUrl)||absoluteActionUrl("/email-logo.png")||emailAssetUrl(site?.logoUrl);
+  const imageUrl=emailAssetUrl(listing?.publicUrl);
+  const price=listing?moneyLabel(listing.priceMinor,listing.currency):null;
+  const location=listing?[listing.postalCode,listing.city].filter(Boolean).join(" "):"";
+  const listingBlock=listing?`<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:24px 0 2px;border:1px solid #ece9f4;border-radius:18px;overflow:hidden;background:#fbfaff">${imageUrl?`<tr><td><img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(listing.title??"Annonce Petit Annonces")}" width="580" style="display:block;width:100%;height:auto;max-height:340px;object-fit:cover;background:#f0eef6"></td></tr>`:""}<tr><td style="padding:18px 20px"><div style="font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:${accent}">ANNONCE</div><div style="margin-top:7px;font-size:19px;line-height:1.35;font-weight:800;color:#241f31">${escapeHtml(listing.title??"Annonce Petit Annonces")}</div>${price||location?`<div style="margin-top:10px;font-size:14px;line-height:1.5;color:#6f6878">${price?`<strong style="font-size:17px;color:#2d2538">${escapeHtml(price)}</strong>`:""}${price&&location?" · ":""}${location?escapeHtml(location):""}</div>`:""}</td></tr></table>`:"";
+  const html=`<!doctype html><html><body style="margin:0;background:#f4f2f8;font-family:Arial,Helvetica,sans-serif;color:#282230"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f4f2f8;padding:34px 12px"><tr><td align="center"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;background:#ffffff;border-radius:24px;overflow:hidden;border:1px solid #e9e5f0;box-shadow:0 10px 30px rgba(39,31,56,.06)"><tr><td style="height:5px;background:${accent};font-size:0;line-height:0">&nbsp;</td></tr><tr><td style="padding:24px 30px;background:${accent}"><table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td align="left">${logo?`<img src="${escapeHtml(logo)}" alt="Petit Annonces" style="display:block;max-width:190px;max-height:48px;width:auto;height:auto">`:`<div style="font-size:22px;font-weight:900;color:#ffffff">Petit Annonces</div>`}</td></tr></table></td></tr><tr><td style="padding:32px 30px 30px"><div style="display:inline-block;padding:6px 10px;border-radius:999px;background:#f1efff;color:${accent};font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase">Notification Petit Annonces</div><h1 style="margin:14px 0 14px;font-size:28px;line-height:1.22;letter-spacing:-.4px;color:#241f31">${escapeHtml(payload.title)}</h1><p style="margin:0;font-size:16px;line-height:1.72;color:#51495b">${escapeHtml(payload.body).replace(/\n/g,"<br>")}</p>${listingBlock}${actionUrl?`<div style="margin:28px 0 4px"><a href="${escapeHtml(actionUrl)}" style="display:inline-block;padding:14px 22px;background:${accent};color:#ffffff;text-decoration:none;border-radius:13px;font-weight:800;font-size:15px">${escapeHtml(presentation.buttonLabel)}</a></div>`:""}</td></tr><tr><td style="padding:22px 30px 26px;background:#faf9fc;border-top:1px solid #f0edf5"><p style="margin:0;color:#756d80;font-size:12px;line-height:1.65">${escapeHtml(footer)}</p><p style="margin:10px 0 0;color:#9b94a3;font-size:11px;line-height:1.5">© ${new Date().getFullYear()} Petit Annonces · petitannonces.fr</p></td></tr></table></td></tr></table></body></html>`;
   const text=`${payload.title}
 
-${payload.body}${actionUrl?`
-
-${actionUrl}`:""}`;
+${payload.body}${listing?`\n\n${listing.title??"Annonce Petit Annonces"}${price?` · ${price}`:""}${location?` · ${location}`:""}`:""}${actionUrl?`\n\n${actionUrl}`:""}`;
   return sendApplicationEmail({to:user.email,subject:payload.title,html,text,idempotencyKey:row.id,tags:[{name:"event_kind",value:row.eventKind.slice(0,256)},{name:"outbox_id",value:row.id.slice(0,256)}]});
 }
 function configureWebPush(){const publicKey=process.env.NEXT_PUBLIC_WEB_PUSH_PUBLIC_KEY;const privateKey=process.env.WEB_PUSH_PRIVATE_KEY;const subject=process.env.WEB_PUSH_SUBJECT??"mailto:support@petitannonces.fr";if(!publicKey||!privateKey)throw new ProviderUnavailableError("web_push_not_configured");webpush.setVapidDetails(subject,publicKey,privateKey);}

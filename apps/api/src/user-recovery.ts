@@ -25,10 +25,13 @@ export async function ensureUserRecoverySchema(){
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE("listingId","stage")
  )`);
+ await prisma.$executeRawUnsafe(`ALTER TABLE "DraftRecoveryReminder" ADD COLUMN IF NOT EXISTS "readyToPublish" BOOLEAN NOT NULL DEFAULT FALSE`);
+ await prisma.$executeRawUnsafe(`ALTER TABLE "DraftRecoveryReminder" ADD COLUMN IF NOT EXISTS "resumeStep" INTEGER`);
+ await prisma.$executeRawUnsafe(`ALTER TABLE "DraftRecoveryReminder" ADD COLUMN IF NOT EXISTS "qualityScore" INTEGER`);
  await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "DraftRecoveryReminder_user_created_idx" ON "DraftRecoveryReminder"("userId","createdAt" DESC)`);
 }
 
-async function claim(listingId:string,userId:string,stage:"90M"|"24H"){
+async function claim(listingId:string,userId:string,stage:"90M"|"24H"|"READY"){
  const rows=await prisma.$queryRawUnsafe<Array<{id:string}>>(
   `INSERT INTO "DraftRecoveryReminder" ("id","listingId","userId","stage") VALUES ($1,$2,$3,$4) ON CONFLICT ("listingId","stage") DO NOTHING RETURNING "id"`,
   randomUUID(),listingId,userId,stage,
@@ -59,26 +62,55 @@ async function refreshDraftQualitySnapshots(limit=30){
  return refreshed;
 }
 
+function recoveryIssueStep(code:string){if(code==="title_required")return 0;if(code==="ready_photo_required")return 1;if(["price_required","monthly_rent_required","hourly_rate_required","package_weight_required","package_dimensions_required","no_delivery_method"].includes(code))return 3;return 2}
+async function draftRecoveryState(row:DraftRow){
+ const result=await evaluateListing(row.id,row.sellerId).catch(()=>null);
+ if(!result)return{ready:false,resumeStep:2,qualityScore:null as number|null};
+ const steps=result.errors.map(recoveryIssueStep).filter(step=>Number.isInteger(step));
+ return{ready:result.ready,resumeStep:result.ready?5:(steps.length?Math.min(...steps):2),qualityScore:Number(result.quality?.score??0)};
+}
+
 async function queueDraftReminder(row:DraftRow,stage:"90M"|"24H"){
+
  const reminderId=await claim(row.id,row.sellerId,stage);if(!reminderId)return false;
- const title=stage==="90M"?"Votre annonce vous attend":"Souhaitez-vous terminer votre annonce ?";
+ const state=await draftRecoveryState(row);
  const listingTitle=row.title?.trim()||"votre annonce";
- const body=stage==="90M"
-  ?`Vous avez commencé « ${listingTitle} » sans terminer la publication. Votre progression a été conservée pour que vous puissiez reprendre là où vous vous êtes arrêté.`
-  :`Votre brouillon « ${listingTitle} » est toujours disponible. Quelques minutes peuvent suffire pour compléter les informations manquantes et publier l’annonce.`;
+ const title=state.ready?(stage==="90M"?"Votre annonce est prête à publier":"Votre annonce est toujours prête à publier"):(stage==="90M"?"Votre annonce vous attend":"Souhaitez-vous terminer votre annonce ?");
+ const body=state.ready
+  ?`« ${listingTitle} » est complète et prête pour la dernière confirmation. Reprenez directement à l’étape Publication pour l’envoyer en modération.`
+  :stage==="90M"
+   ?`Vous avez commencé « ${listingTitle} » sans terminer la publication. Votre progression a été conservée pour que vous puissiez reprendre là où vous vous êtes arrêté.`
+   :`Votre brouillon « ${listingTitle} » est toujours disponible. Quelques minutes peuvent suffire pour compléter les informations manquantes et publier l’annonce.`;
  try{
   await deliverUserEvent({
    userId:row.sellerId,eventKind:"LISTING",notificationKind:"LISTING",title,body,
-   actionUrl:`/deposer-une-annonce?listingId=${encodeURIComponent(row.id)}`,
+   actionUrl:`/deposer-une-annonce?listingId=${encodeURIComponent(row.id)}&resumeStep=${state.resumeStep}`,
    dedupeKey:`draft-recovery:${row.id}:${stage.toLowerCase()}`,
-   metadata:{source:"DRAFT_RECOVERY",listingId:row.id,stage},
+   metadata:{source:"DRAFT_RECOVERY",listingId:row.id,stage,readyToPublish:state.ready,resumeStep:state.resumeStep,qualityScore:state.qualityScore},
   });
-  await prisma.$executeRawUnsafe(`UPDATE "DraftRecoveryReminder" SET "queuedAt"=CURRENT_TIMESTAMP WHERE "id"=$1`,reminderId);
+  await prisma.$executeRawUnsafe(`UPDATE "DraftRecoveryReminder" SET "queuedAt"=CURRENT_TIMESTAMP,"readyToPublish"=$2,"resumeStep"=$3,"qualityScore"=$4 WHERE "id"=$1`,reminderId,state.ready,state.resumeStep,state.qualityScore);
   return true;
  }catch(error){
   await prisma.$executeRawUnsafe(`DELETE FROM "DraftRecoveryReminder" WHERE "id"=$1`,reminderId).catch(()=>undefined);
   throw error;
  }
+}
+
+async function queueReadyDraftReminder(row:DraftRow){
+ const state=await draftRecoveryState(row);if(!state.ready)return false;
+ const reminderId=await claim(row.id,row.sellerId,"READY");if(!reminderId)return false;
+ const listingTitle=row.title?.trim()||"votre annonce";
+ try{
+  await deliverUserEvent({
+   userId:row.sellerId,eventKind:"LISTING",notificationKind:"LISTING",title:"Votre annonce est prête à publier",
+   body:`« ${listingTitle} » est complète. Il ne reste que la confirmation finale pour l’envoyer en modération.`,
+   actionUrl:`/deposer-une-annonce?listingId=${encodeURIComponent(row.id)}&resumeStep=5`,
+   dedupeKey:`draft-recovery:${row.id}:ready`,
+   metadata:{source:"DRAFT_RECOVERY",listingId:row.id,stage:"READY",readyToPublish:true,resumeStep:5,qualityScore:state.qualityScore},
+  });
+  await prisma.$executeRawUnsafe(`UPDATE "DraftRecoveryReminder" SET "queuedAt"=CURRENT_TIMESTAMP,"readyToPublish"=TRUE,"resumeStep"=5,"qualityScore"=$2 WHERE "id"=$1`,reminderId,state.qualityScore);
+  return true;
+ }catch(error){await prisma.$executeRawUnsafe(`DELETE FROM "DraftRecoveryReminder" WHERE "id"=$1`,reminderId).catch(()=>undefined);throw error}
 }
 
 export async function runDraftRecoverySweep(){
@@ -97,7 +129,20 @@ export async function runDraftRecoverySweep(){
     AND (COALESCE(length(BTRIM(l."title")),0)>=5 OR COALESCE(length(BTRIM(l."description")),0)>=20 OR EXISTS(SELECT 1 FROM "ListingMedia" lm WHERE lm."listingId"=l."id"))
     AND NOT EXISTS(SELECT 1 FROM "DraftRecoveryReminder" r WHERE r."listingId"=l."id" AND r."stage"='90M')
    ORDER BY l."updatedAt" ASC LIMIT 80`);
-  let firstQueued=0,secondQueued=0,failed=0;
+  const readyCandidates=await prisma.$queryRawUnsafe<DraftRow[]>(`
+   SELECT l."id",l."sellerId",l."title",l."updatedAt",l."draftSavedAt",u."email",
+    COALESCE(p."displayName",NULLIF(TRIM(CONCAT_WS(' ',p."firstName",p."lastName")),''),u."email") AS "name"
+   FROM "Listing" l
+   JOIN "User" u ON u."id"=l."sellerId" AND u."status"='ACTIVE'
+   LEFT JOIN "UserProfile" p ON p."userId"=u."id"
+   WHERE l."status"='DRAFT'
+    AND l."updatedAt"<=CURRENT_TIMESTAMP-INTERVAL '${FIRST_DRAFT_DELAY_MINUTES} minutes'
+    AND l."updatedAt">CURRENT_TIMESTAMP-INTERVAL '30 days'
+    AND NOT EXISTS(SELECT 1 FROM "DraftRecoveryReminder" r WHERE r."listingId"=l."id" AND r."stage"='READY')
+    AND (COALESCE(length(BTRIM(l."title")),0)>=5 OR COALESCE(length(BTRIM(l."description")),0)>=20 OR EXISTS(SELECT 1 FROM "ListingMedia" lm WHERE lm."listingId"=l."id"))
+   ORDER BY l."updatedAt" ASC LIMIT 80`);
+  let firstQueued=0,secondQueued=0,readyQueued=0,failed=0;
+  for(const row of readyCandidates){try{if(await queueReadyDraftReminder(row))readyQueued++}catch{failed++}}
   for(const row of first){
    try{
     if(await queueDraftReminder(row,"90M")){
@@ -119,7 +164,7 @@ export async function runDraftRecoverySweep(){
     AND NOT EXISTS(SELECT 1 FROM "DraftRecoveryReminder" r WHERE r."listingId"=l."id" AND r."stage"='24H')
    ORDER BY l."updatedAt" ASC LIMIT 80`);
   for(const row of second){try{if(await queueDraftReminder(row,"24H"))secondQueued++}catch{failed++}}
-  return{qualityRefreshed,firstCandidates:first.length,secondCandidates:second.length,firstQueued,secondQueued,failed};
+  return{qualityRefreshed,firstCandidates:first.length,readyCandidates:readyCandidates.length,secondCandidates:second.length,firstQueued,readyQueued,secondQueued,failed};
  });
 }
 
@@ -142,9 +187,12 @@ export async function registerUserRecoveryRoutes(app:FastifyInstance){
    prisma.$queryRawUnsafe<Array<any>>(`
     SELECT l."id" AS "listingId",l."sellerId" AS "userId",l."title",l."updatedAt",l."draftSavedAt",u."email",
       COALESCE(p."displayName",NULLIF(TRIM(CONCAT_WS(' ',p."firstName",p."lastName")),''),u."email") AS "name",
-      EXISTS(SELECT 1 FROM "DraftRecoveryReminder" r WHERE r."listingId"=l."id" AND r."stage"='90M' AND r."queuedAt" IS NOT NULL) AS "reminded"
+      EXISTS(SELECT 1 FROM "DraftRecoveryReminder" r WHERE r."listingId"=l."id" AND r."stage"='90M' AND r."queuedAt" IS NOT NULL) AS "reminded",
+      COALESCE(rr."readyToPublish",FALSE) AS "readyToPublish",COALESCE(rr."qualityScore",q."score")::int AS "completionScore",rr."resumeStep"
     FROM "Listing" l JOIN "User" u ON u."id"=l."sellerId" AND u."status"='ACTIVE'
     LEFT JOIN "UserProfile" p ON p."userId"=u."id"
+    LEFT JOIN "ListingQualitySnapshot" q ON q."listingId"=l."id"
+    LEFT JOIN LATERAL (SELECT r."readyToPublish",r."qualityScore",r."resumeStep" FROM "DraftRecoveryReminder" r WHERE r."listingId"=l."id" ORDER BY r."createdAt" DESC LIMIT 1) rr ON TRUE
     WHERE l."status"='DRAFT'
       AND NOT EXISTS(SELECT 1 FROM "ListingSpamHold" sh WHERE sh."userId"=l."sellerId" AND sh."status" IN ('PENDING','REJECTED')) AND l."updatedAt"<=CURRENT_TIMESTAMP-INTERVAL '${FIRST_DRAFT_DELAY_MINUTES} minutes'
       AND l."updatedAt">CURRENT_TIMESTAMP-INTERVAL '14 days'
@@ -179,7 +227,7 @@ export async function registerUserRecoveryRoutes(app:FastifyInstance){
   };
   return reply.send({
    config:{draftFirstDelayMinutes:FIRST_DRAFT_DELAY_MINUTES,draftSecondDelayHours:SECOND_DRAFT_DELAY_HOURS},
-   summary:{technicalAlerts:technical.length,abandonedDrafts:drafts.length,abandonedCheckouts:checkouts.length,lowQualityDrafts:quality.length,firstDraftReminders:Number(recoverySummary[0]?.firstReminders??0),secondDraftReminders:Number(recoverySummary[0]?.secondReminders??0)},
+   summary:{technicalAlerts:technical.length,abandonedDrafts:drafts.length,readyDrafts:drafts.filter(row=>Boolean(row.readyToPublish)).length,highCompletionDrafts:drafts.filter(row=>Number(row.completionScore??0)>=80).length,abandonedCheckouts:checkouts.length,lowQualityDrafts:quality.length,firstDraftReminders:Number(recoverySummary[0]?.firstReminders??0),secondDraftReminders:Number(recoverySummary[0]?.secondReminders??0)},
    technical:technical.map(row=>({...row,label:eventLabels[String(row.event)]??String(row.event),count:Number(row.count??0)})),
    drafts,
    checkouts:checkouts.map(row=>({...row,totalAmountMinor:Number(row.totalAmountMinor??0)})),
