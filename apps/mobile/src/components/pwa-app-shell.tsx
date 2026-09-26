@@ -49,7 +49,7 @@ async function expoPushToken(requestPermission:boolean){
 }
 
 type NativeInsets={top:number;right:number;bottom:number;left:number};
-const NATIVE_UI_REVISION='2026-09-19-pwa-parity-v1';
+const NATIVE_UI_REVISION='2026-09-26-android-scroll-safearea-v2';
 
 function buildBootstrapScript(insets:NativeInsets){
   const platformClass=Platform.OS==='ios'?'pa-native-ios':'pa-native-android';
@@ -202,7 +202,7 @@ export function PwaAppShell({initialPath='/'}:{initialPath?:string}){
     }catch{return false}
   }
 
-  return <View style={s.root}>
+  return <View style={[s.root,Platform.OS==='android'&&insets.top>0?{paddingTop:insets.top}:null]}>
     <WebView
       ref={web}
       source={{uri:url}}
@@ -212,6 +212,10 @@ export function PwaAppShell({initialPath='/'}:{initialPath?:string}){
       injectedJavaScriptBeforeContentLoaded={bootstrap}
       javaScriptEnabled
       domStorageEnabled
+      scrollEnabled
+      nestedScrollEnabled
+      overScrollMode="always"
+      showsVerticalScrollIndicator={false}
       sharedCookiesEnabled
       thirdPartyCookiesEnabled
       setSupportMultipleWindows={false}

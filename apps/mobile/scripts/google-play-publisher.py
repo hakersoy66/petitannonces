@@ -78,7 +78,7 @@ def store_status(sess, package, language):
         if r.status_code!=200: fail(f'cannot read store listings ({r.status_code}): {err_message(r)}')
         locales=sorted(x.get('language','') for x in r.json().get('listings',[]) if x.get('language'))
         print(f"[play-publisher] store locales={','.join(locales)}")
-        for image_type in ('icon','phoneScreenshots'):
+        for image_type in ('icon','phoneScreenshots','sevenInchScreenshots','tenInchScreenshots'):
             ir=sess.get(f'{API}/applications/{package}/edits/{edit_id}/listings/{language}/{image_type}')
             if ir.status_code!=200: fail(f'cannot read {image_type} ({ir.status_code}): {err_message(ir)}')
             print(f"[play-publisher] language={language} {image_type}={len(ir.json().get('images',[]))}")
@@ -110,8 +110,11 @@ def upload(sess, package, edit_id, aab: Path):
     if not vc: fail('Google Play did not return versionCode')
     return str(vc)
 
-def set_track(sess, package, edit_id, track, version_code, release_name):
-    body={'releases':[{'versionCodes':[version_code],'status':'completed','name':release_name}]}
+def set_track(sess, package, edit_id, track, version_code, release_name, release_notes='', release_notes_language='fr-FR'):
+    release={'versionCodes':[version_code],'status':'completed','name':release_name}
+    if release_notes.strip():
+        release['releaseNotes']=[{'language':release_notes_language,'text':release_notes.strip()[:500]}]
+    body={'releases':[release]}
     r=sess.put(f'{API}/applications/{package}/edits/{edit_id}/tracks/{track}',json=body)
     if r.status_code not in (200,201): fail(f'track update failed ({r.status_code}): {err_message(r)}')
 
@@ -134,13 +137,23 @@ def replace_images(sess, package, edit_id, language, image_type, files):
 def update_store_assets(sess, package, edit_id, language, directory: Path):
     if not directory.is_dir(): fail(f'store assets directory not found: {directory}')
     icon=directory/'icon.png'
-    screenshots=sorted(directory.glob('phone-*.jpg'))+sorted(directory.glob('phone-*.png'))
+    groups=[
+        ('phoneScreenshots','phone-*.jpg','phone-*.png'),
+        ('sevenInchScreenshots','tablet7-*.jpg','tablet7-*.png'),
+        ('tenInchScreenshots','tablet10-*.jpg','tablet10-*.png'),
+    ]
     if not icon.is_file(): fail(f'Play Store icon missing: {icon}')
-    if not screenshots: fail(f'Play Store phone screenshots missing in: {directory}')
-    if len(screenshots)>8: fail('Google Play accepts at most 8 phone screenshots')
     replace_images(sess,package,edit_id,language,'icon',[icon])
-    replace_images(sess,package,edit_id,language,'phoneScreenshots',screenshots)
-    print(f'[play-publisher] store assets updated language={language} icon=1 phoneScreenshots={len(screenshots)}')
+    counts={}
+    for image_type,jpg_glob,png_glob in groups:
+        files=sorted(directory.glob(jpg_glob))+sorted(directory.glob(png_glob))
+        if not files:
+            continue
+        if len(files)>8: fail(f'Google Play accepts at most 8 images for {image_type}')
+        replace_images(sess,package,edit_id,language,image_type,files)
+        counts[image_type]=len(files)
+    if not counts.get('phoneScreenshots'): fail(f'Play Store phone screenshots missing in: {directory}')
+    print(f'[play-publisher] store assets updated language={language} icon=1 '+', '.join(f'{k}={v}' for k,v in counts.items()))
 
 def commit(sess, package, edit_id):
     r=sess.post(f'{API}/applications/{package}/edits/{edit_id}:commit',json={})
@@ -156,6 +169,8 @@ def main():
     ap.add_argument('--aab', default=os.getenv('PA_ANDROID_AAB', DEFAULT_AAB))
     ap.add_argument('--track', default=os.getenv('PA_PLAY_TRACK','internal'))
     ap.add_argument('--release-name', default=os.getenv('PA_PLAY_RELEASE_NAME','Petit Annonces internal'))
+    ap.add_argument('--release-notes', default=os.getenv('PA_PLAY_RELEASE_NOTES',''))
+    ap.add_argument('--release-notes-language', default=os.getenv('PA_PLAY_RELEASE_NOTES_LANGUAGE','fr-FR'))
     ap.add_argument('--store-assets-dir', default=os.getenv('PA_PLAY_STORE_ASSETS_DIR',''))
     ap.add_argument('--language', default=os.getenv('PA_PLAY_STORE_LANGUAGE','fr-FR'))
     ap.add_argument('--version-code', default=os.getenv('PA_PLAY_VERSION_CODE',''))
@@ -183,7 +198,7 @@ def main():
             vc=upload(sess,args.package,edit_id,Path(args.aab))
         if args.store_assets_dir:
             update_store_assets(sess,args.package,edit_id,args.language,Path(args.store_assets_dir))
-        set_track(sess,args.package,edit_id,args.track,vc,args.release_name)
+        set_track(sess,args.package,edit_id,args.track,vc,args.release_name,args.release_notes,args.release_notes_language)
         commit(sess,args.package,edit_id)
         committed=True
         verb='promoted' if args.action=='promote' else 'uploaded'

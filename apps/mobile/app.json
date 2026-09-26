@@ -2,7 +2,7 @@
   "expo": {
     "name": "Petit Annonces",
     "slug": "petit-annonces",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "scheme": "petitannonces",
     "userInterfaceStyle": "light",

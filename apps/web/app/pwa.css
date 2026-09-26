@@ -191,8 +191,9 @@ html.pa-native-shell .pwa-install-flash,html.pa-native-shell .pwa-ios-overlay{di
 html.pa-native-shell .pwa-onboarding-shell{padding-left:max(22px,env(safe-area-inset-left,0px));padding-right:max(22px,env(safe-area-inset-right,0px))}
 html.pa-native-shell .pwa-push-overlay{padding-left:max(12px,env(safe-area-inset-left,0px));padding-right:max(12px,env(safe-area-inset-right,0px))}
 @media(max-width:760px){
-  html.pa-native-shell{overflow-x:hidden;overflow-y:auto}
-  html.pa-native-shell body:not([data-pa-scroll-lock-count]){overflow-x:hidden!important;overflow-y:auto!important;touch-action:pan-y!important}
+  html.pa-native-shell{height:auto!important;min-height:100%!important;overflow-x:hidden;overflow-y:auto!important;touch-action:pan-y!important}
+  html.pa-native-shell body:not([data-pa-scroll-lock-count]){height:auto!important;min-height:100dvh!important;overflow-x:hidden!important;overflow-y:auto!important;touch-action:pan-y!important;-webkit-overflow-scrolling:touch}
+  html.pa-native-android .site-header{padding-top:0!important}
 }
 
 
