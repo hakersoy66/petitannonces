@@ -8,7 +8,7 @@ type Brand={siteName:string;logoUrl:string|null};
 type NavItem=[AdminIconName,string,string];
 type NavGroup={label:string;items:NavItem[]};
 const groups:NavGroup[]=[
- {label:"Pilotage",items:[["dashboard","Tableau de bord","/"],["shield","Modération","/moderation"],["users","Utilisateurs bloqués","/blocked-users"],["shield","Centre de risque","/risk"],["list","Annonces","/listings"],["users","Utilisateurs","/users"],["store","Professionnels & vitrines","/professionals"]]},
+ {label:"Pilotage",items:[["dashboard","Tableau de bord","/"],["shield","Modération","/moderation"],["shield","Signalements DSA","/dsa"],["users","Utilisateurs bloqués","/blocked-users"],["shield","Centre de risque","/risk"],["list","Annonces","/listings"],["users","Utilisateurs","/users"],["store","Professionnels & vitrines","/professionals"]]},
  {label:"Opérations",items:[["wallet","Finance","/finance"],["briefcase","Réservations HBX","/hbx-bookings"],["bell","Boîte e-mail","/inbox"],["support","Support","/support"],["chart","Analytics","/analytics"],["list","Santé des imports","/imports"],["search","SEO & Google","/seo"],["growth","Croissance","/growth"]]},
  {label:"Configuration",items:[["categories","Catégories","/categories"],["content","Navigation & contenu","/content"],["campaign","Offres & campagnes","/commercial"],["bell","E-mails & notifications","/notifications"],["settings","Site & Apparence","/settings"],["plug","Intégrations & API","/integrations"],["server","Interface application","/mobile-ui"],["server","Publication Android","/mobile-release"],["server","État du système","/system"],["audit","Journal admin","/audit"]]},
 ];

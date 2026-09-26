@@ -30,6 +30,8 @@ const nextConfig: NextConfig = {
   },
   async redirects() {
     return [
+      { source: "/privacy-policy", destination: "/confidentialite", permanent: true },
+      { source: "/politique-de-confidentialite", destination: "/confidentialite", permanent: true },
       { source: "/mon-compte/mes-annonces", destination: "/mon-compte/annonces", permanent: true },
       { source: "/deposer", destination: "/deposer-une-annonce", permanent: true },
       { source: "/espace-pro/statistiques", destination: "/espace-pro/analytics", permanent: true },

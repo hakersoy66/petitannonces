@@ -96,12 +96,12 @@
 }
 
 
-/* 2026-09-08 mobile/PWA cookie UI hidden; non-essential trackers remain consent-gated */
+/* Privacy choices remain accessible on mobile/PWA; non-essential trackers are consent-gated. */
 @media(max-width:760px){
-  .cookie-consent-overlay,.cookie-manage-button{display:none!important}
+  .cookie-manage-button{display:block!important;right:10px!important;bottom:calc(64px + env(safe-area-inset-bottom,0px))!important}
 }
 @media(display-mode:standalone){
-  .cookie-consent-overlay,.cookie-manage-button{display:none!important}
+  .cookie-manage-button{display:block!important}
 }
 
 /* 2026-09-13 bottom navigation compact / flush to device bottom */
@@ -186,7 +186,7 @@
 
 /* Native Android/iOS shell uses the exact PWA surface. */
 html.pa-native-shell,html.pa-native-shell body{overscroll-behavior-y:none}
-html.pa-native-shell .cookie-consent-overlay,html.pa-native-shell .cookie-manage-button{display:none!important}
+html.pa-native-shell .cookie-manage-button{display:block!important}html.pa-native-shell .cookie-consent-overlay{display:grid!important}
 html.pa-native-shell .pwa-install-flash,html.pa-native-shell .pwa-ios-overlay{display:none!important}
 html.pa-native-shell .pwa-onboarding-shell{padding-left:max(22px,env(safe-area-inset-left,0px));padding-right:max(22px,env(safe-area-inset-right,0px))}
 html.pa-native-shell .pwa-push-overlay{padding-left:max(12px,env(safe-area-inset-left,0px));padding-right:max(12px,env(safe-area-inset-right,0px))}

@@ -3,9 +3,9 @@ export type ListingPromotion={code:string;type:ListingPromotionType|string;name:
 
 export function promotionLabel(type:string){
   if(type==="URGENT")return"Urgent";
-  if(type==="FEATURED")return"À la une";
-  if(type==="BUMP")return"Remontée";
-  if(type==="SPONSORED")return"Sponsorisé";
+  if(type==="FEATURED")return"À la une · payant";
+  if(type==="BUMP")return"Remontée payante";
+  if(type==="SPONSORED")return"Sponsorisé · payant";
   if(type==="GALLERY")return"Galerie";
   return"Boosté";
 }

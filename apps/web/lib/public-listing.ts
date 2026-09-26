@@ -25,7 +25,7 @@ export type PublicListingDetail = {
   vehicleHistory: { checkedAt:string|null; firstRegistrationDate:string|null; sraClass:string|null; theftRiskLevel:string|null; originalNewValueEuro:number|null; ownerChanges:number|null; controlledDamageCount:number|null; administrativeStatus:string|null; technicalInspectionDate:string|null; technicalInspectionResult:string|null; mileageKm:number|null; officialHistovecUrl:string|null } | null;
   property: Record<string, unknown> | null;
   energy: Record<string, unknown> | null;
-  productSafety: { manufacturerName:string|null; productIdentifier:string|null; model:string|null; ean:string|null } | null;
+  productSafety: { manufacturerName:string|null; manufacturerPostalAddress:string|null; manufacturerEmail:string|null; responsiblePersonName:string|null; responsiblePersonPostalAddress:string|null; responsiblePersonEmail:string|null; productIdentifier:string|null; model:string|null; ean:string|null; ceMarked:boolean|null; safetyWarning:string|null } | null;
   consumerDisclosure: { sellerIsTrader:boolean; withdrawalRightApplies:boolean|null; withdrawalPeriodDays:number|null; withdrawalExceptionCode:string|null } | null;
   commerce: { acceptsOffers: boolean; securePaymentEnabled: boolean; handDeliveryEnabled:boolean; mondialRelayEnabled:boolean; colissimoEnabled:boolean; shippingEnabled: boolean };
   promotions: Array<{ id:string; code:string; type:string; name:string; startsAt:string|null; endsAt:string|null }>;

@@ -20,7 +20,7 @@ type PublicationCheck = {
   warnings: string[];
   sellerKind?: string;
   compliance?: {
-    productSafety?: { manufacturerName:string|null; productIdentifier:string|null; model:string|null; ean:string|null } | null;
+    productSafety?: { manufacturerName:string|null; manufacturerPostalAddress:string|null; manufacturerEmail:string|null; responsiblePersonName:string|null; responsiblePersonPostalAddress:string|null; responsiblePersonEmail:string|null; productIdentifier:string|null; model:string|null; ean:string|null; ceMarked:boolean|null; safetyWarning:string|null } | null;
     consumerDisclosure?: { sellerIsTrader:boolean; withdrawalRightApplies:boolean|null; withdrawalPeriodDays:number|null; withdrawalExceptionCode:string|null } | null;
   };
   issues?: { errors:Array<{code:string;step:number}>; warnings:Array<{code:string;step:number}> };
@@ -99,6 +99,13 @@ export function ListingPublicationReview({ listingId, promotionCode="", promotio
   const [accuracy, setAccuracy] = useState(false);
   const [disclosure, setDisclosure] = useState(false);
   const [manufacturerName, setManufacturerName] = useState("");
+  const [manufacturerPostalAddress,setManufacturerPostalAddress]=useState("");
+  const [manufacturerEmail,setManufacturerEmail]=useState("");
+  const [responsiblePersonName,setResponsiblePersonName]=useState("");
+  const [responsiblePersonPostalAddress,setResponsiblePersonPostalAddress]=useState("");
+  const [responsiblePersonEmail,setResponsiblePersonEmail]=useState("");
+  const [safetyWarning,setSafetyWarning]=useState("");
+  const [ceMarked,setCeMarked]=useState(false);
   const [productIdentifier, setProductIdentifier] = useState("");
   const [productModel, setProductModel] = useState("");
   const [ean, setEan] = useState("");
@@ -115,7 +122,7 @@ export function ListingPublicationReview({ listingId, promotionCode="", promotio
       const payload = await response.json() as PublicationCheck;
       setCheck(payload);
       const safety=payload.compliance?.productSafety;const consumer=payload.compliance?.consumerDisclosure;
-      setManufacturerName(safety?.manufacturerName??"");setProductIdentifier(safety?.productIdentifier??"");setProductModel(safety?.model??"");setEan(safety?.ean??"");
+      setManufacturerName(safety?.manufacturerName??"");setManufacturerPostalAddress(safety?.manufacturerPostalAddress??"");setManufacturerEmail(safety?.manufacturerEmail??"");setResponsiblePersonName(safety?.responsiblePersonName??"");setResponsiblePersonPostalAddress(safety?.responsiblePersonPostalAddress??"");setResponsiblePersonEmail(safety?.responsiblePersonEmail??"");setSafetyWarning(safety?.safetyWarning??"");setCeMarked(safety?.ceMarked===true);setProductIdentifier(safety?.productIdentifier??"");setProductModel(safety?.model??"");setEan(safety?.ean??"");
       setReturnMode(consumer?.withdrawalRightApplies===true?"yes":consumer?.withdrawalRightApplies===false?"no":"");setReturnDays(consumer?.withdrawalPeriodDays!=null?String(consumer.withdrawalPeriodDays):"");setReturnException(consumer?.withdrawalExceptionCode??"");
       setMessage(payload.duplicate ? "Cette annonce existe déjà dans votre compte. Ouvrez l’annonce existante au lieu d’en publier une seconde." : payload.renewalRequired ? (payload.renewal?.freeRenewalAvailable ? "Cette annonce a expiré. Votre prolongation gratuite doit être activée avant la remise en ligne." : "Cette annonce a expiré. Une prolongation est nécessaire avant la remise en ligne.") : payload.ready ? (payload.manualModerationRequired ? "Votre annonce est prête. Elle sera contrôlée par un modérateur avant sa mise en ligne." : "Votre annonce est prête à être envoyée en modération.") : "Corrigez les points bloquants avant publication.");
     } catch {
@@ -131,7 +138,8 @@ export function ListingPublicationReview({ listingId, promotionCode="", promotio
   const productEligible=Boolean(check&&!check.summary.isVacation&&check.summary.priceMinor!==null&&!(["JOB","SERVICE","REAL_ESTATE","VEHICLE"] as string[]).includes(check.summary.category.domain));
   const proProduct=Boolean(productEligible&&check?.sellerKind==="PROFESSIONNEL");
   const returnPolicyReady=!proProduct||(returnMode==="yes"&&Number.isInteger(Number(returnDays))&&Number(returnDays)>0)||(returnMode==="no"&&returnException.trim().length>=3);
-  const canPublish = Boolean(listingId && check?.ready && !check?.renewalRequired && !check?.duplicate && allConsents && returnPolicyReady && !publishing);
+  const productSafetyReady=!proProduct||(manufacturerName.trim().length>=2&&manufacturerPostalAddress.trim().length>=5&&/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(manufacturerEmail.trim())&&Boolean(productIdentifier.trim()||productModel.trim()||ean.trim()));
+  const canPublish = Boolean(listingId && check?.ready && !check?.renewalRequired && !check?.duplicate && allConsents && returnPolicyReady && productSafetyReady && !publishing);
   const deliveryLabel = useMemo(() => {
     const commerce = check?.summary.commerce;
     if (!commerce) return "Non configuré";
@@ -144,7 +152,8 @@ export function ListingPublicationReview({ listingId, promotionCode="", promotio
     if(productEligible){
       const digits=ean.replace(/\D/g,"");
       if(ean.trim()&&![8,12,13,14].includes(digits.length)){setMessage("Le code EAN / GTIN doit contenir 8, 12, 13 ou 14 chiffres.");return false}
-      const response=await fetch(`${apiBase()}/listings/${encodeURIComponent(listingId)}/product-safety`,{method:"PUT",credentials:"include",headers:{"content-type":"application/json"},body:JSON.stringify({manufacturerName:manufacturerName.trim()||undefined,productIdentifier:productIdentifier.trim()||undefined,model:productModel.trim()||undefined,ean:digits||undefined})});
+      if(proProduct&&!productSafetyReady){setMessage("Complétez les informations GPSR du fabricant et un identifiant produit avant de publier cette annonce professionnelle.");return false}
+      const response=await fetch(`${apiBase()}/listings/${encodeURIComponent(listingId)}/product-safety`,{method:"PUT",credentials:"include",headers:{"content-type":"application/json"},body:JSON.stringify({manufacturerName:manufacturerName.trim()||undefined,manufacturerPostalAddress:manufacturerPostalAddress.trim()||undefined,manufacturerEmail:manufacturerEmail.trim()||undefined,responsiblePersonName:responsiblePersonName.trim()||undefined,responsiblePersonPostalAddress:responsiblePersonPostalAddress.trim()||undefined,responsiblePersonEmail:responsiblePersonEmail.trim()||undefined,productIdentifier:productIdentifier.trim()||undefined,model:productModel.trim()||undefined,ean:digits||undefined,ceMarked,safetyWarning:safetyWarning.trim()||undefined})});
       if(!response.ok){setMessage("Les informations d’identification du produit n’ont pas pu être enregistrées.");return false}
     }
     if(proProduct){
@@ -175,6 +184,7 @@ export function ListingPublicationReview({ listingId, promotionCode="", promotio
             navigateApp(router,payload.redirect??"/compte-suspendu",{replace:true});return;
           }
           if(payload.error==="duplicate_listing_exists")setMessage(payload.message??"Cette annonce existe déjà dans votre compte.");
+          else if(payload.error==="product_safety_required")setMessage("Complétez les informations GPSR du fabricant et un identifiant produit.");
           else if(payload.error==="consumer_return_policy_required")setMessage("Renseignez la politique de retour applicable à cette annonce professionnelle.");
           else if(payload.error==="promotion_product_not_found")setMessage("L’option de visibilité sélectionnée n’est plus disponible. Revenez à l’étape Visibilité.");
           else if(payload.error==="promotion_checkout_unavailable")setMessage("Le paiement de l’option de visibilité est momentanément indisponible. Réessayez dans quelques instants.");
@@ -209,6 +219,7 @@ export function ListingPublicationReview({ listingId, promotionCode="", promotio
         }
         if(payload.error==="duplicate_listing_exists")setMessage(payload.message??"Cette annonce existe déjà dans votre compte. Ouvrez l’annonce existante au lieu d’en publier une seconde.");
         else if(payload.error==="listing_renewal_required")setMessage(payload.freeRenewalAvailable!==false?"Cette annonce a expiré. Activez votre prolongation gratuite depuis Mes annonces avant de la remettre en ligne.":`Cette annonce a expiré. Une prolongation de ${((payload.amountMinor??99)/100).toFixed(2).replace(".",",")} € est requise depuis Mes annonces.`);
+        else if(payload.error==="product_safety_required")setMessage(payload.message??"Complétez les informations GPSR du fabricant et un identifiant produit.");
         else if(payload.error==="consumer_return_policy_required")setMessage(payload.message??"Renseignez la politique de retour applicable à cette annonce professionnelle.");
         else if (payload.errors?.length) setMessage(payload.errors.map(readable).join(" "));
         else setMessage("La publication a été refusée. Vérifiez l’annonce puis réessayez.");
@@ -264,6 +275,8 @@ export function ListingPublicationReview({ listingId, promotionCode="", promotio
           </div>
         </>
       )}
+
+      {productEligible&&<section className={`${styles.seoCompliance} ${proProduct&&!productSafetyReady?styles.seoRequired:""}`}><div className={styles.seoHead}><div><span>Sécurité produit · GPSR</span><h3>Traçabilité et avertissements</h3></div><b>{proProduct?"Obligatoire Pro":"Si applicable"}</b></div><p className={styles.seoIntro}>Pour les produits concernés, indiquez les informations qui doivent être visibles avant l’achat. Si le fabricant n’est pas établi dans l’Union européenne, complétez aussi la personne responsable dans l’UE.</p><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:12}}><label className={styles.singleField}><span>Fabricant</span><input value={manufacturerName} onChange={e=>setManufacturerName(e.target.value)} maxLength={200} placeholder="Nom du fabricant"/></label><label className={styles.singleField}><span>Adresse postale du fabricant</span><input value={manufacturerPostalAddress} onChange={e=>setManufacturerPostalAddress(e.target.value)} maxLength={500} placeholder="Adresse complète"/></label><label className={styles.singleField}><span>E-mail du fabricant</span><input type="email" value={manufacturerEmail} onChange={e=>setManufacturerEmail(e.target.value)} placeholder="contact@fabricant.fr"/></label><label className={styles.singleField}><span>Identifiant produit / référence</span><input value={productIdentifier} onChange={e=>setProductIdentifier(e.target.value)} maxLength={160} placeholder="Référence, lot ou identifiant"/></label><label className={styles.singleField}><span>Modèle</span><input value={productModel} onChange={e=>setProductModel(e.target.value)} maxLength={160}/></label><label className={styles.singleField}><span>EAN / GTIN</span><input inputMode="numeric" value={ean} onChange={e=>setEan(e.target.value)} maxLength={14}/></label><label className={styles.singleField}><span>Personne responsable UE (si requise)</span><input value={responsiblePersonName} onChange={e=>setResponsiblePersonName(e.target.value)} maxLength={200}/></label><label className={styles.singleField}><span>Adresse personne responsable UE</span><input value={responsiblePersonPostalAddress} onChange={e=>setResponsiblePersonPostalAddress(e.target.value)} maxLength={500}/></label><label className={styles.singleField}><span>E-mail personne responsable UE</span><input type="email" value={responsiblePersonEmail} onChange={e=>setResponsiblePersonEmail(e.target.value)}/></label></div><label className={styles.singleField} style={{marginTop:12}}><span>Avertissements et informations de sécurité</span><textarea value={safetyWarning} onChange={e=>setSafetyWarning(e.target.value)} maxLength={3000} rows={4} placeholder="Avertissements, précautions, âge minimum, risques ou instructions de sécurité applicables…" style={{width:"100%",padding:12,border:"1px solid #ddd",borderRadius:12,resize:"vertical"}}/></label><label style={{display:"flex",gap:9,alignItems:"center",marginTop:12,fontWeight:750,fontSize:12}}><input type="checkbox" checked={ceMarked} onChange={e=>setCeMarked(e.target.checked)}/> Marquage CE présent lorsque ce produit y est soumis</label>{proProduct&&!productSafetyReady&&<p className={styles.requiredText}><AppIcon name="info"/>Pour une annonce professionnelle de produit, renseignez au minimum le fabricant, son adresse, son e-mail et un identifiant produit.</p>}</section>}
 
       {proProduct&&<section className={`${styles.seoCompliance} ${!returnPolicyReady?styles.seoRequired:""}`}><div className={styles.seoHead}><div><span>Vendeur professionnel</span><h3>Politique de retour</h3></div><b>Obligatoire</b></div><p className={styles.seoIntro}>Indiquez la politique réellement applicable à cette vente. Petit Annonces ne choisit pas cette information à votre place : elle doit correspondre à vos obligations et aux éventuelles exceptions applicables au produit.</p><div className={styles.returnChoices}><label className={returnMode==="yes"?styles.choiceOn:""}><input type="radio" name="withdrawal-right" checked={returnMode==="yes"} onChange={()=>setReturnMode("yes")}/><span><strong>Droit de rétractation applicable</strong><small>Indiquez ci-dessous le délai réellement proposé.</small></span></label><label className={returnMode==="no"?styles.choiceOn:""}><input type="radio" name="withdrawal-right" checked={returnMode==="no"} onChange={()=>setReturnMode("no")}/><span><strong>Retour non applicable / exception</strong><small>Précisez brièvement la raison ou l’exception applicable.</small></span></label></div>{returnMode==="yes"&&<label className={styles.singleField}><span>Délai de rétractation / retour (jours)</span><input type="number" min="1" max="365" value={returnDays} onChange={e=>setReturnDays(e.target.value)} placeholder="Ex. 14"/></label>}{returnMode==="no"&&<label className={styles.singleField}><span>Motif / exception</span><input value={returnException} onChange={e=>setReturnException(e.target.value)} maxLength={120} placeholder="Ex. produit personnalisé, exception légale applicable…"/></label>}{!returnPolicyReady&&<p className={styles.requiredText}><AppIcon name="info"/>Complétez cette politique avant de publier l’annonce professionnelle.</p>}</section>}
 

@@ -13,7 +13,7 @@ export default async function sitemap():Promise<MetadataRoute.Sitemap>{
   const now=new Date();
   const staticPages=[
     ["/",1,"daily"],["/blog",0.7,"weekly"],["/vendre-voiture",0.82,"weekly"],["/deposer-annonce-gratuite",0.82,"weekly"],["/ouvrir-boutique-pro",0.78,"weekly"],["/pro/automobile",0.76,"weekly"],["/pro/immobilier",0.76,"weekly"],["/pro/high-tech",0.76,"weekly"],["/pro/occasion",0.76,"weekly"],["/vacances",0.85,"daily"],["/professionnels",0.7,"weekly"],["/observatoire",0.74,"daily"],["/blog/vendre-objet-occasion",0.68,"monthly"],["/blog/vendre-entre-particuliers",0.68,"monthly"],["/blog/rediger-annonce-efficace",0.68,"monthly"],["/blog/acheter-occasion-securite",0.68,"monthly"],["/blog/rediger-annonce-immobiliere",0.68,"monthly"],["/blog/acheter-smartphone-occasion",0.68,"monthly"],["/presse",0.56,"monthly"],["/presse/petit-annonces-marketplace-francaise",0.62,"monthly"],["/qui-sommes-nous",0.58,"monthly"],["/conditions-generales",0.3,"monthly"],
-    ["/confidentialite",0.3,"monthly"],["/mentions-legales",0.2,"monthly"],["/assistance",0.3,"monthly"]
+    ["/confidentialite",0.3,"monthly"],["/cookies",0.25,"monthly"],["/conformite",0.3,"monthly"],["/classement-referencement",0.3,"monthly"],["/retractation",0.2,"monthly"],["/mentions-legales",0.2,"monthly"],["/assistance",0.3,"monthly"]
   ] as const;
   const rows:MetadataRoute.Sitemap=staticPages.map(([path,priority,changeFrequency])=>({url:BASE+path,...(path==="/"?{lastModified:now}:{}),priority,changeFrequency}));
   try{
