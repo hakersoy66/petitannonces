@@ -268,10 +268,6 @@ export async function registerPublicationRoutes(app: FastifyInstance) {
     const merchantProduct=Boolean(!result.summary.isVacation&&result.listing.priceMinor!==null&&!(["JOB","SERVICE","REAL_ESTATE","VEHICLE"] as string[]).includes(result.listing.category.domain));
     if(user.kind==="PROFESSIONNEL"&&merchantProduct){
       const fallbackComplianceId=editSession?.originalListingId??params.data.id;
-      const safetyRows=await prisma.$queryRawUnsafe<Array<{manufacturerName:string|null;manufacturerPostalAddress:string|null;manufacturerEmail:string|null;productIdentifier:string|null;model:string|null;ean:string|null}>>(`SELECT "manufacturerName","manufacturerPostalAddress","manufacturerEmail","productIdentifier","model","ean" FROM "ListingProductSafety" WHERE "listingId"=$1 OR "listingId"=$2 ORDER BY CASE WHEN "listingId"=$1 THEN 0 ELSE 1 END LIMIT 1`,params.data.id,fallbackComplianceId).catch(()=>[]);
-      const safety=safetyRows[0];
-      const validSafety=Boolean(safety?.manufacturerName?.trim()&&safety?.manufacturerPostalAddress?.trim()&&safety?.manufacturerEmail?.trim()&&(safety?.productIdentifier?.trim()||safety?.model?.trim()||safety?.ean?.trim()));
-      if(!validSafety)return reply.code(422).send({error:"product_safety_required",message:"Complétez les informations GPSR du fabricant et un identifiant produit avant publication."});
       const disclosureRows=await prisma.$queryRawUnsafe<Array<{sellerIsTrader:boolean;withdrawalRightApplies:boolean|null;withdrawalPeriodDays:number|null;withdrawalExceptionCode:string|null}>>(`SELECT "sellerIsTrader","withdrawalRightApplies","withdrawalPeriodDays","withdrawalExceptionCode" FROM "TraderConsumerDisclosure" WHERE "listingId"=$1 OR "listingId"=$2 ORDER BY CASE WHEN "listingId"=$1 THEN 0 ELSE 1 END LIMIT 1`,params.data.id,fallbackComplianceId).catch(()=>[]);
       const disclosure=disclosureRows[0];
       const validReturnPolicy=Boolean(disclosure?.sellerIsTrader&&disclosure.withdrawalRightApplies!==null&&(disclosure.withdrawalRightApplies===false?Boolean(disclosure.withdrawalExceptionCode?.trim()):Number(disclosure.withdrawalPeriodDays)>0));
