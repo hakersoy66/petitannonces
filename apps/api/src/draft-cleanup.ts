@@ -20,6 +20,7 @@ export async function cleanupAbandonedListingDrafts(limit=100){
     const media=await prisma.$queryRawUnsafe<Array<{objectKey:string}>>(`SELECT "objectKey" FROM "ListingMedia" WHERE "listingId"=$1`,row.id);
     const removed=await prisma.$executeRawUnsafe(`DELETE FROM "Listing" l WHERE l."id"=$1 AND l."status"='DRAFT' AND l."updatedAt" < CURRENT_TIMESTAMP - ($2::text || ' hours')::interval AND NOT EXISTS (SELECT 1 FROM "ListingEditSession" es WHERE es."workingListingId"=l."id") AND NOT EXISTS (SELECT 1 FROM "ModerationCase" mc WHERE mc."targetType"='LISTING' AND mc."targetId"=l."id") AND NOT EXISTS (SELECT 1 FROM "MarketplaceOrder" o WHERE o."listingId"=l."id")`,row.id,String(hours));
     if(!removed)continue;
+    await prisma.$executeRawUnsafe(`DELETE FROM "ListingImportLog" WHERE "listingId"=$1`,row.id).catch(()=>undefined);
     deleted+=removed;
     for(const item of media){try{await deleteStoredObject(item.objectKey);objects++}catch{}}
   }

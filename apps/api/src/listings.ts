@@ -319,6 +319,7 @@ export async function registerListingRoutes(app: FastifyInstance) {
     const media = await prisma.$queryRawUnsafe<Array<{objectKey:string}>>(`SELECT "objectKey" FROM "ListingMedia" WHERE "listingId"=$1`,listing.id).catch(()=>[]);
     await prisma.$transaction(async tx=>{
       await tx.$executeRawUnsafe(`DELETE FROM "ListingMedia" WHERE "listingId"=$1`,listing.id).catch(()=>undefined);
+      await tx.$executeRawUnsafe(`DELETE FROM "ListingImportLog" WHERE "listingId"=$1`,listing.id).catch(()=>undefined);
       await tx.listing.deleteMany({ where: { id: listing.id, sellerId: user.id, status: "DRAFT", draftSavedAt: null } });
     });
     for(const item of media)await deleteStoredObject(item.objectKey).catch(()=>{});

@@ -108,7 +108,7 @@ export function PwaAppShell({initialPath='/'}:{initialPath?:string}){
   const [canGoBack,setCanGoBack]=useState(false);
   const path=safePath(initialPath);
   const url=useMemo(()=>ORIGIN+path,[path]);
-  const bootstrap=useMemo(()=>buildBootstrapScript(insets),[insets.top,insets.right,insets.bottom,insets.left]);
+  const bootstrap=useMemo(()=>buildBootstrapScript(insets),[insets]);
 
   const notifyWeb=useCallback((eventName:string,detail:Record<string,unknown>)=>{
     const payload=JSON.stringify(detail).replace(/</g,'\\u003c');

@@ -27,6 +27,9 @@ export async function ensureImportLogTable(){
  await prisma.$executeRawUnsafe(`CREATE UNIQUE INDEX IF NOT EXISTS "ListingImportLog_user_fingerprint_key" ON "ListingImportLog" ("userId","fingerprint")`);
  await prisma.$executeRawUnsafe(`CREATE UNIQUE INDEX IF NOT EXISTS "ListingImportLog_user_source_canonical_key" ON "ListingImportLog" ("userId","sourceCanonical") WHERE "sourceCanonical" IS NOT NULL`);
  await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "ListingImportLog_user_created_idx" ON "ListingImportLog" ("userId","createdAt" DESC)`);
+ // ListingImportLog predates a database FK. Keep it self-healing so deleted
+ // listings never leave stale import fingerprints/history behind.
+ await prisma.$executeRawUnsafe(`DELETE FROM "ListingImportLog" i WHERE NOT EXISTS (SELECT 1 FROM "Listing" l WHERE l."id"=i."listingId")`);
  const pending=await prisma.$queryRawUnsafe<Array<{id:string;userId:string;sourceUrl:string|null}>>(`SELECT "id","userId","sourceUrl" FROM "ListingImportLog" WHERE "sourceCanonical" IS NULL AND "sourceUrl" IS NOT NULL LIMIT 500`);
  for(const row of pending){const canonical=canonicalImportSourceUrl(row.sourceUrl);if(!canonical)continue;await prisma.$executeRawUnsafe(`UPDATE "ListingImportLog" SET "sourceCanonical"=$2 WHERE "id"=$1 AND NOT EXISTS (SELECT 1 FROM "ListingImportLog" x WHERE x."userId"=$3 AND x."sourceCanonical"=$2 AND x."id"<>$1)`,row.id,canonical,row.userId).catch(()=>undefined)}
 }

@@ -254,7 +254,10 @@ export async function registerAccountListingRoutes(app: FastifyInstance) {
       prisma.$queryRawUnsafe<Array<{objectKey:string}>>(`SELECT "objectKey" FROM "ListingMedia" WHERE "listingId"=$1`, listing.id).catch(()=>[]),
       listingIndexUrls(listing.id,true).catch(()=>[]),
     ]);
-    await prisma.listing.delete({ where: { id: listing.id } });
+    await prisma.$transaction(async tx=>{
+      await tx.$executeRawUnsafe(`DELETE FROM "ListingImportLog" WHERE "listingId"=$1`,listing.id).catch(()=>undefined);
+      await tx.listing.delete({ where: { id: listing.id } });
+    });
     for (const item of media) void deleteStoredObject(item.objectKey).catch(()=>undefined);
     if(indexUrls.length)await submitIndexNow(indexUrls).catch(error=>request.log.warn({error,listingId:listing.id},"indexnow notification failed after listing deletion"));
     return reply.send({ deleted:true, id:listing.id });
