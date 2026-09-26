@@ -19,3 +19,10 @@ Any user-facing change, bug fix, navigation change, notification behavior, accou
 - Native code is reserved for platform capabilities: push permission/token lifecycle, App/Universal Links, OS back behavior, secure device integrations and Store-required behavior.
 - External petitannonces.fr links and native push deep-links must open the matching PWA path inside the native shell.
 - If a web feature needs a native capability, bridge that capability behind the existing PWA controls instead of replacing the PWA screen.
+
+## Agent-first release workflow
+- Work directly in this server checkout; GitHub must never be required to edit, test, build, deploy, or roll back production.
+- Before release, stage only task-related new files. The release helper automatically includes tracked edits, runs typechecks and diff validation, commits a local immutable release, and invokes the existing blue/green production deploy.
+- Use `scripts/agent-release.sh "short change summary"` for production releases instead of pushing first.
+- GitHub is a post-deploy mirror. A failed GitHub push must not roll back or block a healthy production release; the helper records a pending sync marker for the connected ChatGPT GitHub connector to reconcile.
+- Never stage `.env`, credentials, signing keys, generated builds, runtime backups, or unrelated historical debris.

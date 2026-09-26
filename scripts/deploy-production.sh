@@ -22,8 +22,11 @@ if ! git diff --quiet --ignore-submodules -- || ! git diff --cached --quiet --ig
   exit 1
 fi
 
-# Fetch and validate the exact commit that passed CI before touching production.
-git fetch --quiet --no-tags origin "$DEPLOY_SHA"
+# Validate the exact release commit before touching production. Agent-created
+# local commits are valid release inputs; GitHub is a mirror, not a deploy dependency.
+if ! git cat-file -e "$DEPLOY_SHA^{commit}" 2>/dev/null; then
+  git fetch --quiet --no-tags origin "$DEPLOY_SHA"
+fi
 git cat-file -e "$DEPLOY_SHA^{commit}"
 
 # A verified PostgreSQL backup is mandatory before each production release.
