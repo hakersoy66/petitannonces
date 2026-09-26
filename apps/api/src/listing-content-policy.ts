@@ -15,7 +15,22 @@ const DEFAULT_FORBIDDEN_TERMS=[
   "western union","mandat cash","moneygram","coupon pcs","recharge pcs","transcash","paiement hors plateforme","crypto uniquement","telegram uniquement",
 ];
 
-type PolicySignal={code:"FORBIDDEN_TERM"|"CONTACT_EMAIL"|"CONTACT_PHONE"|"MANUAL_BLOCK";field:"title"|"description"|"both"|"account";term?:string};
+const MANDATORY_PROHIBITED_RULES=[
+  {label:"Stupéfiants et drogues",terms:["cannabis","haschich","hashish","weed","thc","cocaine","crack","heroine","lsd","mdma","ecstasy","methamphetamine","crystal meth","fentanyl","psilocybine","champignons hallucinogenes"]},
+  {label:"Tabac, nicotine et vapotage",terms:["paquet de cigarettes","cartouche de cigarettes","tabac a rouler","tabac chicha","snus","puff jetable","puffs jetables","cigarette electronique jetable","e liquide nicotine","liquide nicotine"]},
+  {label:"Alcool",terms:["bouteille de whisky","bouteille whisky","bouteille de vodka","bouteille vodka","bouteille de rhum","bouteille rhum","bouteille de gin","bouteille gin","bouteille de cognac","bouteille cognac","bouteille de champagne","bouteille champagne","bouteille de vin","bouteille vin","pack de biere","pack biere","biere alcoolisee"]},
+  {label:"Armes, munitions et objets de défense",terms:["arme a feu","armes a feu","pistolet 9mm","revolver","fusil de chasse","carabine 22","munitions","munition calibre","cartouches calibre","silencieux arme","taser","poing americain","couteau papillon","couteau automatique","matraque telescopique","pistolet airsoft","replique airsoft","carabine a plomb","pistolet a plomb"]},
+  {label:"Explosifs et artifices",terms:["explosif","dynamite","detonateur","poudre noire","feu d artifice","petard puissant","grenade explosive","grenade militaire"]},
+  {label:"Médicaments et produits de santé réglementés",terms:["xanax","viagra","ozempic","mounjaro","insuline","morphine","tramadol","codeine","antibiotique","steroides anabolisants","medicaments sur ordonnance","medicament sur ordonnance"]},
+  {label:"Contrefaçons et faux documents",terms:["contrefacon","fausse marque","copie 1 1","replique 1 1","fake rolex","faux billet","faux passeport","fausse carte identite","faux permis de conduire","faux document officiel"]},
+  {label:"Éléments du corps humain",terms:["organe humain","rein humain","foie humain","sang humain","tissu humain","ovule humain","sperme humain"]},
+  {label:"Services sexuels",terms:["service sexuel","prestation sexuelle","massage erotique","rencontre tarifée","rencontre tarifee","escorte sexuelle","service prostitution"]},
+  {label:"Espèces protégées et produits issus d'espèces protégées",terms:["defense elephant","ivoire elephant","corne rhinoceros","ecaille tortue","peau tigre","peau leopard","espece protegee a vendre","animal protege a vendre"]},
+  {label:"Données, moyens de paiement et documents volés",terms:["carte bancaire volee","carte bancaire active a vendre","compte bancaire avec solde","compte bancaire pirate","faux rib","identite volee","donnees bancaires"]},
+  {label:"Substances dangereuses ou radioactives",terms:["cyanure","uranium enrichi","source radioactive","matiere radioactive","pesticide interdit","poison mortel a vendre"]},
+] as const;
+
+type PolicySignal={code:"FORBIDDEN_TERM"|"PROHIBITED_ITEM"|"CONTACT_EMAIL"|"CONTACT_PHONE"|"MANUAL_BLOCK";field:"title"|"description"|"both"|"account";term?:string};
 type HoldRow={id:string;userId:string;ipHash:string;status:string;reasonCode:string;signals:PolicySignal[];attemptTitle:string|null;attemptDescription:string|null;attemptListingId:string|null;attemptCount:number;moderationCaseId:string|null;createdAt:Date;updatedAt:Date;reviewedAt:Date|null;reviewNote:string|null};
 
 function sha256(value:string){return createHash("sha256").update(value).digest("hex")}
@@ -28,6 +43,17 @@ function phoneIn(value:string){
   const french=/\b0[1-9](?:[\s.-]*\d{2}){4}\b/;
   const labelled=/(?:t[ée]l(?:[ée]phone)?|phone|whatsapp|contact)\s*[:=.-]?\s*(?:\+|00)?\s*\d(?:[\s().-]*\d){7,14}/i;
   return international.test(value)||french.test(value)||labelled.test(value);
+}
+function phraseInNormalized(value:string,phrase:string){return (` ${value} `).includes(` ${normalize(phrase)} `)}
+function prohibitedSignals(titleNorm:string,descriptionNorm:string){
+  const signals:PolicySignal[]=[];
+  for(const rule of MANDATORY_PROHIBITED_RULES){
+    const matched=rule.terms.find(term=>phraseInNormalized(titleNorm,term)||phraseInNormalized(descriptionNorm,term));
+    if(!matched)continue;
+    const inTitle=phraseInNormalized(titleNorm,matched);const inDescription=phraseInNormalized(descriptionNorm,matched);
+    signals.push({code:"PROHIBITED_ITEM",field:inTitle&&inDescription?"both":inTitle?"title":"description",term:rule.label});
+  }
+  return signals;
 }
 
 let schemaPromise:Promise<void>|null=null;
@@ -58,6 +84,7 @@ export async function scanListingContent(title:string|null|undefined,description
   const emailField=contactField(emailIn);if(emailField)signals.push({code:"CONTACT_EMAIL",field:emailField});
   const phoneField=contactField(phoneIn);if(phoneField)signals.push({code:"CONTACT_PHONE",field:phoneField});
   const titleNorm=normalize(titleText);const descriptionNorm=normalize(descriptionText);
+  signals.push(...prohibitedSignals(titleNorm,descriptionNorm));
   const terms=await prisma.$queryRawUnsafe<Array<{term:string;normalizedTerm:string}>>(`SELECT "term","normalizedTerm" FROM "ListingForbiddenTerm" WHERE "enabled"=TRUE ORDER BY length("normalizedTerm") DESC`);
   for(const term of terms){const inTitle=titleNorm.includes(term.normalizedTerm);const inDescription=descriptionNorm.includes(term.normalizedTerm);if(inTitle||inDescription)signals.push({code:"FORBIDDEN_TERM",field:inTitle&&inDescription?"both":inTitle?"title":"description",term:term.term})}
   return{blocked:signals.length>0,signals};
@@ -78,10 +105,24 @@ async function ensureUserModerationCase(userId:string){
 
 export async function rejectListingAttemptForPolicy(args:{request:FastifyRequest;userId:string;listingId:string}){
   await ensureListingContentPolicySchema();
-  const listing=await prisma.listing.findFirst({where:{id:args.listingId,sellerId:args.userId,status:"DRAFT"},select:{id:true,title:true,description:true}});if(!listing)return null;
-  const scan=await scanListingContent(listing.title,listing.description);if(!scan.blocked)return null;
-  const hash=ipHash(args.request);const media=await prisma.$queryRawUnsafe<Array<{objectKey:string}>>(`SELECT "objectKey" FROM "ListingMedia" WHERE "listingId"=$1`,listing.id).catch(()=>[]);
-  const caseId=await ensureUserModerationCase(args.userId);
+  const listing=await prisma.listing.findFirst({where:{id:args.listingId,sellerId:args.userId,status:"DRAFT"},select:{id:true,title:true,description:true,category:{select:{domain:true,slug:true}}}});if(!listing)return null;
+  const scan=await scanListingContent(listing.title,listing.description);
+  if(listing.category.domain==="ANIMAL"&&listing.category.slug!=="animaux-perdus")scan.signals.push({code:"PROHIBITED_ITEM",field:"both",term:"Cession d’animaux vivants temporairement indisponible jusqu’à activation de la vérification officielle I-CAD/BNO"});
+  if(scan.signals.length===0)return null;
+  const prohibitedOnly=scan.signals.length>0&&scan.signals.every(signal=>signal.code==="PROHIBITED_ITEM");
+  const media=await prisma.$queryRawUnsafe<Array<{objectKey:string}>>(`SELECT "objectKey" FROM "ListingMedia" WHERE "listingId"=$1`,listing.id).catch(()=>[]);
+  if(prohibitedOnly){
+    await prisma.$transaction(async tx=>{
+      await tx.$executeRawUnsafe(`UPDATE "ModerationCase" SET "status"='CLOSED',"decisionReasonCode"='PROHIBITED_ITEM',"decisionStatement"='Annonce refusée automatiquement avant publication : article ou service interdit par la politique Petit Annonces.',"updatedAt"=CURRENT_TIMESTAMP WHERE "targetType"='LISTING' AND "targetId"=$1 AND "status" NOT IN ('RESOLVED','CLOSED')`,listing.id).catch(()=>undefined);
+      await tx.$executeRawUnsafe(`DELETE FROM "ListingImportLog" WHERE "listingId"=$1`,listing.id).catch(()=>undefined);
+      await tx.$executeRawUnsafe(`DELETE FROM "FraudRiskAssessment" WHERE "subjectType"='LISTING' AND "subjectId"=$1`,listing.id).catch(()=>undefined);
+      await tx.listing.deleteMany({where:{id:listing.id,sellerId:args.userId,status:"DRAFT"}});
+    });
+    for(const item of media)await deleteStoredObject(item.objectKey).catch(()=>undefined);
+    await recordUserRiskEvent({userId:args.userId,eventType:"PROHIBITED_ITEM_ATTEMPT",weight:35,metadata:{signals:scan.signals.map(s=>({code:s.code,field:s.field,term:s.term})),listingDiscarded:true}}).catch(()=>undefined);
+    return{holdId:null,caseId:null,signals:scan.signals.map(s=>({code:s.code,field:s.field,term:s.term})),redirect:"/articles-interdits?refus=1"};
+  }
+  const hash=ipHash(args.request);const caseId=await ensureUserModerationCase(args.userId);
   const existing=await prisma.$queryRawUnsafe<Array<{id:string}>>(`SELECT "id" FROM "ListingSpamHold" WHERE "userId"=$1 AND "status" IN ('PENDING','REJECTED') ORDER BY "updatedAt" DESC LIMIT 1`,args.userId);
   const holdId=existing[0]?.id??randomUUID();
   await prisma.$transaction(async tx=>{
