@@ -3,14 +3,14 @@ import { AppIcon } from "../../components/app-icon";
 import styles from "./page.module.css";
 
 export const metadata: Metadata = {
-  title: { absolute: "Déposer une annonce professionnelle | Boutiques Pro en France" },
-  description: "Déposez vos annonces professionnelles, ouvrez votre boutique et présentez votre commerce, magasin ou activité partout en France. 90 jours Pro offerts.",
+  title: { absolute: "Boutiques & professionnels en France | Petit Annonces" },
+  description: "Trouvez des boutiques et professionnels en France par secteur et par ville. Les entreprises peuvent aussi ouvrir une vitrine Pro et publier leur catalogue sur Petit Annonces.",
   alternates: { canonical: "/professionnels" },
   openGraph: {
     type: "website",
     url: "/professionnels",
-    title: "Annonces professionnelles et boutiques Pro | Petit Annonces",
-    description: "Publiez vos annonces professionnelles, créez une boutique Pro et découvrez des entreprises par secteur et par ville partout en France.",
+    title: "Boutiques & professionnels en France | Petit Annonces",
+    description: "Découvrez des boutiques et entreprises par secteur et par ville, ou ouvrez votre vitrine Pro pour publier votre catalogue.",
   },
 };
 
@@ -186,7 +186,7 @@ export default async function ProfessionalsPage({ searchParams }: { searchParams
             <div className={styles.heroGrid}>
               <div className={styles.copy}>
                 <span className={styles.kicker}><AppIcon name="sparkles" /> Offre de lancement · 90 jours Pro offerts</span>
-                <h1>Déposez vos annonces Pro.<br /><em>Ouvrez votre vitrine professionnelle.</em></h1>
+                <h1>Boutiques et professionnels en France.<br /><em>Ouvrez votre vitrine Pro.</em></h1>
                 <p>Publiez vos annonces professionnelles, présentez votre commerce ou votre magasin, importez votre catalogue et centralisez messages, visibilité et activité dans un espace conçu pour vendre plus simplement sur Petit Annonces.</p>
                 <div className={styles.actions}>
                   <a className={styles.primary} href="/inscription/pro">Créer ma boutique Pro <AppIcon name="arrow-right" /></a>

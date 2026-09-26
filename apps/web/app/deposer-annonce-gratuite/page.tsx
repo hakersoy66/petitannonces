@@ -3,7 +3,7 @@ import {AppIcon} from "../../components/app-icon";
 import {CampaignLink} from "../../components/campaign-link";
 import styles from "../campaign-landing.module.css";
 
-export const metadata:Metadata={title:{absolute:"Déposer une petite annonce gratuite en France | Petit Annonces"},description:"Déposez et publiez gratuitement une petite annonce en France. Ajoutez vos photos, votre prix et votre ville en quelques étapes simples sur Petit Annonces.",alternates:{canonical:"https://petitannonces.fr/deposer-annonce-gratuite"},openGraph:{title:"Déposer une petite annonce gratuite | Petit Annonces",description:"Publiez gratuitement votre petite annonce partout en France avec un parcours simple et guidé.",url:"https://petitannonces.fr/deposer-annonce-gratuite",type:"website"}};
+export const metadata:Metadata={title:{absolute:"Petite annonce gratuite : publier en France | PetitAnnonces.fr"},description:"Déposez et publiez gratuitement une petite annonce en France. Ajoutez vos photos, votre prix et votre ville en quelques étapes simples sur PetitAnnonces.fr.",alternates:{canonical:"https://petitannonces.fr/deposer-annonce-gratuite"},openGraph:{title:"Petite annonce gratuite : publier en France | PetitAnnonces.fr",description:"Publiez gratuitement votre petite annonce partout en France avec un parcours simple et guidé.",url:"https://petitannonces.fr/deposer-annonce-gratuite",type:"website"}};
 type Params=Record<string,string|string[]|undefined>;type Props={searchParams:Promise<Params>};
 const TRACKING_KEYS=["utm_source","utm_medium","utm_campaign","utm_content","utm_term","fbclid","gclid","gbraid","wbraid","msclkid"] as const;
 function first(value:string|string[]|undefined){return Array.isArray(value)?value[0]:value}

@@ -344,7 +344,8 @@ export async function registerSeoPublicRoutes(app: FastifyInstance) {
       }
       const target=await knownCityTarget(citySlug);
       if(target)return reply.send({target});
-      return reply.code(404).send({error:"legacy_map_city_not_found"});
+      const fallbackCity=citySlug.split("-").filter(Boolean).map(part=>part.charAt(0).toUpperCase()+part.slice(1)).join(" ");
+      return reply.send({target:`/recherche?city=${encodeURIComponent(fallbackCity)}`});
     }
     const exact=await prisma.listing.findFirst({where:{status:"PUBLISHED",slug:last},select:{slug:true}});
     if(exact?.slug)return reply.send({target:`/annonce/${exact.slug}`});
@@ -358,15 +359,38 @@ export async function registerSeoPublicRoutes(app: FastifyInstance) {
     const mappedLast=legacyCategoryAliases[last]??last;
     const cat=await prisma.category.findFirst({where:{slug:mappedLast,isActive:true},select:{slug:true}}).catch(()=>null);
     if(cat?.slug){
-      const legacyCitySlug=parts.length>=2&&regions.has(parts[0]!)?(parts[1]??""):"";
-      if(legacyCitySlug){
+      const firstMapped=legacyCategoryAliases[parts[0]??""]??(parts[0]??"");
+      const firstIsCategory=firstMapped?Boolean(await prisma.category.findFirst({where:{slug:firstMapped,isActive:true},select:{id:true}}).catch(()=>null)):false;
+      const legacyCitySlug=parts.length>=2?(regions.has(parts[0]!)?(parts[1]??""):firstIsCategory?"":(parts[0]??"")):"";
+      if(legacyCitySlug&&legacyCitySlug!==cat.slug){
         const localRows=await prisma.$queryRawUnsafe<Array<{city:string;count:bigint}>>(`WITH RECURSIVE category_tree AS (SELECT "id" FROM "Category" WHERE "slug"=$1 UNION ALL SELECT c."id" FROM "Category" c JOIN category_tree p ON c."parentId"=p."id") SELECT l."city",COUNT(*)::bigint AS "count" FROM "Listing" l WHERE l."status"='PUBLISHED' AND l."categoryId" IN (SELECT "id" FROM category_tree) AND l."city" IS NOT NULL AND BTRIM(l."city")<>'' GROUP BY l."city"`,cat.slug);
-        const local=localRows.find(x=>slugify(x.city)===legacyCitySlug&&Number(x.count)>=3);
-        if(local)return reply.send({target:`/c/${cat.slug}/${slugify(local.city)}`});
+        const local=localRows.find(x=>slugify(x.city)===legacyCitySlug);
+        if(local&&Number(local.count)>=3)return reply.send({target:`/c/${cat.slug}/${slugify(local.city)}`});
+        if(local)return reply.send({target:`/recherche?category=${encodeURIComponent(cat.slug)}&city=${encodeURIComponent(local.city)}`});
+        const fallbackCity=legacyCitySlug.split("-").filter(Boolean).map(part=>part.charAt(0).toUpperCase()+part.slice(1)).join(" ");
+        return reply.send({target:`/recherche?category=${encodeURIComponent(cat.slug)}&city=${encodeURIComponent(fallbackCity)}`});
       }
       return reply.send({target:`/categorie/${cat.slug}`});
     }
-    for(const part of parts.slice(0,-1).reverse()){const mapped=legacyCategoryAliases[part]??part;const category=await prisma.category.findFirst({where:{slug:mapped,isActive:true},select:{slug:true}}).catch(()=>null);if(category?.slug)return reply.send({target:`/categorie/${category.slug}`});}
+    for(const part of parts.slice(0,-1).reverse()){
+      const mapped=legacyCategoryAliases[part]??part;
+      const category=await prisma.category.findFirst({where:{slug:mapped,isActive:true},select:{slug:true}}).catch(()=>null);
+      if(category?.slug){
+        const first=parts[0]??"";
+        const firstMapped=legacyCategoryAliases[first]??first;
+        const firstCategory=firstMapped?await prisma.category.findFirst({where:{slug:firstMapped,isActive:true},select:{id:true}}).catch(()=>null):null;
+        const legacyCitySlug=parts.length>=2&&!regions.has(first)&&!firstCategory?first:"";
+        if(legacyCitySlug){
+          const localRows=await prisma.$queryRawUnsafe<Array<{city:string;count:bigint}>>(`WITH RECURSIVE category_tree AS (SELECT "id" FROM "Category" WHERE "slug"=$1 UNION ALL SELECT c."id" FROM "Category" c JOIN category_tree p ON c."parentId"=p."id") SELECT l."city",COUNT(*)::bigint AS "count" FROM "Listing" l WHERE l."status"='PUBLISHED' AND l."categoryId" IN (SELECT "id" FROM category_tree) AND l."city" IS NOT NULL AND BTRIM(l."city")<>'' GROUP BY l."city"`,category.slug);
+          const local=localRows.find(x=>slugify(x.city)===legacyCitySlug);
+          if(local&&Number(local.count)>=3)return reply.send({target:`/c/${category.slug}/${slugify(local.city)}`});
+          if(local)return reply.send({target:`/recherche?category=${encodeURIComponent(category.slug)}&city=${encodeURIComponent(local.city)}`});
+          const fallbackCity=legacyCitySlug.split("-").filter(Boolean).map(value=>value.charAt(0).toUpperCase()+value.slice(1)).join(" ");
+          return reply.send({target:`/recherche?category=${encodeURIComponent(category.slug)}&city=${encodeURIComponent(fallbackCity)}`});
+        }
+        return reply.send({target:`/categorie/${category.slug}`});
+      }
+    }
     if(parts.length>=2&&regions.has(parts[0]!)){const target=await knownCityTarget(parts[1]??"");if(target)return reply.send({target});}
     if(parts.length===1){const target=await knownCityTarget(last);if(target)return reply.send({target});}
     return reply.code(404).send({error:"legacy_not_found"});
