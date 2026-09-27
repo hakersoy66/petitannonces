@@ -46,10 +46,10 @@ async function refreshDraftQualitySnapshots(limit=30){
   LEFT JOIN "ListingQualitySnapshot" q ON q."listingId"=l."id"
   WHERE l."status"='DRAFT'
    AND NOT EXISTS(SELECT 1 FROM "ListingSpamHold" sh WHERE sh."userId"=l."sellerId" AND sh."status" IN ('PENDING','REJECTED'))
-   AND l."updatedAt">CURRENT_TIMESTAMP-INTERVAL '30 days'
-   AND l."updatedAt"<=CURRENT_TIMESTAMP-INTERVAL '30 minutes'
+   AND l."updatedAt">(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')-INTERVAL '30 days'
+   AND l."updatedAt"<=(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')-INTERVAL '30 minutes'
    AND (COALESCE(length(BTRIM(l."title")),0)>=5 OR COALESCE(length(BTRIM(l."description")),0)>=20 OR EXISTS(SELECT 1 FROM "ListingMedia" lm WHERE lm."listingId"=l."id"))
-   AND (q."listingId" IS NULL OR q."assessedAt"<l."updatedAt")
+   AND (q."listingId" IS NULL OR ((q."assessedAt" AT TIME ZONE 'Europe/Paris') AT TIME ZONE 'UTC')<l."updatedAt")
   ORDER BY l."updatedAt" DESC LIMIT $1`,limit);
  let refreshed=0;
  for(const row of rows){
@@ -124,8 +124,8 @@ export async function runDraftRecoverySweep(){
    JOIN "User" u ON u."id"=l."sellerId" AND u."status"='ACTIVE'
    LEFT JOIN "UserProfile" p ON p."userId"=u."id"
    WHERE l."status"='DRAFT'
-    AND l."updatedAt"<=CURRENT_TIMESTAMP-INTERVAL '${FIRST_DRAFT_DELAY_MINUTES} minutes'
-    AND l."updatedAt">CURRENT_TIMESTAMP-INTERVAL '14 days'
+    AND l."updatedAt"<=(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')-INTERVAL '${FIRST_DRAFT_DELAY_MINUTES} minutes'
+    AND l."updatedAt">(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')-INTERVAL '14 days'
     AND (COALESCE(length(BTRIM(l."title")),0)>=5 OR COALESCE(length(BTRIM(l."description")),0)>=20 OR EXISTS(SELECT 1 FROM "ListingMedia" lm WHERE lm."listingId"=l."id"))
     AND NOT EXISTS(SELECT 1 FROM "DraftRecoveryReminder" r WHERE r."listingId"=l."id" AND r."stage"='90M')
    ORDER BY l."updatedAt" ASC LIMIT 80`);
@@ -136,8 +136,8 @@ export async function runDraftRecoverySweep(){
    JOIN "User" u ON u."id"=l."sellerId" AND u."status"='ACTIVE'
    LEFT JOIN "UserProfile" p ON p."userId"=u."id"
    WHERE l."status"='DRAFT'
-    AND l."updatedAt"<=CURRENT_TIMESTAMP-INTERVAL '${FIRST_DRAFT_DELAY_MINUTES} minutes'
-    AND l."updatedAt">CURRENT_TIMESTAMP-INTERVAL '30 days'
+    AND l."updatedAt"<=(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')-INTERVAL '${FIRST_DRAFT_DELAY_MINUTES} minutes'
+    AND l."updatedAt">(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')-INTERVAL '30 days'
     AND NOT EXISTS(SELECT 1 FROM "DraftRecoveryReminder" r WHERE r."listingId"=l."id" AND r."stage"='READY')
     AND (COALESCE(length(BTRIM(l."title")),0)>=5 OR COALESCE(length(BTRIM(l."description")),0)>=20 OR EXISTS(SELECT 1 FROM "ListingMedia" lm WHERE lm."listingId"=l."id"))
    ORDER BY l."updatedAt" ASC LIMIT 80`);
@@ -158,8 +158,8 @@ export async function runDraftRecoverySweep(){
    JOIN "User" u ON u."id"=l."sellerId" AND u."status"='ACTIVE'
    LEFT JOIN "UserProfile" p ON p."userId"=u."id"
    WHERE l."status"='DRAFT' AND l."draftSavedAt" IS NOT NULL
-    AND l."updatedAt"<=CURRENT_TIMESTAMP-INTERVAL '${SECOND_DRAFT_DELAY_HOURS} hours'
-    AND l."updatedAt">CURRENT_TIMESTAMP-INTERVAL '30 days'
+    AND l."updatedAt"<=(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')-INTERVAL '${SECOND_DRAFT_DELAY_HOURS} hours'
+    AND l."updatedAt">(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')-INTERVAL '30 days'
     AND EXISTS(SELECT 1 FROM "DraftRecoveryReminder" r WHERE r."listingId"=l."id" AND r."stage"='90M' AND r."queuedAt"<=CURRENT_TIMESTAMP-INTERVAL '24 hours')
     AND NOT EXISTS(SELECT 1 FROM "DraftRecoveryReminder" r WHERE r."listingId"=l."id" AND r."stage"='24H')
    ORDER BY l."updatedAt" ASC LIMIT 80`);
@@ -194,8 +194,8 @@ export async function registerUserRecoveryRoutes(app:FastifyInstance){
     LEFT JOIN "ListingQualitySnapshot" q ON q."listingId"=l."id"
     LEFT JOIN LATERAL (SELECT r."readyToPublish",r."qualityScore",r."resumeStep" FROM "DraftRecoveryReminder" r WHERE r."listingId"=l."id" ORDER BY r."createdAt" DESC LIMIT 1) rr ON TRUE
     WHERE l."status"='DRAFT'
-      AND NOT EXISTS(SELECT 1 FROM "ListingSpamHold" sh WHERE sh."userId"=l."sellerId" AND sh."status" IN ('PENDING','REJECTED')) AND l."updatedAt"<=CURRENT_TIMESTAMP-INTERVAL '${FIRST_DRAFT_DELAY_MINUTES} minutes'
-      AND l."updatedAt">CURRENT_TIMESTAMP-INTERVAL '14 days'
+      AND NOT EXISTS(SELECT 1 FROM "ListingSpamHold" sh WHERE sh."userId"=l."sellerId" AND sh."status" IN ('PENDING','REJECTED')) AND l."updatedAt"<=(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')-INTERVAL '${FIRST_DRAFT_DELAY_MINUTES} minutes'
+      AND l."updatedAt">(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')-INTERVAL '14 days'
       AND (COALESCE(length(BTRIM(l."title")),0)>=5 OR COALESCE(length(BTRIM(l."description")),0)>=20 OR EXISTS(SELECT 1 FROM "ListingMedia" lm WHERE lm."listingId"=l."id"))
     ORDER BY l."updatedAt" DESC LIMIT 30`),
    prisma.$queryRawUnsafe<Array<any>>(`
@@ -213,7 +213,7 @@ export async function registerUserRecoveryRoutes(app:FastifyInstance){
     FROM "ListingQualitySnapshot" q JOIN "Listing" l ON l."id"=q."listingId" JOIN "User" u ON u."id"=q."sellerId" AND u."status"='ACTIVE'
     LEFT JOIN "UserProfile" p ON p."userId"=u."id"
     WHERE l."status"='DRAFT'
-      AND NOT EXISTS(SELECT 1 FROM "ListingSpamHold" sh WHERE sh."userId"=q."sellerId" AND sh."status" IN ('PENDING','REJECTED')) AND l."updatedAt"<=CURRENT_TIMESTAMP-INTERVAL '30 minutes' AND q."score"<70 AND q."assessedAt">=l."updatedAt" AND q."assessedAt">=CURRENT_TIMESTAMP-INTERVAL '30 days'
+      AND NOT EXISTS(SELECT 1 FROM "ListingSpamHold" sh WHERE sh."userId"=q."sellerId" AND sh."status" IN ('PENDING','REJECTED')) AND l."updatedAt"<=(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')-INTERVAL '30 minutes' AND q."score"<70 AND ((q."assessedAt" AT TIME ZONE 'Europe/Paris') AT TIME ZONE 'UTC')>=l."updatedAt" AND q."assessedAt">=CURRENT_TIMESTAMP-INTERVAL '30 days'
     ORDER BY q."score" ASC,q."assessedAt" DESC LIMIT 30`),
    prisma.$queryRawUnsafe<Array<any>>(`
     SELECT COUNT(*) FILTER(WHERE "stage"='90M' AND "queuedAt" IS NOT NULL)::int AS "firstReminders",
