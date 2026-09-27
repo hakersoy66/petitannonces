@@ -229,12 +229,13 @@ export async function registerOperationsRoutes(app: FastifyInstance) {
     const q = query.data.q;
     const rows = await prisma.listing.findMany({
       where: {
+        OR: [{ status: { not: "DRAFT" } }, { draftSavedAt: { not: null } }],
         ...(query.data.status ? { status: query.data.status } : {}),
-        ...(q ? { OR: [
+        ...(q ? { AND: [{ OR: [
           { title: { contains: q, mode: "insensitive" } },
           { city: { contains: q, mode: "insensitive" } },
           { seller: { email: { contains: q, mode: "insensitive" } } },
-        ] } : {}),
+        ] }] } : {}),
       },
       include: { seller: { select: { email: true, profile: { select: { displayName: true, firstName: true, lastName: true } }, stores:{select:{id:true,name:true,status:true}} } }, category: { select: { id:true,name: true, domain: true } } },
       orderBy: { createdAt: "desc" }, take: 150,
