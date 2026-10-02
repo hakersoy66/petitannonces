@@ -42,6 +42,8 @@
 
 .moderationPending,.moderationRejected{margin-top:11px;padding:10px 12px;border-radius:12px;display:grid;gap:3px;font-size:.78rem;line-height:1.45}.moderationPending{background:#fff8e8;border:1px solid #f0ddb1;color:#805d18}.moderationRejected{background:#fff0f1;border:1px solid #efc4c8;color:#8f2e39}.moderationPending b,.moderationRejected b{font-size:.8rem}.moderationPending span,.moderationRejected span{color:inherit}
 
+.renewalCallout{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:15px;padding:15px 18px;border:1px solid #cfc8ff;border-radius:16px;background:#f3f0ff;color:#4237b4;text-decoration:none}.renewalCallout span{display:grid;gap:4px}.renewalCallout strong{font-size:14px}.renewalCallout small{font-size:12px;color:#655f86}.renewalCallout>b{background:#5b4cf0;color:#fff;border-radius:10px;padding:10px 12px;font-size:12px;white-space:nowrap}.tabs .expiredTab:not(.selected){border-color:#cfc8ff;background:#f3f0ff;color:#4f43c6}@media(max-width:700px){.renewalCallout{align-items:stretch;flex-direction:column;padding:13px}.renewalCallout>b{text-align:center}}
+
 /* Listing lifetime & renewal */
 .expiry{color:#8a5a00!important;font-weight:800}.renewalInfo{margin-top:11px;padding:11px 13px;border-radius:13px;background:linear-gradient(135deg,#f3f0ff,#faf9ff);border:1px solid #ded8fb;color:#5043bd;display:grid;gap:3px;font-size:.78rem;line-height:1.45}.renewalInfo b{font-size:.82rem}.renewalInfo span{color:#6c6695}.actions .renew{background:#5b4cf0;border-color:#5b4cf0;color:#fff}.actions .renew:hover{background:#4c3fd7;border-color:#4c3fd7;color:#fff}
 

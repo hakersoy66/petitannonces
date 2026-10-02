@@ -14,7 +14,7 @@ type ExpiryEventRow = { listingId:string; sellerId:string; title:string|null; ex
 export async function ensureListingLifecycleSchema(){
  await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "ListingLifecycle" ("listingId" TEXT PRIMARY KEY REFERENCES "Listing"("id") ON DELETE CASCADE,"expiresAt" TIMESTAMPTZ NOT NULL,"freeRenewalUsed" BOOLEAN NOT NULL DEFAULT FALSE,"renewalCount" INTEGER NOT NULL DEFAULT 0,"lastRenewedAt" TIMESTAMPTZ,"createdAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,"updatedAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP)`);
  await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "ListingLifecycle_expiresAt_idx" ON "ListingLifecycle"("expiresAt")`);
- await prisma.$executeRawUnsafe(`INSERT INTO "ListingLifecycle" ("listingId","expiresAt") SELECT l."id",COALESCE(l."publishedAt",l."createdAt")+INTERVAL '30 days' FROM "Listing" l WHERE l."status"='PUBLISHED' AND NOT EXISTS(SELECT 1 FROM "ListingLifecycle" lc WHERE lc."listingId"=l."id") ON CONFLICT ("listingId") DO NOTHING`);
+ await prisma.$executeRawUnsafe(`INSERT INTO "ListingLifecycle" ("listingId","expiresAt") SELECT l."id",COALESCE(l."publishedAt",l."createdAt")+INTERVAL '30 days' FROM "Listing" l WHERE l."status" IN ('PUBLISHED','EXPIRED') AND NOT EXISTS(SELECT 1 FROM "ListingLifecycle" lc WHERE lc."listingId"=l."id") ON CONFLICT ("listingId") DO NOTHING`);
 }
 
 export function listingExpiryFrom(base=new Date()){return new Date(base.getTime()+LIFETIME_MS)}
@@ -31,7 +31,7 @@ export async function notifyUpcomingListingExpirations(limit=500){
   const stage=remaining<=DAY_MS?"1d":remaining<=3*DAY_MS?"3d":"7d";
   const when=stage==="1d"?"dans moins de 24 heures":stage==="3d"?"dans moins de 3 jours":"dans moins de 7 jours";
   const body=row.freeRenewalUsed?`Votre annonce « ${row.title??"Sans titre"} » expire ${when}. Après expiration, une prolongation de 30 jours coûte 0,99 €.`:`Votre annonce « ${row.title??"Sans titre"} » expire ${when}. Votre première prolongation de 30 jours sera gratuite.`;
-  await deliverUserEvent({userId:row.sellerId,eventKind:"LISTING",notificationKind:"LISTING",title:"Votre annonce arrive bientôt à expiration",body,actionUrl:"/mon-compte/annonces?status=PUBLISHED",metadata:{listingId:row.listingId,expiresAt:row.expiresAt.toISOString(),expiryStage:stage},dedupeKey:`listing-expiry-warning:${row.listingId}:${expiryCycleKey(row)}:${stage}`});
+  await deliverUserEvent({userId:row.sellerId,eventKind:"LISTING",notificationKind:"LISTING",title:"Votre annonce arrive bientôt à expiration",body,actionUrl:`/mon-compte/annonces?status=PUBLISHED&listingId=${encodeURIComponent(row.listingId)}`,metadata:{listingId:row.listingId,expiresAt:row.expiresAt.toISOString(),expiryStage:stage},dedupeKey:`listing-expiry-warning:${row.listingId}:${expiryCycleKey(row)}:${stage}`});
   queued++;
  }
  return queued;
@@ -55,7 +55,7 @@ export async function expireDueListings(limit=500){
  const rows=await prisma.$queryRawUnsafe<ExpiryEventRow[]>(`WITH due AS (SELECT lc."listingId" FROM "ListingLifecycle" lc JOIN "Listing" l0 ON l0."id"=lc."listingId" WHERE l0."status"='PUBLISHED' AND lc."expiresAt"<=CURRENT_TIMESTAMP ORDER BY lc."expiresAt" ASC LIMIT $1) UPDATE "Listing" l SET "status"='EXPIRED',"updatedAt"=CURRENT_TIMESTAMP FROM "ListingLifecycle" lc,due WHERE l."id"=due."listingId" AND lc."listingId"=l."id" AND l."status"='PUBLISHED' RETURNING l."id" AS "listingId",l."sellerId",l."title",lc."expiresAt",lc."freeRenewalUsed"`,limit);
  for(const row of rows){
   const body=row.freeRenewalUsed?`Votre annonce « ${row.title??"Sans titre"} » a expiré. Vous pouvez la prolonger de 30 jours pour 0,99 €.`:`Votre annonce « ${row.title??"Sans titre"} » a expiré. Votre première prolongation de 30 jours est gratuite.`;
-  await deliverUserEvent({userId:row.sellerId,eventKind:"LISTING",notificationKind:"LISTING",title:"Votre annonce a expiré",body,actionUrl:"/mon-compte/annonces?status=EXPIRED",metadata:{listingId:row.listingId,expiresAt:row.expiresAt.toISOString(),expired:true},dedupeKey:`listing-expired:${row.listingId}:${expiryCycleKey(row)}`});
+  await deliverUserEvent({userId:row.sellerId,eventKind:"LISTING",notificationKind:"LISTING",title:"Votre annonce a expiré",body,actionUrl:`/mon-compte/annonces?status=EXPIRED&listingId=${encodeURIComponent(row.listingId)}`,metadata:{listingId:row.listingId,expiresAt:row.expiresAt.toISOString(),expired:true},dedupeKey:`listing-expired:${row.listingId}:${expiryCycleKey(row)}`});
   await notifyListingIndexNow(row.listingId,true).catch(()=>undefined);
  }
  return rows.length;

@@ -44,11 +44,15 @@ function apiBase() {
 
 export default function MyListingsPage() {
   const [listings, setListings] = useState<Listing[]>([]);
-  const [status, setStatus] = useState<Status | "ALL">("ALL");
+  const [status, setStatus] = useState<Status | "ALL">(() => {
+    if (typeof window === "undefined") return "ALL";
+    const requested = new URLSearchParams(window.location.search).get("status");
+    return requested && Object.prototype.hasOwnProperty.call(labels, requested) ? requested as Status | "ALL" : "ALL";
+  });
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
-  const [counts, setCounts] = useState<Record<string,number>>({ALL:0,DRAFT:0,PENDING:0,PUBLISHED:0,SUSPENDED:0,SOLD:0,EXPIRED:0});
+  const [counts, setCounts] = useState<Record<Status | "ALL",number>>({ALL:0,DRAFT:0,PENDING:0,PUBLISHED:0,SUSPENDED:0,SOLD:0,EXPIRED:0});
   const [proStores, setProStores] = useState<Array<{id:string;name:string}>>([]);
   const [proAutoRenew, setProAutoRenew] = useState(false);
 
@@ -58,9 +62,9 @@ export default function MyListingsPage() {
     if (status !== "ALL") params.set("status", status);
     if (query.trim()) params.set("q", query.trim());
     try {
-      const response = await fetch(`${apiBase()}/account/listings?${params}`, { credentials: "include" });
+      const response = await fetch(`${apiBase()}/account/listings?${params}`, { credentials: "include", cache: "no-store" });
       if (!response.ok) throw new Error();
-      const payload = await response.json() as { listings: Listing[]; counts?:Record<string,number> };
+      const payload = await response.json() as { listings: Listing[]; counts?:Record<Status | "ALL",number> };
       setListings(payload.listings);
       if(payload.counts)setCounts(payload.counts);
       setMessage("");
@@ -72,7 +76,8 @@ export default function MyListingsPage() {
   }
 
   useEffect(() => { void load(); }, [status]);
-  useEffect(()=>{const params=new URLSearchParams(window.location.search);const requested=params.get("status");if(requested&&Object.prototype.hasOwnProperty.call(labels,requested)&&requested!=="ALL")setStatus(requested as Status);const q=params.get("renewal");if(q==="success")setMessage("Paiement confirmé. La prolongation sera visible après validation Stripe.");else if(q==="cancelled")setMessage("Paiement de prolongation annulé.");else if(params.get("submitted")==="1")setMessage("Annonce envoyée en vérification. Vous recevrez une notification dès qu’une décision sera prise.");else if(params.get("editing")==="moderation")setMessage("Cette annonce est déjà en cours de vérification. Attendez la décision de modération avant de la modifier.")},[]);
+  useEffect(() => { const target = new URLSearchParams(window.location.search).get("listingId"); if (target && listings.some(item => item.id === target)) window.requestAnimationFrame(() => document.getElementById(`annonce-${target}`)?.scrollIntoView({ block: "center" })); }, [listings]);
+  useEffect(()=>{const params=new URLSearchParams(window.location.search);const q=params.get("renewal");if(q==="success")setMessage("Paiement confirmé. La prolongation sera visible après validation Stripe.");else if(q==="cancelled")setMessage("Paiement de prolongation annulé.");else if(params.get("submitted")==="1")setMessage("Annonce envoyée en vérification. Vous recevrez une notification dès qu’une décision sera prise.");else if(params.get("editing")==="moderation")setMessage("Cette annonce est déjà en cours de vérification. Attendez la décision de modération avant de la modifier.")},[]);
   useEffect(() => { fetch(`${apiBase()}/pro/me`, { credentials: "include", cache: "no-store" }).then(async r => r.ok ? r.json() : null).then(p => {setProStores((p?.professional?.stores ?? []).map((x:any)=>({id:x.id,name:x.name})));const subscription=p?.professional?.subscriptions?.[0];setProAutoRenew(Boolean(subscription&&["ACTIVE","TRIALING"].includes(String(subscription.status))&&subscription.plan?.autoRenewListings===true));}).catch(()=>{}); }, []);
 
   async function changeStatus(id: string, next: Status) {
@@ -138,10 +143,12 @@ export default function MyListingsPage() {
             <a className={styles.create} href="/deposer-une-annonce">+ Déposer une annonce</a>
           </header>
 
+          {counts.EXPIRED > 0 && status !== "EXPIRED" && <a className={styles.renewalCallout} href="/mon-compte/annonces?status=EXPIRED"><span><strong>{counts.EXPIRED} annonce{counts.EXPIRED > 1 ? "s" : ""} expirée{counts.EXPIRED > 1 ? "s" : ""}</strong><small>Renouvelez chaque annonce pour 30 jours : première prolongation gratuite.</small></span><b>Renouveler mes annonces →</b></a>}
+
           <div className={styles.toolbar}>
             <div className={styles.tabs}>
               {(Object.keys(labels) as Array<Status | "ALL">).map((item) => (
-                <button type="button" key={item} className={status === item ? styles.selected : ""} onClick={() => setStatus(item)}>
+                <button type="button" key={item} className={`${status === item ? styles.selected : ""} ${item === "EXPIRED" && counts.EXPIRED > 0 ? styles.expiredTab : ""}`} onClick={() => { setMessage(""); setStatus(item); const next = new URL(window.location.href); if (item === "ALL") next.searchParams.delete("status"); else next.searchParams.set("status", item); window.history.replaceState(null, "", next.pathname + next.search); }}>
                   {labels[item]} <span>{counts[item] ?? 0}</span>
                 </button>
               ))}
@@ -158,7 +165,7 @@ export default function MyListingsPage() {
           ) : (
             <div className={styles.list}>
               {listings.map((item) => (
-                <article className={styles.card} key={item.id}>
+                <article className={styles.card} id={`annonce-${item.id}`} key={item.id}>
                   <div className={styles.thumb}>{item.imageUrl?<img src={item.imageUrl} alt={item.title??"Annonce"}/>:<span>{item.category.name.slice(0, 1).toUpperCase()}</span>}</div>
                   <div className={styles.mainInfo}>
                     <div className={styles.titleLine}>
