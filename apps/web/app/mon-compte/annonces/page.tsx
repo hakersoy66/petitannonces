@@ -44,11 +44,7 @@ function apiBase() {
 
 export default function MyListingsPage() {
   const [listings, setListings] = useState<Listing[]>([]);
-  const [status, setStatus] = useState<Status | "ALL">(() => {
-    if (typeof window === "undefined") return "ALL";
-    const requested = new URLSearchParams(window.location.search).get("status");
-    return requested && Object.prototype.hasOwnProperty.call(labels, requested) ? requested as Status | "ALL" : "ALL";
-  });
+  const [status, setStatus] = useState<Status | "ALL">("ALL");
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
@@ -75,9 +71,9 @@ export default function MyListingsPage() {
     }
   }
 
-  useEffect(() => { void load(); }, [status]);
+  useEffect(() => { const requested = new URLSearchParams(window.location.search).get("status"); if (status === "ALL" && requested && requested !== "ALL" && Object.prototype.hasOwnProperty.call(labels, requested)) return; void load(); }, [status]);
   useEffect(() => { const target = new URLSearchParams(window.location.search).get("listingId"); if (target && listings.some(item => item.id === target)) window.requestAnimationFrame(() => document.getElementById(`annonce-${target}`)?.scrollIntoView({ block: "center" })); }, [listings]);
-  useEffect(()=>{const params=new URLSearchParams(window.location.search);const q=params.get("renewal");if(q==="success")setMessage("Paiement confirmé. La prolongation sera visible après validation Stripe.");else if(q==="cancelled")setMessage("Paiement de prolongation annulé.");else if(params.get("submitted")==="1")setMessage("Annonce envoyée en vérification. Vous recevrez une notification dès qu’une décision sera prise.");else if(params.get("editing")==="moderation")setMessage("Cette annonce est déjà en cours de vérification. Attendez la décision de modération avant de la modifier.")},[]);
+  useEffect(()=>{const params=new URLSearchParams(window.location.search);const requested=params.get("status");if(requested&&requested!=="ALL"&&Object.prototype.hasOwnProperty.call(labels,requested))setStatus(requested as Status);const q=params.get("renewal");if(q==="success")setMessage("Paiement confirmé. La prolongation sera visible après validation Stripe.");else if(q==="cancelled")setMessage("Paiement de prolongation annulé.");else if(params.get("submitted")==="1")setMessage("Annonce envoyée en vérification. Vous recevrez une notification dès qu’une décision sera prise.");else if(params.get("editing")==="moderation")setMessage("Cette annonce est déjà en cours de vérification. Attendez la décision de modération avant de la modifier.")},[]);
   useEffect(() => { fetch(`${apiBase()}/pro/me`, { credentials: "include", cache: "no-store" }).then(async r => r.ok ? r.json() : null).then(p => {setProStores((p?.professional?.stores ?? []).map((x:any)=>({id:x.id,name:x.name})));const subscription=p?.professional?.subscriptions?.[0];setProAutoRenew(Boolean(subscription&&["ACTIVE","TRIALING"].includes(String(subscription.status))&&subscription.plan?.autoRenewListings===true));}).catch(()=>{}); }, []);
 
   async function changeStatus(id: string, next: Status) {
