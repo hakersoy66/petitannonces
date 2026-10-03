@@ -10,7 +10,7 @@ const API_URL = "https://api.francetravail.io/partenaire/offresdemploi/v2/offres
 type Credentials = { id:string;secret:string;licensed:boolean;enabled:boolean;ready:boolean };
 type Offer = {
  id:string;title:string;company:string|null;city:string|null;contract:string|null;
- salary:string|null;publishedAt:string|null;description:string|null;source:"FRANCE_TRAVAIL";applyUrl:string;
+ salary:string|null;publishedAt:string|null;description:string|null;romeCode:string|null;source:"FRANCE_TRAVAIL";applyUrl:string;
 };
 let accessToken: {value:string; validUntil:number;fingerprint:string}|null=null;
 const responseCache=new Map<string,{expires:number;items:Offer[]}>();
@@ -60,6 +60,7 @@ function normalize(input:unknown):Offer|null{
   city:String(x.lieuTravail?.libelle??"").trim().slice(0,140)||null,
   contract:String(x.typeContratLibelle??x.typeContrat??"").trim().slice(0,120)||null,
   salary:String(x.salaire?.libelle??"").trim().slice(0,140)||null,
+  romeCode:typeof x.romeCode==="string"&&/^[A-Z][0-9]{4}$/.test(x.romeCode)?x.romeCode:null,
   publishedAt:typeof x.dateCreation==="string"?x.dateCreation:null,
   description:typeof x.description==="string"?x.description.replace(/<[^>]*>/g," ").replace(/\s+/g," ").trim().slice(0,300):null,
   source:"FRANCE_TRAVAIL",applyUrl:"https://candidat.francetravail.fr/offres/recherche/detail/"+encodeURIComponent(id),

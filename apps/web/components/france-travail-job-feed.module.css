@@ -17,3 +17,15 @@
 .footer a{background:#5b4cf0;border-radius:11px;color:#fff;text-decoration:none;padding:10px 12px;font-size:12px;font-weight:800;white-space:nowrap}.footer a:hover{background:#493bda}
 .notice{font-size:12px;color:#7c8296;line-height:1.55;margin:16px 0 0}
 @media(max-width:680px){.heading{display:block}.source{display:inline-block;margin-top:13px}.section{border-radius:18px;margin:17px 0 25px}.grid{grid-template-columns:1fr}.card{padding:15px}}
+
+.careerLink{color:#5445cb;font-weight:800;text-decoration:none;font-size:12px}
+.careerLink:hover{text-decoration:underline}
+.careerSection{margin:24px 0 35px;padding:clamp(18px,2.5vw,30px);border:1px solid #e6e3fa;border-radius:24px;background:#faf9ff}
+.careerGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:12px}
+.careerCard{background:#fff;border:1px solid #e7e5fa;border-radius:15px;padding:16px 12px;display:flex;align-items:center;gap:11px;text-decoration:none;color:#21243c;min-width:0;justify-content:space-between}
+.careerCard span:nth-child(2){flex:1;min-width:0}
+.careerCard strong{display:block;font-size:13px;line-height:1.4}
+.careerCard small{display:block;font-size:11px;color:#8784a0;margin-top:6px}
+.careerSymbol{flex:0 0 38px;height:38px;border-radius:10px;background:#efebff;display:grid;place-items:center;font-size:21px;color:#5b4cf0}
+.careerCard:hover{border-color:#9e95ff}
+@media(max-width:680px){.careerSection{padding:15px;border-radius:18px}}

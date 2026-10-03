@@ -2,7 +2,7 @@ import styles from "./france-travail-job-feed.module.css";
 
 type Job={
  id:string;title:string;company:string|null;city:string|null;contract:string|null;
- salary:string|null;description:string|null;publishedAt:string|null;applyUrl:string;source:"FRANCE_TRAVAIL"
+ salary:string|null;description:string|null;publishedAt:string|null;romeCode?:string|null;applyUrl:string;source:"FRANCE_TRAVAIL"
 };
 type Result={enabled:boolean;items:Job[]};
 
@@ -28,6 +28,7 @@ export async function FranceTravailJobFeed({apiBase}:{apiBase:string}){
     <h3>{job.title}</h3>
     <p className={styles.company}>{job.company||"Employeur non précisé"}</p>
     {job.description&&<p className={styles.description}>{job.description}</p>}
+    {job.romeCode&&<a className={styles.careerLink} href={"/emploi/metiers/"+job.romeCode}>Découvrir ce métier · ROME {job.romeCode} ↗</a>}
     <div className={styles.footer}>
      <div>{job.salary&&<span className={styles.salary}>{job.salary}</span>}
        {job.publishedAt&&<small>Publiée le {new Date(job.publishedAt).toLocaleDateString("fr-FR",{day:"2-digit",month:"short",year:"numeric"})}</small>}
@@ -37,5 +38,24 @@ export async function FranceTravailJobFeed({apiBase}:{apiBase:string}){
    </article>)}
   </div>
   <p className={styles.notice}>Ces offres proviennent de France Travail et ne sont pas déposées par des vendeurs de Petit Annonces. Vérifiez les conditions de candidature et la disponibilité sur le site officiel. Aucun frais n’est demandé pour postuler.</p>
+ </section>
+}
+
+const careers=[
+ {code:"M1607",name:"Assistanat administratif",icon:"✦"},
+ {code:"M1805",name:"Développement informatique",icon:"⌘"},
+ {code:"G1602",name:"Cuisine et restauration",icon:"◈"},
+ {code:"F1703",name:"Maçonnerie",icon:"⬡"},
+ {code:"N4101",name:"Transport de marchandises",icon:"↗"}
+];
+export function CareerDiscovery(){
+ return <section className={styles.careerSection} aria-label="Découvrir les métiers et compétences">
+  <div className={styles.heading}><div><p className={styles.kicker}>ORIENTATION · ROME 4.0</p><h2>Découvrir les métiers</h2><p>Comprendre les missions, les compétences et les voies d’accès aux métiers avec le référentiel officiel France Travail.</p></div>
+   <span className={styles.source}>Référentiel ROME 4.0</span>
+  </div>
+  <div className={styles.careerGrid}>{careers.map(x=><a href={"/emploi/metiers/"+x.code} key={x.code} className={styles.careerCard}>
+   <span className={styles.careerSymbol}>{x.icon}</span><span><strong>{x.name}</strong><small>Code ROME {x.code} · Consulter la fiche</small></span><span aria-hidden>↗</span>
+  </a>)}</div>
+  <p className={styles.notice}>Référentiel France Travail sous Licence Ouverte. Les fiches de métiers ne sont pas des offres d'emploi.</p>
  </section>
 }
