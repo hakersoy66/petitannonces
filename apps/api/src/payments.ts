@@ -12,6 +12,7 @@ import { MARKETPLACE_COMMISSION_RATE_BPS, marketplaceQuote, type CommissionPayer
 import { capturePayPalOrder, createPayPalCheckout, getPayPalOrder, paypalCaptureFromOrder, refundPayPalCapture } from "./paypal-checkout.js";
 import { deliverUserEvent } from "./notification-delivery.js";
 import { expireAcceptedOfferPaymentWindows } from "./offer-lifecycle.js";
+import { isSupplierListing, submitSupplierFulfillment, supplierPaymentPreflight } from "./supplier-fulfillment.js";
 
 const SESSION_COOKIE = "pa_session";
 
@@ -175,6 +176,10 @@ export async function registerPaymentRoutes(app: FastifyInstance) {
     if (!shippingQuote) return reply.code(400).send({ error: "invalid_or_expired_shipping_quote" });
     const listing = await prisma.listing.findFirst({ where: { id: parsed.data.listingId, status: "PUBLISHED" } });
     if (!listing || listing.priceMinor == null) return reply.code(404).send({ error: "listing_not_available" });
+    if(shippingQuote.listingId&&shippingQuote.listingId!==listing.id)return reply.code(409).send({error:"shipping_quote_listing_mismatch"});
+    const supplierListing=await isSupplierListing(listing.id);
+    if(supplierListing&&shippingQuote.provider!=="CJ")return reply.code(409).send({error:"supplier_shipping_quote_required"});
+    if(!supplierListing&&shippingQuote.provider==="CJ")return reply.code(409).send({error:"invalid_supplier_shipping_quote"});
     if (listing.priceMinor <= 0) return reply.code(409).send({ error: "payment_not_available_for_free_listing" });
     if (listing.sellerId === user.id) return reply.code(400).send({ error: "cannot_buy_own_listing" });
     const sellerReadiness=await getSellerPayoutReadiness(listing.sellerId);
@@ -198,13 +203,18 @@ export async function registerPaymentRoutes(app: FastifyInstance) {
         const locked=await tx.$queryRawUnsafe<Array<{id:string;status:string}>>(`SELECT "id","status"::text AS "status" FROM "Listing" WHERE "id"=$1 FOR UPDATE`,listing.id);
         if(!locked[0]||locked[0].status!=="PUBLISHED")throw new Error("listing_not_available");
         if(parsed.data.offerId){const offerLocked=await tx.$queryRawUnsafe<Array<{id:string}>>(`SELECT o."id" FROM "Offer" o JOIN "Conversation" c ON c."id"=o."conversationId" WHERE o."id"=$1 AND o."listingId"=$2 AND o."status"='ACCEPTED' AND o."expiresAt">CURRENT_TIMESTAMP AND c."buyerId"=$3 AND c."sellerId"=$4 FOR UPDATE`,parsed.data.offerId,listing.id,user.id,listing.sellerId);if(!offerLocked[0])throw new Error("accepted_offer_expired");}
-        const active=await tx.$queryRawUnsafe<Array<{id:string;buyerId:string;status:string;createdAt:Date}>>(`SELECT "id","buyerId","status"::text AS "status","createdAt" FROM "MarketplaceOrder" WHERE "listingId"=$1 AND "status" IN ('PENDING_PAYMENT','PAID','PROCESSING','SHIPPED','DELIVERED','COMPLETED','DISPUTED') ORDER BY "createdAt" DESC FOR UPDATE`,listing.id);
-        const blocking=active.find(o=>o.status!=="PENDING_PAYMENT"||(Date.now()-new Date(o.createdAt).getTime())<30*60*1000);
-        if(blocking&&blocking.status!=="PENDING_PAYMENT")throw new Error(`listing_order_in_progress:${blocking.id}`);
-        if(blocking&&blocking.buyerId!==user.id)throw new Error("listing_temporarily_reserved");
-        const staleOrOwnPending=active.filter(o=>o.status==="PENDING_PAYMENT"&&(!blocking||o.id!==blocking.id||o.buyerId===user.id));
-        for(const old of staleOrOwnPending){await tx.$executeRawUnsafe(`UPDATE "MarketplaceOrder" SET "status"='CANCELED',"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$1 AND "status"='PENDING_PAYMENT'`,old.id);await tx.$executeRawUnsafe(`UPDATE "MarketplacePayment" SET "status"='CANCELED',"updatedAt"=CURRENT_TIMESTAMP WHERE "orderId"=$1 AND "status" IN ('CREATED','REQUIRES_ACTION','AUTHORIZED')`,old.id);}
-        if(blocking&&blocking.status==="PENDING_PAYMENT"&&blocking.buyerId===user.id){await tx.$executeRawUnsafe(`UPDATE "MarketplaceOrder" SET "status"='CANCELED',"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$1`,blocking.id);await tx.$executeRawUnsafe(`UPDATE "MarketplacePayment" SET "status"='CANCELED',"updatedAt"=CURRENT_TIMESTAMP WHERE "orderId"=$1 AND "status" IN ('CREATED','REQUIRES_ACTION','AUTHORIZED')`,blocking.id);}
+        if(supplierListing){
+          const ownPending=await tx.$queryRawUnsafe<Array<{id:string}>>(`SELECT "id" FROM "MarketplaceOrder" WHERE "listingId"=$1 AND "buyerId"=$2 AND "status"='PENDING_PAYMENT' FOR UPDATE`,listing.id,user.id);
+          for(const old of ownPending){await tx.$executeRawUnsafe(`UPDATE "MarketplaceOrder" SET "status"='CANCELED',"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$1`,old.id);await tx.$executeRawUnsafe(`UPDATE "MarketplacePayment" SET "status"='CANCELED',"updatedAt"=CURRENT_TIMESTAMP WHERE "orderId"=$1 AND "status" IN ('CREATED','REQUIRES_ACTION','AUTHORIZED')`,old.id);}
+        }else{
+          const active=await tx.$queryRawUnsafe<Array<{id:string;buyerId:string;status:string;createdAt:Date}>>(`SELECT "id","buyerId","status"::text AS "status","createdAt" FROM "MarketplaceOrder" WHERE "listingId"=$1 AND "status" IN ('PENDING_PAYMENT','PAID','PROCESSING','SHIPPED','DELIVERED','COMPLETED','DISPUTED') ORDER BY "createdAt" DESC FOR UPDATE`,listing.id);
+          const blocking=active.find(o=>o.status!=="PENDING_PAYMENT"||(Date.now()-new Date(o.createdAt).getTime())<30*60*1000);
+          if(blocking&&blocking.status!=="PENDING_PAYMENT")throw new Error(`listing_order_in_progress:${blocking.id}`);
+          if(blocking&&blocking.buyerId!==user.id)throw new Error("listing_temporarily_reserved");
+          const staleOrOwnPending=active.filter(o=>o.status==="PENDING_PAYMENT"&&(!blocking||o.id!==blocking.id||o.buyerId===user.id));
+          for(const old of staleOrOwnPending){await tx.$executeRawUnsafe(`UPDATE "MarketplaceOrder" SET "status"='CANCELED',"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$1 AND "status"='PENDING_PAYMENT'`,old.id);await tx.$executeRawUnsafe(`UPDATE "MarketplacePayment" SET "status"='CANCELED',"updatedAt"=CURRENT_TIMESTAMP WHERE "orderId"=$1 AND "status" IN ('CREATED','REQUIRES_ACTION','AUTHORIZED')`,old.id);}
+          if(blocking&&blocking.status==="PENDING_PAYMENT"&&blocking.buyerId===user.id){await tx.$executeRawUnsafe(`UPDATE "MarketplaceOrder" SET "status"='CANCELED',"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$1`,blocking.id);await tx.$executeRawUnsafe(`UPDATE "MarketplacePayment" SET "status"='CANCELED',"updatedAt"=CURRENT_TIMESTAMP WHERE "orderId"=$1 AND "status" IN ('CREATED','REQUIRES_ACTION','AUTHORIZED')`,blocking.id);}
+        }
         await tx.$executeRawUnsafe(`INSERT INTO "MarketplaceOrder" ("id","orderNumber","listingId","offerId","buyerId","sellerId","currency","itemAmountMinor","shippingAmountMinor","buyerProtectionFeeMinor","platformCommissionMinor","sellerNetMinor","totalAmountMinor","commissionPayer","commissionRateBps","status","idempotencyKey") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'PENDING_PAYMENT',$16)`, orderId, orderNumber, listing.id, parsed.data.offerId ?? null, user.id, listing.sellerId, listing.currency, totals.itemAmountMinor, totals.shippingAmountMinor, totals.buyerProtectionFeeMinor, totals.platformCommissionMinor, totals.sellerNetMinor, totals.totalAmountMinor, totals.commissionPayer, totals.commissionRateBps, parsed.data.idempotencyKey);
       });
       const commerceRisk=await snapshotOrderCommerceRisk(orderId).catch(()=>null);
@@ -229,6 +239,7 @@ export async function registerPaymentRoutes(app: FastifyInstance) {
     const order=rows[0];if(!order)return reply.code(404).send({error:"order_not_found"});if(order.buyerId!==user.id)return reply.code(403).send({error:"buyer_only"});if(order.offerId){await expireAcceptedOfferPaymentWindows({offerId:order.offerId});const validOffer=await prisma.offer.findFirst({where:{id:order.offerId,listingId:order.listingId,status:"ACCEPTED",expiresAt:{gt:new Date()},conversation:{buyerId:user.id,sellerId:order.sellerId}},select:{id:true}});if(!validOffer)return reply.code(409).send({error:"accepted_offer_expired"});}if(order.status!=="PENDING_PAYMENT")return reply.code(409).send({error:"order_not_awaiting_payment"});
     const riskGate=await commercePaymentGate(order.id);if(!riskGate.allowed)return reply.code(riskGate.error==="commerce_review_rejected"?403:409).send({error:riskGate.error,reviewRequired:riskGate.error==="commerce_review_required",risk:riskGate.risk?{score:riskGate.risk.orderRiskScore,paymentGate:riskGate.risk.paymentGate}:null});
     const readiness=await getSellerPayoutReadiness(order.sellerId);if(!readiness.providerOperational)return reply.code(409).send({error:"payment_provider_not_ready"});
+    try{await supplierPaymentPreflight(order.listingId,"FR")}catch(error){const code=error instanceof Error?error.message:"supplier_preflight_failed";if(["supplier_balance_insufficient","supplier_out_of_stock","supplier_margin_guard","cj_variant_price_unavailable","cj_no_acceptable_shipping"].includes(code))return reply.code(409).send({error:code});request.log.error({error,orderId:order.id},"supplier payment preflight failed");return reply.code(502).send({error:"supplier_preflight_unavailable"});}
     const active=await prisma.$queryRawUnsafe<Array<{id:string;status:string}>>(`SELECT "id","status"::text AS "status" FROM "MarketplacePayment" WHERE "orderId"=$1 AND "status" IN ('CREATED','REQUIRES_ACTION','AUTHORIZED','CAPTURED') ORDER BY "createdAt" DESC LIMIT 1`,order.id);if(active[0])return reply.code(409).send({error:"payment_session_already_created"});
     const key=body.data.idempotencyKey??`resume-${order.id}-${Date.now()}`;
     const native=body.data.client==="NATIVE";
@@ -288,7 +299,7 @@ export async function registerPaymentRoutes(app: FastifyInstance) {
         captured=true;
         await tx.$executeRawUnsafe(`UPDATE "MarketplaceOrder" SET "status"='PAID',"paidAt"=COALESCE("paidAt",CURRENT_TIMESTAMP),"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$1`,order.id);
         await tx.$executeRawUnsafe(`UPDATE "MarketplacePayment" SET "status"='CAPTURED',"providerPaymentId"=$2,"capturedAt"=COALESCE("capturedAt",CURRENT_TIMESTAMP),"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$1`,paymentLocked[0].id,capture.id);
-        await tx.$executeRawUnsafe(`UPDATE "Listing" SET "status"='SOLD',"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$1 AND "status"='PUBLISHED'`,order.listingId);
+        await tx.$executeRawUnsafe(`UPDATE "Listing" SET "status"='SOLD',"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$1 AND "status"='PUBLISHED' AND NOT EXISTS(SELECT 1 FROM "SupplierCatalogProduct" sp WHERE sp."publishedListingId"=$1 AND sp."status"='LIVE')`,order.listingId);
       }else{
         refundLate=true;
         await tx.$executeRawUnsafe(`UPDATE "MarketplacePayment" SET "status"='CAPTURED',"providerPaymentId"=$2,"capturedAt"=COALESCE("capturedAt",CURRENT_TIMESTAMP),"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$1`,paymentLocked[0].id,capture.id);
@@ -321,6 +332,7 @@ export async function registerPaymentRoutes(app: FastifyInstance) {
         deliverUserEvent({userId:order.buyerId,eventKind:"LISTING",notificationKind:"SYSTEM",title:"Paiement PayPal confirmé",body:`Le paiement de la commande ${order.orderNumber} est confirmé. Le vendeur peut préparer l’envoi.`,actionUrl,transactional:true,dedupeKey:`paypal-paid:${order.id}:buyer`,metadata:{orderId:order.id,orderStatus:"PAID",paymentProvider:"paypal"}}),
         deliverUserEvent({userId:order.sellerId,eventKind:"LISTING",notificationKind:"SYSTEM",title:"Nouvelle vente",body:`La commande ${order.orderNumber} a été payée avec PayPal. Vous pouvez préparer l’envoi.`,actionUrl,transactional:true,dedupeKey:`paypal-paid:${order.id}:seller`,metadata:{orderId:order.id,orderStatus:"PAID",paymentProvider:"paypal"}}),
       ]).catch(()=>undefined);
+      if(await isSupplierListing(order.listingId))void submitSupplierFulfillment(order.id).catch(error=>request.log.error({error,orderId:order.id},"supplier fulfillment after PayPal payment failed"));
     }
     return reply.send({ok:true,order:{id:order.id,status:"PAID"},captureId:capture.id});
   });

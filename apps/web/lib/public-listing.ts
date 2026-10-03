@@ -27,6 +27,7 @@ export type PublicListingDetail = {
   energy: Record<string, unknown> | null;
   productSafety: { manufacturerName:string|null; manufacturerPostalAddress:string|null; manufacturerEmail:string|null; responsiblePersonName:string|null; responsiblePersonPostalAddress:string|null; responsiblePersonEmail:string|null; productIdentifier:string|null; model:string|null; ean:string|null; ceMarked:boolean|null; safetyWarning:string|null } | null;
   consumerDisclosure: { sellerIsTrader:boolean; withdrawalRightApplies:boolean|null; withdrawalPeriodDays:number|null; withdrawalExceptionCode:string|null } | null;
+  supplierProduct: { provider:string; fulfillmentMode:string; deliveryDaysMin:number|null; deliveryDaysMax:number|null; stockStatus:string; status:string } | null;
   commerce: { acceptsOffers: boolean; securePaymentEnabled: boolean; handDeliveryEnabled:boolean; mondialRelayEnabled:boolean; colissimoEnabled:boolean; shippingEnabled: boolean };
   promotions: Array<{ id:string; code:string; type:string; name:string; startsAt:string|null; endsAt:string|null }>;
   priceHistory: Array<{ oldPriceMinor:number; newPriceMinor:number; currency:string; changedAt:string }>;

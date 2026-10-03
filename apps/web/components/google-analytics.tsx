@@ -10,6 +10,7 @@ declare global {
   interface Window {
     dataLayer?: unknown[];
     gtag?: (...args: unknown[]) => void;
+    __paGtagJsInitialized?: boolean;
     __paGaInitialized?: Record<string, boolean>;
   }
 }
@@ -20,10 +21,11 @@ function analyticsAllowed(){
 
 function ensureGtag(measurementId:string){
   window.dataLayer=window.dataLayer??[];
-  window.gtag=window.gtag??function(...args:unknown[]){window.dataLayer!.push(args)};
+  window.gtag=window.gtag??function(..._args:unknown[]){window.dataLayer!.push(arguments)};
   window.__paGaInitialized=window.__paGaInitialized??{};
+  if(!window.__paGtagJsInitialized){window.gtag("js",new Date());window.__paGtagJsInitialized=true}
   window.gtag("consent","update",{analytics_storage:"granted"});
-  if(!document.querySelector(`script[data-pa-ga="${measurementId}"]`)){
+  if(!document.querySelector("script[data-pa-ga]")&&!document.querySelector("script[data-pa-google-ads]")){
     const script=document.createElement("script");
     script.async=true;
     script.src=`https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(measurementId)}`;
@@ -31,7 +33,6 @@ function ensureGtag(measurementId:string){
     document.head.appendChild(script);
   }
   if(!window.__paGaInitialized[measurementId]){
-    window.gtag("js",new Date());
     window.gtag("config",measurementId,{send_page_view:false});
     window.__paGaInitialized[measurementId]=true;
   }

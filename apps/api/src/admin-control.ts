@@ -9,7 +9,7 @@ import sharp from "sharp";
 import { requireAdminRoles } from "./rbac.js";
 import { createPresignedUpload, makeStoredObjectPublic, publicObjectUrl, readStoredObjectBuffer, readStoredObjectText, storageConfigured, uploadStoredObject, verifyStoredObject } from "./storage.js";
 
-export type IntegrationProvider = "marketplace-payment" | "paypal-checkout" | "stripe-billing" | "sendcloud" | "hostinger-mail" | "twilio-verify" | "openai" | "vehicle-data" | "web-extraction" | "meta-ads" | "google-ads" | "hbx-hotels";
+export type IntegrationProvider = "marketplace-payment" | "paypal-checkout" | "stripe-billing" | "sendcloud" | "hostinger-mail" | "twilio-verify" | "openai" | "vehicle-data" | "web-extraction" | "meta-ads" | "google-ads" | "hbx-hotels" | "cj-dropshipping";
 export type RuntimeIntegration = { enabled: boolean; config: Record<string, unknown>; secrets: Record<string, string> };
 
 const execFileAsync=promisify(execFile);
@@ -19,7 +19,7 @@ const INTEGRATION_ADMIN = ["SUPER_ADMIN", "ADMIN"] as const;
 const MAX_BRANDING_BYTES = 5 * 1024 * 1024;
 const BRAND_MIMES = new Set(["image/jpeg", "image/png", "image/webp", "image/avif", "image/x-icon", "image/vnd.microsoft.icon", "image/svg+xml"]);
 const RASTER_BRAND_MIMES = new Set(["image/jpeg", "image/png", "image/webp", "image/avif", "image/x-icon", "image/vnd.microsoft.icon"]);
-const PROVIDERS: IntegrationProvider[] = ["marketplace-payment", "paypal-checkout", "stripe-billing", "sendcloud", "hostinger-mail", "twilio-verify", "openai", "vehicle-data", "web-extraction", "meta-ads", "google-ads", "hbx-hotels"];
+const PROVIDERS: IntegrationProvider[] = ["marketplace-payment", "paypal-checkout", "stripe-billing", "sendcloud", "hostinger-mail", "twilio-verify", "openai", "vehicle-data", "web-extraction", "meta-ads", "google-ads", "hbx-hotels", "cj-dropshipping"];
 
 const DEFAULT_SITE = {
   siteName: "Petit Annonces",
@@ -111,7 +111,7 @@ const siteSchema = z.object({
   })).length(6).refine(items=>new Set(items.map(item=>item.key)).size===6,{message:"duplicate_home_section"}),
 });
 
-const providerSchema = z.enum(["marketplace-payment", "paypal-checkout", "stripe-billing", "sendcloud", "hostinger-mail", "twilio-verify", "openai", "vehicle-data", "web-extraction", "meta-ads", "google-ads", "hbx-hotels"]);
+const providerSchema = z.enum(["marketplace-payment", "paypal-checkout", "stripe-billing", "sendcloud", "hostinger-mail", "twilio-verify", "openai", "vehicle-data", "web-extraction", "meta-ads", "google-ads", "hbx-hotels", "cj-dropshipping"]);
 const updateIntegrationSchema = z.object({
   enabled: z.boolean(),
   config: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).default({}),

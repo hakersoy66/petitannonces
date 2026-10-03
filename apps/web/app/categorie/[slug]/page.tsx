@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { CatalogFilterPanel } from "../../../components/catalog-filter-panel";
 import { AppIcon } from "../../../components/app-icon";
 import { MarketplaceListingCard } from "../../../components/marketplace-listing-card";
+import { PremiumCategoryIntro } from "../../../components/premium-category-intro";
 import { arrangePromotedFlow, type ListingPromotion } from "../../../lib/listing-promotions";
 import styles from "./page.module.css";
 
@@ -86,6 +87,8 @@ export default async function CategoryLandingPage({params,searchParams}:Props){
  const seo=categorySeo(category.slug,category.name,fallback?.description??category.description);
  const requestedPage=Math.max(1,Number.parseInt(String(query.page??"1"),10)||1);
  const trail=findTrail(slug,tree)??[{name:category.name,slug:category.slug}];const root=tree.find(item=>item.slug===trail[0]?.slug);const children=category.children??[];const productLongtailLinks=PRODUCT_LONGTAIL_LINKS[category.slug]??[];const guideLinks=GUIDE_LINKS[category.slug]??GUIDE_LINKS[trail[0]?.slug??""]??[{href:"/blog/rediger-annonce-efficace",label:"Rédiger une annonce efficace"},{href:"/blog/vendre-entre-particuliers",label:"Conseils entre particuliers"}];
+ const premium=category.domain==="REAL_ESTATE"||category.domain==="VEHICLE";
+ const relatedCards=children.length?children:(root?.children??[]);
  const [listings,cities,longtails,filters]=await Promise.all([categoryListings(category.slug,requestedPage),categoryCities(category.slug),longtailFacets(category.domain),liveFilterAttributes(category.slug)]);const totalPages=Math.max(1,Math.ceil(listings.total/PAGE_SIZE));const page=Math.min(requestedPage,totalPages);if(requestedPage!==page)redirect(pageHref(category.slug,page));const listingFlow=arrangePromotedFlow(listings.items);
  const start=listings.total?((page-1)*PAGE_SIZE)+1:0;const end=Math.min(page*PAGE_SIZE,listings.total);
  const canonical=`https://petitannonces.fr${pageHref(category.slug,page)}`;
@@ -93,10 +96,10 @@ export default async function CategoryLandingPage({params,searchParams}:Props){
  const itemListJsonLd={"@context":"https://schema.org","@type":"ItemList",name:`${category.name} - annonces`,url:canonical,numberOfItems:listings.total,itemListElement:listingFlow.filter(({item})=>Boolean(item.slug)).map(({item},index)=>({"@type":"ListItem",position:start+index,url:`https://petitannonces.fr/annonce/${item.slug}`,name:item.title??item.category.name}))};
  const collectionJsonLd={"@context":"https://schema.org","@type":"CollectionPage",name:SEO_H1[category.slug]??`${category.name} : petites annonces`,url:canonical,description:seo.description,mainEntity:itemListJsonLd};
  const pagination=Array.from({length:totalPages},(_,i)=>i+1).filter(n=>n===1||n===totalPages||Math.abs(n-page)<=2);
- return <div className={styles.page}><script type="application/ld+json" dangerouslySetInnerHTML={{__html:safeJsonLd(breadcrumbJsonLd)}}/><script type="application/ld+json" dangerouslySetInnerHTML={{__html:safeJsonLd(itemListJsonLd)}}/><script type="application/ld+json" dangerouslySetInnerHTML={{__html:safeJsonLd(collectionJsonLd)}}/><main className={styles.shell}>
+ return <div className={premium?[styles.page,styles.premiumPage].join(" "):styles.page}><script type="application/ld+json" dangerouslySetInnerHTML={{__html:safeJsonLd(breadcrumbJsonLd)}}/><script type="application/ld+json" dangerouslySetInnerHTML={{__html:safeJsonLd(itemListJsonLd)}}/><script type="application/ld+json" dangerouslySetInnerHTML={{__html:safeJsonLd(collectionJsonLd)}}/><main className={styles.shell}>
   <nav className={styles.breadcrumb} aria-label="Fil d’Ariane"><a href="/">Accueil</a>{trail.map((item,index)=><span key={item.slug}> › {index===trail.length-1?item.name:<a href={`/categorie/${item.slug}`}>{item.name}</a>}</span>)}</nav>
 
-  <section className={styles.hero}>
+  {premium?<PremiumCategoryIntro name={category.name} slug={category.slug} domain={category.domain} intro={seo.intro} total={listings.total} related={relatedCards}/>:<section className={styles.hero}>
    <div className={styles.heroCopy}><p className={styles.eyebrow}>{root?.icon??"•"} Catégorie</p><h1>{SEO_H1[category.slug]??category.name}</h1><p>{seo.intro}</p></div>
    <form action="/recherche" className={styles.search}>
     <input type="hidden" name="category" value={category.slug}/>
@@ -104,19 +107,19 @@ export default async function CategoryLandingPage({params,searchParams}:Props){
     <div className={styles.searchField}><AppIcon name="location"/><input name="city" placeholder="Ville ou code postal"/></div>
     <button type="submit"><AppIcon name="search"/>Rechercher</button>
    </form>
-  </section>
+  </section>}
 
-  {children.length>0&&<section className={styles.categoryRailWrap} aria-label="Sous-catégories"><div className={styles.categoryRailLabel}><span>Sous-catégories</span><small>{children.length} choix</small></div><div className={styles.categoryRail}>{children.map(child=><a key={child.slug} href={`/categorie/${child.slug}`}><span>{child.name}</span><AppIcon name="chevron-right"/></a>)}</div></section>}
+  {!premium&&children.length>0&&<section className={styles.categoryRailWrap} aria-label="Sous-catégories"><div className={styles.categoryRailLabel}><span>Sous-catégories</span><small>{children.length} choix</small></div><div className={styles.categoryRail}>{children.map(child=><a key={child.slug} href={`/categorie/${child.slug}`}><span>{child.name}</span><AppIcon name="chevron-right"/></a>)}</div></section>}
 
   {productLongtailLinks.length>0&&<section className={styles.categoryRailWrap} aria-label="Recherches populaires"><div className={styles.categoryRailLabel}><span>Recherches populaires</span><small>Occasion</small></div><div className={styles.categoryRail}>{productLongtailLinks.map(item=><a key={item.href} href={item.href}><span>{item.label}</span><AppIcon name="chevron-right"/></a>)}</div></section>}
 
-  {filters.length>0&&<section className={`${styles.section} ${styles.filterSection}`}><div className={styles.sectionHead}><div><span>Affiner</span><h2>Critères utiles</h2><p>Les filtres disponibles s’adaptent automatiquement à cette catégorie.</p></div><small>{filters.length} filtres</small></div><div className={styles.filtergrid}>{filters.map((filter,index)=><span key={`${filter.key}-${index}`}>{filter.label}{filter.unit?` · ${filter.unit}`:""}</span>)}</div></section>}
+  {!premium&&filters.length>0&&<section className={`${styles.section} ${styles.filterSection}`}><div className={styles.sectionHead}><div><span>Affiner</span><h2>Critères utiles</h2><p>Les filtres disponibles s’adaptent automatiquement à cette catégorie.</p></div><small>{filters.length} filtres</small></div><div className={styles.filtergrid}>{filters.map((filter,index)=><span key={`${filter.key}-${index}`}>{filter.label}{filter.unit?` · ${filter.unit}`:""}</span>)}</div></section>}
 
   <div className={styles.mobileFilterWrap}><CatalogFilterPanel category={category.slug} initialCategoryTree={tree} initialAttributes={filters}/></div>
 
   <div className={styles.catalogLayout}>
    <aside className={styles.desktopFilterWrap}><CatalogFilterPanel category={category.slug} initialCategoryTree={tree} initialAttributes={filters}/></aside>
-   <section className={`${styles.section} ${styles.listingSection}`}>
+   <section id="annonces" className={`${styles.section} ${styles.listingSection} ${premium?styles.premiumListingSection:""}`}>
    <div className={styles.listingHeader}><div><span className={styles.listingEyebrow}>Annonces</span><h2>{category.name}</h2><p>{listings.total?`${start}–${end} sur ${listings.total} annonces`:`Aucune annonce publiée pour le moment.`}</p></div><a className={styles.advancedSearch} href={`/recherche?category=${encodeURIComponent(category.slug)}`}><AppIcon name="list"/>Filtres & tri</a></div>
    {!listings.items.length?<div className={styles.emptyListings}>Aucune annonce publiée dans cette catégorie pour le moment.</div>:<div className={styles.listingGrid}>{listingFlow.map(({item})=><MarketplaceListingCard key={item.id} item={item}/>)}</div>}
    {totalPages>1&&<nav className={styles.pagination} aria-label="Pagination des annonces"><a className={page<=1?styles.disabled:""} aria-disabled={page<=1} href={pageHref(category.slug,Math.max(1,page-1))}>← Précédent</a><div>{pagination.map((n,index)=>{const prev=pagination[index-1];return <span key={n}>{prev&&n-prev>1&&<i>…</i>}<a className={n===page?styles.activePage:""} aria-current={n===page?"page":undefined} href={pageHref(category.slug,n)}>{n}</a></span>})}</div><a className={page>=totalPages?styles.disabled:""} aria-disabled={page>=totalPages} href={pageHref(category.slug,Math.min(totalPages,page+1))}>Suivant →</a></nav>}

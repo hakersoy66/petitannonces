@@ -12,7 +12,7 @@ const SEND_TO={
 
 type AdsEventName=keyof typeof SEND_TO;
 type AnalyticsDetail={name?:string;params?:Record<string,unknown>};
-declare global{interface Window{dataLayer?:unknown[];gtag?:(...args:unknown[])=>void;__paGoogleAdsInitialized?:boolean}}
+declare global{interface Window{dataLayer?:unknown[];gtag?:(...args:unknown[])=>void;__paGtagJsInitialized?:boolean;__paGoogleAdsInitialized?:boolean}}
 
 function advertisingAllowed(){
  try{return Boolean(JSON.parse(localStorage.getItem(CONSENT_KEY)||"null")?.advertising)}catch{return false}
@@ -20,7 +20,8 @@ function advertisingAllowed(){
 
 function ensureGtag(loadScript=false){
  window.dataLayer=window.dataLayer??[];
- window.gtag=window.gtag??function(...args:unknown[]){window.dataLayer!.push(args)};
+ window.gtag=window.gtag??function(..._args:unknown[]){window.dataLayer!.push(arguments)};
+ if(!window.__paGtagJsInitialized){window.gtag("js",new Date());window.__paGtagJsInitialized=true}
  if(loadScript&&!document.querySelector("script[data-pa-ga]")&&!document.querySelector("script[data-pa-google-ads]")){
   const script=document.createElement("script");
   script.async=true;script.src=`https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(ADS_ID)}`;

@@ -3,6 +3,7 @@ import { prisma } from "@pa/database";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { getRuntimeIntegration, getStripeBillingRuntime } from "./admin-control.js";
 import { deliverUserEvent } from "./notification-delivery.js";
+import { isSupplierListing, submitSupplierFulfillment } from "./supplier-fulfillment.js";
 
 const SESSION_COOKIE="pa_session";
 async function currentUser(request:FastifyRequest,reply:FastifyReply){const token=request.cookies[SESSION_COOKIE];if(!token){reply.code(401).send({error:"unauthorized"});return null}const {createHash}=await import("node:crypto");const tokenHash=createHash("sha256").update(token).digest("hex");const s=await prisma.session.findUnique({where:{tokenHash},include:{user:true}});if(!s||s.revokedAt||s.expiresAt<=new Date()||s.user.status!=="ACTIVE"){reply.code(401).send({error:"unauthorized"});return null}return s.user}
@@ -133,7 +134,7 @@ export async function handleMarketplaceStripeEvent(type:string,obj:any,eventId?:
     captured=true;
     await tx.$executeRawUnsafe(`UPDATE "MarketplaceOrder" SET "status"='PAID',"paidAt"=COALESCE("paidAt",CURRENT_TIMESTAMP),"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$1`,orderId);
     await tx.$executeRawUnsafe(`UPDATE "MarketplacePayment" SET "status"='CAPTURED',"providerPaymentId"=COALESCE("providerPaymentId",$2),"capturedAt"=COALESCE("capturedAt",CURRENT_TIMESTAMP),"updatedAt"=CURRENT_TIMESTAMP WHERE "orderId"=$1`,orderId,paymentIntent);
-    await tx.$executeRawUnsafe(`UPDATE "Listing" SET "status"='SOLD',"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$1 AND "status"='PUBLISHED'`,order.listingId);
+    await tx.$executeRawUnsafe(`UPDATE "Listing" SET "status"='SOLD',"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$1 AND "status"='PUBLISHED' AND NOT EXISTS(SELECT 1 FROM "SupplierCatalogProduct" sp WHERE sp."publishedListingId"=$1 AND sp."status"='LIVE')`,order.listingId);
   });
   if(refundLate&&paymentIntent){
     try{
@@ -146,7 +147,7 @@ export async function handleMarketplaceStripeEvent(type:string,obj:any,eventId?:
       });
     }catch{return true;}
   }
-  if(captured){const actionUrl=`/commandes/${order.id}`;await Promise.all([deliverUserEvent({userId:order.buyerId,eventKind:"LISTING",notificationKind:"SYSTEM",title:"Paiement confirmé",body:`Le paiement de la commande ${order.orderNumber} est confirmé. Le vendeur peut préparer l’envoi.`,actionUrl,transactional:true,dedupeKey:`payment-paid:${order.id}:buyer`,metadata:{orderId:order.id,orderStatus:"PAID",paymentProvider:"stripe"}}),deliverUserEvent({userId:order.sellerId,eventKind:"LISTING",notificationKind:"SYSTEM",title:"Nouvelle vente",body:`La commande ${order.orderNumber} a été payée. Vous pouvez préparer l’envoi.`,actionUrl,transactional:true,dedupeKey:`payment-paid:${order.id}:seller`,metadata:{orderId:order.id,orderStatus:"PAID",paymentProvider:"stripe"}})])}
+  if(captured){const actionUrl=`/commandes/${order.id}`;await Promise.all([deliverUserEvent({userId:order.buyerId,eventKind:"LISTING",notificationKind:"SYSTEM",title:"Paiement confirmé",body:`Le paiement de la commande ${order.orderNumber} est confirmé. Le vendeur peut préparer l’envoi.`,actionUrl,transactional:true,dedupeKey:`payment-paid:${order.id}:buyer`,metadata:{orderId:order.id,orderStatus:"PAID",paymentProvider:"stripe"}}),deliverUserEvent({userId:order.sellerId,eventKind:"LISTING",notificationKind:"SYSTEM",title:"Nouvelle vente",body:`La commande ${order.orderNumber} a été payée. Vous pouvez préparer l’envoi.`,actionUrl,transactional:true,dedupeKey:`payment-paid:${order.id}:seller`,metadata:{orderId:order.id,orderStatus:"PAID",paymentProvider:"stripe"}})]);if(await isSupplierListing(order.listingId))void submitSupplierFulfillment(order.id).catch(()=>undefined)}
   return true;
 }
 

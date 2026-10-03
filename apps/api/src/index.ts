@@ -67,6 +67,8 @@ import { registerPublicationRoutes } from "./publication.js";
 import { registerPublicListingRoutes } from "./public-listings.js";
 import { requireAdminRoles } from "./rbac.js";
 import { registerSearchRoutes } from "./search.js";
+import { ensureSupplierCatalogSchema, registerSupplierCatalogRoutes } from "./supplier-catalog.js";
+import { ensureSupplierFulfillmentSchema, startSupplierFulfillmentWorker } from "./supplier-fulfillment.js";
 import { registerSeoPublicRoutes } from "./seo-public.js";
 import { registerSiteAnalyticsRoutes } from "./site-analytics.js";
 import { registerMetaConversionRoutes } from "./meta-conversions.js";
@@ -162,6 +164,7 @@ await registerVacationStayOperationsRoutes(app);
 await registerVacationStayLifecycleRoutes(app);
 await registerVacationTaxRoutes(app);
 await registerSearchRoutes(app);
+await registerSupplierCatalogRoutes(app);
 await registerSeoPublicRoutes(app);
 await registerSiteAnalyticsRoutes(app);
 await registerMetaConversionRoutes(app);
@@ -213,6 +216,8 @@ try {
   await ensureVacationStayOperationsSchema();
   await ensureVacationStayLifecycleSchema();
   await ensureVacationTaxSchema();
+  await ensureSupplierCatalogSchema();
+  await ensureSupplierFulfillmentSchema();
   await app.listen({ port, host });
   startNotificationWorker(app.log);
   startCheckoutRecoveryWorker(app.log);
@@ -229,6 +234,7 @@ try {
   startVacationPreArrivalWorker(app.log);
   startHbxBookingReconciliationWorker(app.log);
   startHbxContentRefreshWorker(app.log);
+  startSupplierFulfillmentWorker(app.log);
 } catch (error) {
   app.log.error(error);
   process.exit(1);

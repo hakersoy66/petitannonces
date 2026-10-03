@@ -127,3 +127,16 @@
 .seoCtaPrimary{background:#5b4cf0;color:#fff;box-shadow:0 7px 18px rgba(91,76,240,.14)}
 .seoCtaSecondary{border:1px solid #ddd9ef;background:#fff;color:#5147b8}
 @media(max-width:800px){.seoCta{align-items:stretch;flex-direction:column;padding:18px;border-radius:18px}.seoCtaActions{width:100%;min-width:0}.seoCtaActions a{width:100%;box-sizing:border-box}.seoCta h2{font-size:19px}.seoCta p{font-size:12px}}
+
+/* Real estate and motor listings: premium Vacances-style results layout. */
+.premiumPage{overflow-x:clip;background:#f8f9fc}
+.premiumPage .shell{padding-top:13px}
+.premiumPage .breadcrumb{margin:0 0 13px 4px}
+.premiumPage .premiumListingSection{margin-top:20px;padding:23px;border:1px solid #e8e9ef;border-radius:22px;background:#fff}
+.premiumPage .premiumListingSection .listingHeader{margin-bottom:21px}
+.premiumPage .premiumListingSection .listingHeader h2{font-size:27px;letter-spacing:-.04em}
+.premiumPage .premiumListingSection .listingGrid{grid-template-columns:repeat(3,minmax(0,1fr));gap:17px}
+.premiumPage .desktopFilterWrap{position:sticky;top:100px;align-self:start}
+.premiumPage .catalogLayout{margin-top:16px}
+@media(max-width:1080px){.premiumPage .premiumListingSection .listingGrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:700px){.premiumPage .shell{padding-top:8px}.premiumPage .premiumListingSection{margin-top:9px;padding:11px!important;border:0;border-radius:0;box-shadow:none}.premiumPage .premiumListingSection .listingGrid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.premiumPage .premiumListingSection .listingHeader{margin-bottom:12px}.premiumPage .premiumListingSection .listingHeader h2{font-size:19px}}

@@ -1,7 +1,8 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 export type ShippingQuotePayload = {
-  provider: "SENDCLOUD";
+  provider: "SENDCLOUD" | "CJ";
+  listingId?: string;
   shippingOptionCode: string;
   carrierCode: string;
   carrierName: string;
@@ -13,6 +14,10 @@ export type ShippingQuotePayload = {
   weightG: number;
   recipientPostalCode: string;
   recipientCountryCode: string;
+  supplierOriginCountryCode?: string;
+  supplierVariantId?: string;
+  deliveryDaysMin?: number;
+  deliveryDaysMax?: number;
   expiresAt: number;
 };
 
@@ -41,7 +46,7 @@ export function verifyShippingQuote(token: string): ShippingQuotePayload | null 
   if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
   try {
     const payload = JSON.parse(decode(encoded)) as ShippingQuotePayload;
-    if (payload.provider !== "SENDCLOUD" || !payload.shippingOptionCode || !payload.carrierCode || !payload.serviceName) return null;
+    if (!["SENDCLOUD","CJ"].includes(payload.provider) || !payload.shippingOptionCode || !payload.carrierCode || !payload.serviceName) return null;
     if (!Number.isInteger(payload.amountMinor) || payload.amountMinor < 0 || !Number.isInteger(payload.weightG) || payload.weightG < 50) return null;
     if (payload.expiresAt <= Math.floor(Date.now() / 1000)) return null;
     return payload;

@@ -8,6 +8,7 @@ import { getSellerPayoutReadiness } from "./marketplace-payout-provider.js";
 import { marketplaceQuote, type CommissionPayer } from "./marketplace-fees.js";
 import { paypalCheckoutPublicConfig } from "./paypal-checkout.js";
 import { expireAcceptedOfferPaymentWindows } from "./offer-lifecycle.js";
+import { getSupplierProductForListing, supplierCheckoutShipping } from "./supplier-fulfillment.js";
 
 const SESSION_COOKIE = "pa_session";
 function sha256(value:string){return createHash("sha256").update(value).digest("hex");}
@@ -35,27 +36,54 @@ export async function registerCheckoutListingRoutes(app:FastifyInstance){
   if(query.data.offerId)await expireAcceptedOfferPaymentWindows({offerId:query.data.offerId});
   const loaded=await loadListing(params.data.id);if(!loaded)return reply.code(404).send({error:"listing_not_available"});
   const {listing,commerce}=loaded;
+  const supplierProduct=await getSupplierProductForListing(listing.id);
+  const supplierFulfilled=Boolean(supplierProduct);
   if(listing.sellerId===user.id)return reply.code(400).send({error:"cannot_buy_own_listing"});
   if(listing.priceMinor==null||listing.priceMinor<=0)return reply.code(409).send({error:"payment_not_available_for_free_listing"});
   const shippable=!["VEHICLE","REAL_ESTATE","JOB","SERVICE"].includes(listing.category.domain);
-  if(!commerce?.securePaymentEnabled||!shippable||(!commerce.mondialRelayEnabled&&!commerce.colissimoEnabled))return reply.code(409).send({error:"shipping_checkout_unavailable"});
-  if(!commerce.packageWeightG)return reply.code(409).send({error:"package_information_missing"});
+  if(!commerce?.securePaymentEnabled||!shippable||(!supplierFulfilled&&!commerce.mondialRelayEnabled&&!commerce.colissimoEnabled))return reply.code(409).send({error:"shipping_checkout_unavailable"});
+  if(!supplierFulfilled&&!commerce.packageWeightG)return reply.code(409).send({error:"package_information_missing"});
   const paymentStatePromise=sellerCheckoutState(listing.sellerId);
-  const originPromise=sellerAddress(listing.sellerId);
+  const originPromise=supplierFulfilled?Promise.resolve(null):sellerAddress(listing.sellerId);
   const buyerAddressesPromise=prisma.address.findMany({where:{userId:user.id,type:{in:["SHIPPING","HOME"]}},orderBy:[{isDefault:"desc"},{createdAt:"asc"}],take:10});
   const coverPromise=prisma.$queryRawUnsafe<Array<{publicUrl:string}>>(`SELECT "publicUrl" FROM "ListingMedia" WHERE "listingId"=$1 AND "status"='READY' AND "publicUrl" IS NOT NULL ORDER BY "isCover" DESC,"sortOrder" ASC LIMIT 1`,listing.id);
   const acceptedPromise=query.data.offerId?prisma.offer.findFirst({where:{id:query.data.offerId,listingId:listing.id,status:"ACCEPTED",expiresAt:{gt:new Date()},conversation:{buyerId:user.id,sellerId:listing.sellerId}},select:{amountMinor:true,expiresAt:true}}):Promise.resolve(null);
   const paypalPromise=paypalCheckoutPublicConfig();
   const [paymentState,origin,buyerAddresses,cover,accepted,paypal]=await Promise.all([paymentStatePromise,originPromise,buyerAddressesPromise,coverPromise,acceptedPromise,paypalPromise]);
   if(!paymentState.allowed)return reply.code(409).send({error:"payment_provider_not_ready",reason:paymentState.reason});
-  if(!origin)return reply.code(409).send({error:"seller_shipping_address_missing"});
+  if(!supplierFulfilled&&!origin)return reply.code(409).send({error:"seller_shipping_address_missing"});
   if(query.data.offerId&&!accepted)return reply.code(400).send({error:"accepted_offer_not_found"});
   const buyerAddress=buyerAddresses[0]??null;
   const purchasePriceMinor=accepted?.amountMinor??listing.priceMinor;
   const commissionPayer:CommissionPayer=commerce.commissionPayer==="BUYER"?"BUYER":"SELLER";
   const pricing=marketplaceQuote(purchasePriceMinor,0,commissionPayer);
-  return reply.send({paymentDeferred:paymentState.deferred,paymentAvailabilityReason:paymentState.reason,paymentMethods:{card:true,paypal:paypal.enabled,paypalMode:paypal.mode,payLater4x:paypal.enabled&&listing.currency.toUpperCase()==="EUR"&&purchasePriceMinor>=2000&&purchasePriceMinor<=300000},pricing:{commissionPayer:pricing.commissionPayer,commissionRateBps:pricing.commissionRateBps,buyerServiceFeeMinor:pricing.buyerServiceFeeMinor,sellerNetMinor:pricing.sellerNetMinor},listing:{id:listing.id,title:listing.title,priceMinor:purchasePriceMinor,originalPriceMinor:listing.priceMinor,currency:listing.currency,coverUrl:cover[0]?.publicUrl??null,offerApplied:Boolean(query.data.offerId),offerId:query.data.offerId??null,offerExpiresAt:accepted?.expiresAt?.toISOString()??null},package:{weightG:commerce.packageWeightG,lengthCm:commerce.packageLengthCm,widthCm:commerce.packageWidthCm,heightCm:commerce.packageHeightCm},buyer:{name:buyerAddress?.recipient??user.profile?.displayName??user.profile?.firstName??"",email:user.email,phone:user.profile?.phone??"",address1:buyerAddress?.line1??"",address2:buyerAddress?.line2??"",postalCode:buyerAddress?.postalCode??"",city:buyerAddress?.city??"",countryCode:buyerAddress?.countryCode??"FR"},addresses:buyerAddresses.map(a=>({id:a.id,label:a.label,recipient:a.recipient,line1:a.line1,line2:a.line2,postalCode:a.postalCode,city:a.city,countryCode:a.countryCode,isDefault:a.isDefault})),origin:{postalCode:origin.postalCode,city:origin.city,countryCode:origin.countryCode}});
+  return reply.send({supplierFulfilled,paymentDeferred:paymentState.deferred,paymentAvailabilityReason:paymentState.reason,paymentMethods:{card:true,paypal:paypal.enabled,paypalMode:paypal.mode,payLater4x:paypal.enabled&&listing.currency.toUpperCase()==="EUR"&&purchasePriceMinor>=2000&&purchasePriceMinor<=300000},pricing:{commissionPayer:pricing.commissionPayer,commissionRateBps:pricing.commissionRateBps,buyerServiceFeeMinor:pricing.buyerServiceFeeMinor,sellerNetMinor:pricing.sellerNetMinor},listing:{id:listing.id,title:listing.title,priceMinor:purchasePriceMinor,originalPriceMinor:listing.priceMinor,currency:listing.currency,coverUrl:cover[0]?.publicUrl??null,offerApplied:Boolean(query.data.offerId),offerId:query.data.offerId??null,offerExpiresAt:accepted?.expiresAt?.toISOString()??null},package:{weightG:supplierFulfilled?100:commerce.packageWeightG!,lengthCm:supplierFulfilled?null:commerce.packageLengthCm,widthCm:supplierFulfilled?null:commerce.packageWidthCm,heightCm:supplierFulfilled?null:commerce.packageHeightCm},buyer:{name:buyerAddress?.recipient??user.profile?.displayName??user.profile?.firstName??"",email:user.email,phone:user.profile?.phone??"",address1:buyerAddress?.line1??"",address2:buyerAddress?.line2??"",postalCode:buyerAddress?.postalCode??"",city:buyerAddress?.city??"",countryCode:buyerAddress?.countryCode??"FR"},addresses:buyerAddresses.map(a=>({id:a.id,label:a.label,recipient:a.recipient,line1:a.line1,line2:a.line2,postalCode:a.postalCode,city:a.city,countryCode:a.countryCode,isDefault:a.isDefault})),origin:supplierFulfilled?{postalCode:"",city:"Partenaire logistique",countryCode:supplierProduct?.warehouseCountryCode??"CN"}:{postalCode:origin!.postalCode,city:origin!.city,countryCode:origin!.countryCode}});
  });
 
- app.post("/checkout/shipping-options",async(request,reply)=>{const user=await requireUser(request,reply);if(!user)return;const body=z.object({listingId:z.string().min(1),recipient:recipientSchema}).safeParse(request.body);if(!body.success)return reply.code(400).send({error:"invalid_request",details:body.error.flatten()});const loaded=await loadListing(body.data.listingId);if(!loaded)return reply.code(404).send({error:"listing_not_available"});const {listing,commerce}=loaded;if(listing.sellerId===user.id)return reply.code(400).send({error:"cannot_buy_own_listing"});if(!commerce?.securePaymentEnabled||!commerce.packageWeightG)return reply.code(409).send({error:"shipping_checkout_unavailable"});const [paymentState,origin]=await Promise.all([sellerCheckoutState(listing.sellerId),sellerAddress(listing.sellerId)]);if(!paymentState.allowed)return reply.code(409).send({error:"payment_provider_not_ready",reason:paymentState.reason});if(!origin)return reply.code(409).send({error:"seller_shipping_address_missing"});try{const result=await getShippingOptions({weightG:commerce.packageWeightG,lengthCm:commerce.packageLengthCm??undefined,widthCm:commerce.packageWidthCm??undefined,heightCm:commerce.packageHeightCm??undefined,sender:{name:"Vendeur Petit Annonces",address1:origin.line1,address2:origin.line2??undefined,postalCode:origin.postalCode,city:origin.city,countryCode:origin.countryCode},recipient:{...body.data.recipient,countryCode:body.data.recipient.countryCode.toUpperCase()}});const options=result.options.map(item=>({...item,quoteToken:signShippingQuote({provider:"SENDCLOUD",shippingOptionCode:item.code,carrierCode:item.carrierCode||"sendcloud",carrierName:item.carrierName,serviceName:item.name,amountMinor:item.priceMinor,currency:item.currency||"EUR",servicePoint:item.servicePoint,contractId:item.contractId,weightG:commerce.packageWeightG!,recipientPostalCode:body.data.recipient.postalCode,recipientCountryCode:body.data.recipient.countryCode.toUpperCase()})}));return reply.send({provider:"SENDCLOUD",sandbox:result.sandbox,options});}catch(error){request.log.error(error);return reply.code(502).send({error:"shipping_options_unavailable"});}});
+ app.post("/checkout/shipping-options",async(request,reply)=>{
+  const user=await requireUser(request,reply);if(!user)return;
+  const body=z.object({listingId:z.string().min(1),recipient:recipientSchema}).safeParse(request.body);
+  if(!body.success)return reply.code(400).send({error:"invalid_request",details:body.error.flatten()});
+  const loaded=await loadListing(body.data.listingId);if(!loaded)return reply.code(404).send({error:"listing_not_available"});
+  const {listing,commerce}=loaded;if(listing.sellerId===user.id)return reply.code(400).send({error:"cannot_buy_own_listing"});
+  const supplierProduct=await getSupplierProductForListing(listing.id);
+  const paymentState=await sellerCheckoutState(listing.sellerId);
+  if(!paymentState.allowed)return reply.code(409).send({error:"payment_provider_not_ready",reason:paymentState.reason});
+  if(supplierProduct){
+    if(!commerce?.securePaymentEnabled)return reply.code(409).send({error:"shipping_checkout_unavailable"});
+    if(body.data.recipient.countryCode.toUpperCase()!=="FR")return reply.code(409).send({error:"supplier_delivery_france_only"});
+    try{
+      const item=await supplierCheckoutShipping(listing.id,"FR");if(!item)return reply.code(409).send({error:"supplier_shipping_unavailable"});
+      const quoteToken=signShippingQuote({provider:"CJ",listingId:listing.id,shippingOptionCode:item.shippingOptionCode,carrierCode:item.carrierCode,carrierName:item.carrierName,serviceName:item.serviceName,amountMinor:item.amountMinor,currency:item.currency,servicePoint:false,weightG:item.weightG,recipientPostalCode:body.data.recipient.postalCode,recipientCountryCode:"FR",supplierOriginCountryCode:item.originCountryCode,supplierVariantId:item.supplierVariantId,deliveryDaysMin:item.deliveryDaysMin,deliveryDaysMax:item.deliveryDaysMax});
+      return reply.send({provider:"CJ",sandbox:false,options:[{code:item.shippingOptionCode,name:item.serviceName,carrierCode:item.carrierCode,carrierName:item.carrierName,priceMinor:0,currency:"EUR",servicePoint:false,lastMile:"home",quoteToken}]});
+    }catch(error){request.log.error(error);const message=String((error as Error)?.message??error);if(message.includes("supplier_out_of_stock"))return reply.code(409).send({error:"supplier_out_of_stock"});if(message.includes("supplier_margin_guard"))return reply.code(409).send({error:"supplier_margin_guard"});if(message.includes("cj_variant_price_unavailable")||message.includes("cj_no_acceptable_shipping"))return reply.code(409).send({error:"supplier_shipping_unavailable"});return reply.code(502).send({error:"supplier_shipping_unavailable"});}
+  }
+  if(!commerce?.securePaymentEnabled||!commerce.packageWeightG)return reply.code(409).send({error:"shipping_checkout_unavailable"});
+  const origin=await sellerAddress(listing.sellerId);if(!origin)return reply.code(409).send({error:"seller_shipping_address_missing"});
+  try{
+    const result=await getShippingOptions({weightG:commerce.packageWeightG,lengthCm:commerce.packageLengthCm??undefined,widthCm:commerce.packageWidthCm??undefined,heightCm:commerce.packageHeightCm??undefined,sender:{name:"Vendeur Petit Annonces",address1:origin.line1,address2:origin.line2??undefined,postalCode:origin.postalCode,city:origin.city,countryCode:origin.countryCode},recipient:{...body.data.recipient,countryCode:body.data.recipient.countryCode.toUpperCase()}});
+    const options=result.options.map(item=>({...item,quoteToken:signShippingQuote({provider:"SENDCLOUD",listingId:listing.id,shippingOptionCode:item.code,carrierCode:item.carrierCode||"sendcloud",carrierName:item.carrierName,serviceName:item.name,amountMinor:item.priceMinor,currency:item.currency||"EUR",servicePoint:item.servicePoint,contractId:item.contractId,weightG:commerce.packageWeightG!,recipientPostalCode:body.data.recipient.postalCode,recipientCountryCode:body.data.recipient.countryCode.toUpperCase()})}));
+    return reply.send({provider:"SENDCLOUD",sandbox:result.sandbox,options});
+  }catch(error){request.log.error(error);return reply.code(502).send({error:"shipping_options_unavailable"});}
+ });
 }
