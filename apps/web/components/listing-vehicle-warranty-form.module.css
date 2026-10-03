@@ -14,3 +14,5 @@
 .extra small{font-size:11px;font-weight:500;color:#717083;line-height:1.4}.extra em{font-style:normal;color:#b42d39;font-size:12px}
 .note{display:flex;align-items:start;gap:8px;margin:0;color:#6b687d;font-size:11px;line-height:1.55}.note svg{margin-top:2px;flex:0 0 auto}
 @media(max-width:650px){.section{padding:14px;gap:13px}.two{grid-template-columns:1fr}.heading strong{font-size:15px}.legal{padding:12px}.fieldset legend{font-size:13px}}
+
+.importNotice{display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border:1px solid #dbd4fc;border-radius:12px;background:#f5f2ff;color:#3f3488}.importNotice>svg{margin-top:3px;flex:0 0 auto}.importNotice>div{display:grid;gap:4px}.importNotice strong{font-size:13px}.importNotice small{font-size:12px;color:#37334e;line-height:1.45;overflow-wrap:anywhere}.importNotice span{font-size:11px;color:#69617d;line-height:1.5}

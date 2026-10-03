@@ -11,9 +11,9 @@ export type VehicleWarrantyDraft={
 export const emptyVehicleWarranty:VehicleWarrantyDraft={
   commercialOffered:false,commercialMonths:"12",commercialCoverage:"",commercialProvider:"",
 };
-type Props={value:VehicleWarrantyDraft;onChange:(value:VehicleWarrantyDraft)=>void;showErrors?:boolean};
+type Props={value:VehicleWarrantyDraft;onChange:(value:VehicleWarrantyDraft)=>void;showErrors?:boolean;importedEvidence?:string|null};
 
-export function ListingVehicleWarrantyForm({value,onChange,showErrors=false}:Props){
+export function ListingVehicleWarrantyForm({value,onChange,showErrors=false,importedEvidence}:Props){
   const patch=(changes:Partial<VehicleWarrantyDraft>)=>onChange({...value,...changes});
   return <section className={styles.section} aria-labelledby="vehicle-warranty-heading">
     <div className={styles.heading}>
@@ -26,6 +26,7 @@ export function ListingVehicleWarrantyForm({value,onChange,showErrors=false}:Pro
       <p>La garantie légale de conformité et la garantie des vices cachés s’appliquent de plein droit, selon leurs conditions, aux achats d’un consommateur auprès d’un professionnel.</p>
       <small>* La conformité peut être invoquée pendant 2 ans après la délivrance. Sur un véhicule d’occasion, les défauts sont présumés antérieurs à la vente durant les 12 premiers mois.</small>
     </div>
+    {importedEvidence&&<div className={styles.importNotice}><AppIcon name="info"/><div><strong>Garantie détectée sur Leboncoin</strong><small>{importedEvidence}</small><span>Vérifiez la durée et la couverture avant de poursuivre. Si cette garantie n’est plus proposée, sélectionnez « Non ».</span></div></div>}
     <fieldset className={styles.fieldset}>
       <legend>Proposez-vous une garantie commerciale supplémentaire ?</legend>
       <label className={styles.radio}><input type="radio" name="vehicle-commercial-warranty" checked={!value.commercialOffered} onChange={()=>patch({commercialOffered:false})}/><span>Non, garanties légales uniquement</span></label>

@@ -10,6 +10,7 @@ import sharp from "sharp";
 import { requireListingUser } from "./listing-auth.js";
 import { getRuntimeIntegration } from "./admin-control.js";
 import { ensureImportLogTable, existingImport, importFingerprint, importHistory, recordImport } from "./import-log.js";
+import { detectLeboncoinVehicleWarranty } from "./vehicle-warranty-import.js";
 import { publicObjectUrl, storageConfigured, uploadStoredObject } from "./storage.js";
 import { evaluateListing } from "./publication.js";
 
@@ -404,7 +405,7 @@ function summarizeReader(markdown:string,url:string){
   const city=(markdown.match(/^\[([^\]]+)\]\(https?:\/\/www\.leboncoin\.fr\/ad\/[^)#]+#map\)/m)?.[1]??markdown.match(/(?:Localisation|Lieu)\s*[:\-]?\s*([^\n]{2,120})/i)?.[1]??"").replace(/\b\d{5}\b/g,"").trim()||null;
   const postalCode=(markdown.match(/(?:code postal|postal code)\s*[:\-]?\s*([0-9]{5})/i)?.[1]??markdown.match(/\b([0-9]{5})\b/)?.[1]??"").trim()||null;
   const imageUrls=readerListingImages(markdown,title);
-  return {sourceUrl:url,title,description,priceMinor,imageUrl:imageUrls[0]??null,imageUrls,city,postalCode,histovecUrl:extractHistovecShareUrl(markdown),source:"leboncoin-reader",sourceFields:{...readerSummaryFields(markdown),...readerKeyFields(markdown)}};
+  return {sourceUrl:url,title,description,priceMinor,imageUrl:imageUrls[0]??null,imageUrls,city,postalCode,histovecUrl:extractHistovecShareUrl(markdown),warrantyHint:detectLeboncoinVehicleWarranty(description,null,markdown),source:"leboncoin-reader",sourceFields:{...readerSummaryFields(markdown),...readerKeyFields(markdown)}};
 }
 function findLeboncoinAd(value:unknown):any|null{
   const stack:unknown[]=[value];let seen=0;let best:any|null=null;let bestScore=0;
@@ -473,7 +474,7 @@ function summarizeLeboncoinAdObject(ad:any,url:string,source="leboncoin-api"){
   const imageUrls=cleanLeboncoinImageUrls(imageCandidates.map(url=>({url})));
   const subject=String(ad?.subject??ad?.title??"").trim().slice(0,120)||null;const body=String(ad?.body??ad?.description??ad?.description_text??"").trim().slice(0,12000)||null;
   const city=normalizedCity||null;const postalCode=/^[0-9]{5}$/.test(normalizedPostal)?normalizedPostal:null;
-  return {sourceUrl:url,title:subject,description:body,priceMinor,imageUrl:imageUrls[0]??null,imageUrls,city,postalCode,histovecUrl:extractHistovecShareUrl(JSON.stringify(ad)),source,sourceFields:adStructuredFields(ad)};
+  return {sourceUrl:url,title:subject,description:body,priceMinor,imageUrl:imageUrls[0]??null,imageUrls,city,postalCode,histovecUrl:extractHistovecShareUrl(JSON.stringify(ad)),warrantyHint:detectLeboncoinVehicleWarranty(body,ad),source,sourceFields:adStructuredFields(ad)};
 }
 function summarize(html:string,url:string){
   const ad=nextDataAd(html);
@@ -492,7 +493,7 @@ function summarize(html:string,url:string){
   const image=isLeboncoinSource&&rawImage?normalizeLeboncoinImageUrl(rawImage):rawImage;
   const priceMinor=parsePrice(html);const location=parseLocation(html);
   const imageUrls=image?[image]:[];
-  return {sourceUrl:url,title:title||null,description:description||null,priceMinor,imageUrl:image||null,imageUrls,city:location.city,postalCode:location.postalCode,histovecUrl:extractHistovecShareUrl(html),source:"metadata"};
+  return {sourceUrl:url,title:title||null,description:description||null,priceMinor,imageUrl:image||null,imageUrls,city:location.city,postalCode:location.postalCode,histovecUrl:extractHistovecShareUrl(html),warrantyHint:isLeboncoinSource?detectLeboncoinVehicleWarranty(description):null,source:"metadata"};
 }
 
 
@@ -508,6 +509,7 @@ function mergeImportPreview(base:any|null,supplement:any|null){
     imageUrls,imageUrl:imageUrls[0]??base.imageUrl??supplement.imageUrl??null,
     city:base.city??supplement.city??null,postalCode:base.postalCode??supplement.postalCode??null,
     histovecUrl:base.histovecUrl??supplement.histovecUrl??null,
+    warrantyHint:(base.warrantyHint?.commercialCoverage?base.warrantyHint:supplement.warrantyHint?.commercialCoverage?supplement.warrantyHint:base.warrantyHint??supplement.warrantyHint??null),
     sourceFields:{...(supplement.sourceFields??{}),...(base.sourceFields??{})},manualRequired:false,
   };
 }
@@ -784,7 +786,9 @@ export async function registerListingImportRoutes(app:FastifyInstance){
         const imageUrls=Array.isArray(preview.imageUrls)?preview.imageUrls.filter((x:unknown):x is string=>typeof x==="string"&&Boolean(x)).slice(0,20):[];
         const imageUrl=(typeof preview.imageUrl==="string"&&preview.imageUrl)?preview.imageUrl:(imageUrls[0]??null);
         const suggestedCategorySlug=suggestCategorySlug(url,preview.title,preview.description);
-        return reply.send({preview:{...preview,imageUrl,imageUrls,suggestedCategorySlug,suggestionReason:categorySuggestionReason(suggestedCategorySlug,url,preview.title,preview.description),detectedFields:{...inferCommonImportedValues(preview.title,preview.description),...(preview.sourceFields??{})}},...extra});
+         const warrantyHint=isLeboncoin&&user.kind==="PROFESSIONNEL"
+           ?(preview.warrantyHint??detectLeboncoinVehicleWarranty(preview.description)):null;
+        return reply.send({preview:{...preview,imageUrl,imageUrls,suggestedCategorySlug,suggestionReason:categorySuggestionReason(suggestedCategorySlug,url,preview.title,preview.description),detectedFields:{...inferCommonImportedValues(preview.title,preview.description),...(preview.sourceFields??{})},warrantyHint},...extra});
       };
 
       if(isLeboncoin){
@@ -819,7 +823,7 @@ export async function registerListingImportRoutes(app:FastifyInstance){
   });
   app.post("/listing-import/create-draft",async(request,reply)=>{
     const user=await requireListingUser(request,reply);if(!user)return;
-    const body=z.object({categoryId:z.string().min(1),sourceUrl:z.string().url(),title:z.string().trim().min(5).max(120).nullable().optional(),description:z.string().trim().max(12000).nullable().optional(),priceMinor:z.number().int().nonnegative().nullable().optional(),city:z.string().trim().max(120).nullable().optional(),postalCode:z.string().trim().max(12).nullable().optional(),histovecUrl:z.string().url().nullable().optional(),imageUrls:z.array(z.string().url()).max(20).optional(),detectedFields:z.record(z.string(),z.union([z.string(),z.number(),z.boolean()])).optional(),rightsConfirmed:z.literal(true),allowSimilarDuplicate:z.boolean().optional().default(false)}).safeParse(request.body);
+    const body=z.object({categoryId:z.string().min(1),sourceUrl:z.string().url(),title:z.string().trim().min(5).max(120).nullable().optional(),description:z.string().trim().max(12000).nullable().optional(),priceMinor:z.number().int().nonnegative().nullable().optional(),city:z.string().trim().max(120).nullable().optional(),postalCode:z.string().trim().max(12).nullable().optional(),histovecUrl:z.string().url().nullable().optional(),imageUrls:z.array(z.string().url()).max(20).optional(),detectedFields:z.record(z.string(),z.union([z.string(),z.number(),z.boolean()])).optional(),warrantyHint:z.object({commercialMonths:z.number().int().min(1).max(60),commercialCoverage:z.string().trim().max(1000).nullable(),commercialProvider:z.string().trim().max(120).nullable(),evidence:z.string().trim().min(8).max(350)}).nullable().optional(),rightsConfirmed:z.literal(true),allowSimilarDuplicate:z.boolean().optional().default(false)}).safeParse(request.body);
     if(!body.success)return reply.code(400).send({error:"invalid_request"});
     const category=await prisma.category.findUnique({where:{id:body.data.categoryId}});if(!category||!category.isActive)return reply.code(404).send({error:"category_not_found"});
     const d=body.data;if(d.sourceUrl)try{await safeUrl(d.sourceUrl)}catch{return reply.code(400).send({error:"invalid_source_url"})}
@@ -862,6 +866,15 @@ export async function registerListingImportRoutes(app:FastifyInstance){
     const listing=await prisma.listing.create({data:{sellerId:user.id,categoryId:category.id,title:d.title||undefined,description:cleanDescription&&cleanDescription.length>=20?cleanDescription:undefined,priceMinor:d.priceMinor??undefined,city:effectiveCity||undefined,postalCode:effectivePostalCode||undefined,draftSavedAt:new Date()},include:{category:true}});
     const recorded=await recordImport(user.id,listing.id,sourceType,d.sourceUrl,fingerprint);
     if(!recorded){await prisma.listing.delete({where:{id:listing.id}}).catch(()=>undefined);const winner=await existingImport(user.id,fingerprint,d.sourceUrl);if(winner){const existing=await prisma.listing.findFirst({where:{id:winner.listingId,sellerId:user.id},select:{id:true,title:true,status:true}});if(existing)return reply.send({duplicate:true,duplicateKind:"exact",listing:existing,editUrl:`/deposer-une-annonce?listingId=${encodeURIComponent(existing.id)}`});}return reply.code(409).send({error:"import_conflict"});}
+    if(sourceType==="LEBONCOIN"&&category.domain==="VEHICLE"&&user.kind==="PROFESSIONNEL"&&d.warrantyHint){
+      const h=d.warrantyHint;
+      await prisma.$executeRawUnsafe(
+        `INSERT INTO "VehicleWarranty" ("listingId","commercialOffered","commercialMonths","commercialCoverage","commercialProvider","importMonths","importCoverage","importEvidence")
+        VALUES ($1,FALSE,NULL,NULL,NULL,$2,$3,$4) ON CONFLICT ("listingId")
+        DO UPDATE SET "importMonths"=EXCLUDED."importMonths","importCoverage"=EXCLUDED."importCoverage","importEvidence"=EXCLUDED."importEvidence","updatedAt"=NOW()`,
+        listing.id,h.commercialMonths,h.commercialCoverage||null,h.evidence,
+      );
+    }
     if(category.domain==="VEHICLE"&&histovecUrl){await ensureVehicleOfficialReportTable();await prisma.$executeRawUnsafe(`INSERT INTO "VehicleOfficialReport" ("listingId","histovecUrl","createdAt","updatedAt") VALUES ($1,$2,NOW(),NOW()) ON CONFLICT ("listingId") DO UPDATE SET "histovecUrl"=EXCLUDED."histovecUrl","updatedAt"=NOW()`,listing.id,histovecUrl);}
     const sourceHints=d.detectedFields??{};let vehicleHints:Awaited<ReturnType<typeof applyVehicleHints>>|null=null;if(category.domain==="VEHICLE")vehicleHints=await applyVehicleHints(listing.id,category.id,d.title,cleanDescription,sourceHints);
     const importedAttributes=await applyImportedCommonAttributes(listing.id,category.id,d.title??null,cleanDescription,sourceHints);
@@ -884,7 +897,7 @@ export async function registerListingImportRoutes(app:FastifyInstance){
     let media:{imported:number;failed:number;reasons?:string[]}={imported:0,failed:0,reasons:[]};if(effectiveImageUrls.length&&d.sourceUrl){media=await importListingImages(listing.id,effectiveImageUrls,d.sourceUrl);}
     const preflight=await evaluateListing(listing.id,user.id);
     const preflightErrors=preflight?.errors??[];
-    const resumeStep=importResumeStep(preflightErrors);
+    const resumeStep=sourceType==="LEBONCOIN"&&category.domain==="VEHICLE"&&user.kind==="PROFESSIONNEL"&&d.warrantyHint?Math.min(2,importResumeStep(preflightErrors)):importResumeStep(preflightErrors);
     const missing=[...new Set(preflightErrors.map(importIssueLabel))];
     if(media.failed>0){
       request.log.warn({listingId:listing.id,source:sourceType,imported:media.imported,failed:media.failed,reasons:media.reasons??[]}, "listing_import_media_partial");

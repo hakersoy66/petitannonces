@@ -138,7 +138,7 @@ export async function registerListingRoutes(app: FastifyInstance) {
     const importRows = await prisma.$queryRawUnsafe<Array<{sourceUrl:string|null;sourceType:string;createdAt:Date}>>(`SELECT "sourceUrl","sourceType","createdAt" FROM "ListingImportLog" WHERE "listingId"=$1 AND "userId"=$2 ORDER BY "createdAt" DESC LIMIT 1`, listing.id, user.id).catch(()=>[]);
     let histovecUrl:string|null=null;if(listing.category.domain==="VEHICLE"){await ensureVehicleOfficialReportTable();const reportRows=await prisma.$queryRawUnsafe<Array<{histovecUrl:string|null}>>(`SELECT "histovecUrl" FROM "VehicleOfficialReport" WHERE "listingId"=$1 LIMIT 1`,listing.id).catch(()=>[]);histovecUrl=reportRows[0]?.histovecUrl??null;}
     const warrantyRows=listing.category.domain==="VEHICLE"&&user.kind==="PROFESSIONNEL"
-      ?await prisma.$queryRawUnsafe<Array<{commercialOffered:boolean;commercialMonths:number|null;commercialCoverage:string|null;commercialProvider:string|null}>>(`SELECT "commercialOffered","commercialMonths","commercialCoverage","commercialProvider" FROM "VehicleWarranty" WHERE "listingId"=$1 LIMIT 1`,listing.id)
+      ?await prisma.$queryRawUnsafe<Array<{commercialOffered:boolean;commercialMonths:number|null;commercialCoverage:string|null;commercialProvider:string|null;importMonths:number|null;importCoverage:string|null;importEvidence:string|null}>>(`SELECT "commercialOffered","commercialMonths","commercialCoverage","commercialProvider","importMonths","importCoverage","importEvidence" FROM "VehicleWarranty" WHERE "listingId"=$1 LIMIT 1`,listing.id)
       :[];
 
     return reply.send({ importInfo: importRows[0] ?? null, listing: {
@@ -510,9 +510,9 @@ export async function registerListingRoutes(app: FastifyInstance) {
     const coverage=data.commercialOffered?data.commercialCoverage:null;
     const provider=data.commercialOffered?data.commercialProvider?.trim()||null:null;
     await prisma.$executeRawUnsafe(
-      `INSERT INTO "VehicleWarranty" ("listingId","commercialOffered","commercialMonths","commercialCoverage","commercialProvider","createdAt","updatedAt")
-       VALUES ($1,$2,$3,$4,$5,NOW(),NOW()) ON CONFLICT ("listingId")
-       DO UPDATE SET "commercialOffered"=EXCLUDED."commercialOffered","commercialMonths"=EXCLUDED."commercialMonths","commercialCoverage"=EXCLUDED."commercialCoverage","commercialProvider"=EXCLUDED."commercialProvider","updatedAt"=NOW()`,
+      `INSERT INTO "VehicleWarranty" ("listingId","commercialOffered","commercialMonths","commercialCoverage","commercialProvider","importMonths","importCoverage","importEvidence","createdAt","updatedAt")
+       VALUES ($1,$2,$3,$4,$5,NULL,NULL,NULL,NOW(),NOW()) ON CONFLICT ("listingId")
+       DO UPDATE SET "commercialOffered"=EXCLUDED."commercialOffered","commercialMonths"=EXCLUDED."commercialMonths","commercialCoverage"=EXCLUDED."commercialCoverage","commercialProvider"=EXCLUDED."commercialProvider","importMonths"=NULL,"importCoverage"=NULL,"importEvidence"=NULL,"updatedAt"=NOW()`,
       draft.id,data.commercialOffered,months,coverage,provider,
     );
     return reply.send({saved:true,vehicleWarranty:{commercialOffered:data.commercialOffered,commercialMonths:months,commercialCoverage:coverage,commercialProvider:provider}});
