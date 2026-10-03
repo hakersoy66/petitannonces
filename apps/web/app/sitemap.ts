@@ -3,6 +3,7 @@ export const revalidate=900;
 import type { MetadataRoute } from "next";
 import { deepCatalog } from "@pa/types";
 import { PRODUCT_LONGTAILS, fetchProductLongtail } from "../lib/seo-product-longtail";
+import { EMPLOI_LOCAL_LANDINGS, emploiLocalHref } from "../lib/emploi-local";
 
 const BASE="https://petitannonces.fr";
 const apiBase=()=> (process.env.API_INTERNAL_URL??process.env.NEXT_PUBLIC_API_URL??"http://127.0.0.1:4000").replace(/\/$/,"");
@@ -12,7 +13,7 @@ const slugify=citySlug;
 export default async function sitemap():Promise<MetadataRoute.Sitemap>{
   const now=new Date();
   const staticPages=[
-    ["/",1,"daily"],["/blog",0.7,"weekly"],["/vendre-voiture",0.82,"weekly"],["/deposer-annonce-gratuite",0.82,"weekly"],["/ouvrir-boutique-pro",0.78,"weekly"],["/pro/automobile",0.76,"weekly"],["/pro/immobilier",0.76,"weekly"],["/pro/high-tech",0.76,"weekly"],["/pro/occasion",0.76,"weekly"],["/vacances",0.85,"daily"],["/professionnels",0.7,"weekly"],["/observatoire",0.74,"daily"],["/blog/vendre-objet-occasion",0.68,"monthly"],["/blog/vendre-entre-particuliers",0.68,"monthly"],["/blog/rediger-annonce-efficace",0.68,"monthly"],["/blog/acheter-occasion-securite",0.68,"monthly"],["/blog/rediger-annonce-immobiliere",0.68,"monthly"],["/blog/acheter-smartphone-occasion",0.68,"monthly"],["/presse",0.56,"monthly"],["/presse/petit-annonces-marketplace-francaise",0.62,"monthly"],["/qui-sommes-nous",0.58,"monthly"],["/conditions-generales",0.3,"monthly"],
+    ["/",1,"daily"],["/categorie/emploi",0.83,"daily"],["/blog",0.7,"weekly"],["/vendre-voiture",0.82,"weekly"],["/deposer-annonce-gratuite",0.82,"weekly"],["/ouvrir-boutique-pro",0.78,"weekly"],["/pro/automobile",0.76,"weekly"],["/pro/immobilier",0.76,"weekly"],["/pro/high-tech",0.76,"weekly"],["/pro/occasion",0.76,"weekly"],["/vacances",0.85,"daily"],["/professionnels",0.7,"weekly"],["/observatoire",0.74,"daily"],["/blog/vendre-objet-occasion",0.68,"monthly"],["/blog/vendre-entre-particuliers",0.68,"monthly"],["/blog/rediger-annonce-efficace",0.68,"monthly"],["/blog/acheter-occasion-securite",0.68,"monthly"],["/blog/rediger-annonce-immobiliere",0.68,"monthly"],["/blog/acheter-smartphone-occasion",0.68,"monthly"],["/presse",0.56,"monthly"],["/presse/petit-annonces-marketplace-francaise",0.62,"monthly"],["/qui-sommes-nous",0.58,"monthly"],["/conditions-generales",0.3,"monthly"],
     ["/confidentialite",0.3,"monthly"],["/cookies",0.25,"monthly"],["/conformite",0.3,"monthly"],["/articles-interdits",0.3,"monthly"],["/classement-referencement",0.3,"monthly"],["/retractation",0.2,"monthly"],["/mentions-legales",0.2,"monthly"],["/assistance",0.3,"monthly"]
   ] as const;
   const rows:MetadataRoute.Sitemap=staticPages.map(([path,priority,changeFrequency])=>({url:BASE+path,...(path==="/"?{lastModified:now}:{}),priority,changeFrequency}));
@@ -57,6 +58,22 @@ export default async function sitemap():Promise<MetadataRoute.Sitemap>{
           rows.push({url:BASE+path,...(store.updatedAt?{lastModified:new Date(store.updatedAt)}:{}),changeFrequency:"weekly",priority:0.68});
         }
       }
+    }
+  }catch{}
+  try{
+    // Only advertise local Emploi pages if the official source has actual matches.
+    for(let i=0;i<EMPLOI_LOCAL_LANDINGS.length;i+=2){
+      const batch=EMPLOI_LOCAL_LANDINGS.slice(i,i+2);
+      const active=await Promise.all(batch.map(async item=>{
+        try{
+          const qs=new URLSearchParams({motsCles:item.term,departement:item.department});
+          const response=await fetch(apiBase()+"/public/emploi/france-travail?"+qs,{next:{revalidate:900},signal:AbortSignal.timeout(6000)});
+          if(!response.ok)return false;
+          const data=await response.json() as {enabled?:boolean;items?:unknown[]};
+          return data.enabled===true&&Array.isArray(data.items)&&data.items.length>0;
+        }catch{return false}
+      }));
+      batch.forEach((item,index)=>{if(active[index])rows.push({url:BASE+emploiLocalHref(item),lastModified:now,changeFrequency:"daily",priority:0.69})});
     }
   }catch{}
   return rows;

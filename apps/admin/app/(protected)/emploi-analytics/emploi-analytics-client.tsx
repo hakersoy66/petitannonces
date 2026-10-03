@@ -1,7 +1,7 @@
 "use client";
 import { useEffect,useMemo,useState } from "react";
 type Day={day:string;visitors:number;searches:number;applyClicks:number;resourceClicks:number;registrations:number};
-type Response={days:number;timezone:string;series:Day[];totals:Omit<Day,"day">;caveats:Record<string,string>};
+type Response={days:number;timezone:string;series:Day[];totals:Omit<Day,"day">;caveats:Record<string,string>;emploiAlerts?:{active:number;sectors:Array<{label:string;count:number}>;departments:Array<{department:string;count:number}>}};
 const fmt=(n:number)=>Number(n??0).toLocaleString("fr-FR");
 const labels:{key:keyof Omit<Day,"day">;title:string;hint:string}[]=[
  {key:"visitors",title:"Visiteurs-jours",hint:"Visiteurs uniques quotidiens, cumulés"},
@@ -49,6 +49,14 @@ export default function EmploiAnalyticsClient(){
      <small style={{fontSize:9,color:"#77758b"}}>{x.day.slice(5)}</small>
     </div>)}
    </div>
+  </section>
+  <section className="admin-card admin-section" style={{marginTop:18}}>
+   <div className="admin-section-head"><div><h2>Alertes Emploi actives</h2><p>Préférences des utilisateurs ayant choisi de recevoir des alertes, sans exposer leurs mots-clés individuels.</p></div><strong style={{fontSize:26,color:"#5949d6"}}>{fmt(data?.emploiAlerts?.active??0)}</strong></div>
+   <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:19}}>
+    <div><h3 style={{fontSize:14,marginBottom:13}}>Familles de métiers suivies</h3>{(data?.emploiAlerts?.sectors??[]).length===0?<p>Aucune alerte enregistrée.</p>:(data?.emploiAlerts?.sectors??[]).map(x=><div key={x.label} style={{display:"flex",justifyContent:"space-between",gap:12,padding:"7px 0",borderBottom:"1px solid #eceaf2",fontSize:12}}><span>{x.label}</span><strong>{fmt(x.count)}</strong></div>)}</div>
+    <div><h3 style={{fontSize:14,marginBottom:13}}>Départements demandés</h3>{(data?.emploiAlerts?.departments??[]).length===0?<p>Aucun département renseigné.</p>:(data?.emploiAlerts?.departments??[]).map(x=><div key={x.department} style={{display:"flex",justifyContent:"space-between",gap:12,padding:"7px 0",borderBottom:"1px solid #eceaf2",fontSize:12}}><span>Département {x.department}</span><strong>{fmt(x.count)}</strong></div>)}</div>
+   </div>
+   <p style={{fontSize:11,color:"#8e899e",marginTop:18}}>Ces répartitions portent sur les alertes encore actives, toutes dates confondues, et non sur l'ensemble des recherches.</p>
   </section>
   <section className="admin-card admin-section" style={{marginTop:18}}>
    <h2>Précautions d'interprétation</h2>

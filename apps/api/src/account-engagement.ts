@@ -4,6 +4,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { requireListingUser } from "./listing-auth.js";
 import { deliverUserEvent } from "./notification-delivery.js";
+import { sweepFranceTravailJobAlerts } from "./emploi-alerts.js";
 
 const savedSearchSchema = z.object({
   name: z.string().trim().min(2).max(120),
@@ -70,6 +71,14 @@ export async function registerAccountEngagementRoutes(app: FastifyInstance) {
     const user = await requireListingUser(request, reply); if (!user) return;
     const parsed = savedSearchSchema.safeParse(request.body); if (!parsed.success) return reply.code(400).send({ error: "invalid_search", details: parsed.error.flatten() });
     const d = parsed.data; const areaKey=savedAreaKey(d.filters);
+    if(d.filters?.kind==="FRANCE_TRAVAIL_EMPLOI"){
+      const x=z.object({kind:z.literal("FRANCE_TRAVAIL_EMPLOI"),departement:z.string().regex(/^(?:0[1-9]|[1-8][0-9]|9[0-5]|97[1-6]|98[4-8]|2A|2B)$/).optional(),contrat:z.enum(["CDI","CDD","MIS"]).optional()}).safeParse(d.filters);
+      if(!x.success||d.categorySlug!=="emploi"||d.frequency!=="DAILY"||!d.alertEnabled||(!d.query?.trim()&&!x.data.departement)){
+        return reply.code(400).send({error:"invalid_emploi_alert"});
+      }
+      const existingCount=await prisma.$queryRawUnsafe<Array<{count:number}>>(`SELECT COUNT(*)::int AS count FROM "SavedSearch" WHERE "userId"=$1 AND "filters"->>'kind'='FRANCE_TRAVAIL_EMPLOI'`,user.id);
+      if((existingCount[0]?.count??0)>=15)return reply.code(429).send({error:"too_many_emploi_alerts"});
+    }
     if(areaKey){
       const existing=await prisma.$queryRawUnsafe<Array<{id:string}>>(`SELECT "id" FROM "SavedSearch" WHERE "userId"=$1 AND "filters"->>'areaKey'=$2 LIMIT 1`,user.id,areaKey);
       if(existing.length)return reply.code(409).send({error:"saved_search_exists",id:existing[0]!.id});
@@ -113,7 +122,7 @@ export async function registerAccountEngagementRoutes(app: FastifyInstance) {
     }
     const searches = await prisma.$queryRawUnsafe<Array<{id:string;userId:string;name:string;query:string|null;categorySlug:string|null;city:string|null;postalCode:string|null;minPriceMinor:number|null;maxPriceMinor:number|null;filters:unknown;frequency:string;lastRunAt:Date|null}>>(`
       SELECT "id","userId","name","query","categorySlug","city","postalCode","minPriceMinor","maxPriceMinor","filters","frequency","lastRunAt" FROM "SavedSearch"
-      WHERE "alertEnabled"=TRUE AND ("lastRunAt" IS NULL OR ("frequency"='INSTANT' AND "lastRunAt"<=CURRENT_TIMESTAMP-INTERVAL '1 hour') OR ("frequency"='DAILY' AND "lastRunAt"<=CURRENT_TIMESTAMP-INTERVAL '1 day') OR ("frequency"='WEEKLY' AND "lastRunAt"<=CURRENT_TIMESTAMP-INTERVAL '7 days')) LIMIT 200`);
+      WHERE "alertEnabled"=TRUE AND COALESCE("filters"->>'kind','')<>'FRANCE_TRAVAIL_EMPLOI' AND ("lastRunAt" IS NULL OR ("frequency"='INSTANT' AND "lastRunAt"<=CURRENT_TIMESTAMP-INTERVAL '1 hour') OR ("frequency"='DAILY' AND "lastRunAt"<=CURRENT_TIMESTAMP-INTERVAL '1 day') OR ("frequency"='WEEKLY' AND "lastRunAt"<=CURRENT_TIMESTAMP-INTERVAL '7 days')) LIMIT 200`);
     let searchAlerts = 0;
     for (const s of searches) {
       const since = s.lastRunAt ?? new Date();
@@ -150,7 +159,8 @@ export async function registerAccountEngagementRoutes(app: FastifyInstance) {
       }
       await prisma.$executeRawUnsafe(`UPDATE "SavedSearch" SET "lastRunAt"=CURRENT_TIMESTAMP WHERE "id"=$1`,s.id);
     }
-    return reply.send({processedFavorites:favoriteRows.length,priceAlerts,processedSearches:searches.length,searchAlerts});
+    const emploi=await sweepFranceTravailJobAlerts().catch(error=>{request.log.warn({reason:error instanceof Error?error.message:"unknown"},"emploi_alert_sweep_failed");return {processed:0,sent:0,failed:1}});
+    return reply.send({processedFavorites:favoriteRows.length,priceAlerts,processedSearches:searches.length,searchAlerts,emploi});
   });
 
   app.get("/account/notifications", async (request, reply) => {

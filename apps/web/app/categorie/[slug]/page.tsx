@@ -7,7 +7,8 @@ import { MarketplaceListingCard } from "../../../components/marketplace-listing-
 import { PremiumCategoryIntro } from "../../../components/premium-category-intro";
 import { CareerDiscovery, FranceTravailJobFeed } from "../../../components/france-travail-job-feed";
 import { EmploiHub, type EmploiFilters } from "../../../components/emploi-hub";
-import { EmploiOfficialResources } from "../../../components/emploi-resources";
+import { EmploiJobAlert } from "../../../components/emploi-job-alert";
+import { EmploiOfficialResources, EmploiLocalDiscovery } from "../../../components/emploi-resources";
 import { arrangePromotedFlow, type ListingPromotion } from "../../../lib/listing-promotions";
 import styles from "./page.module.css";
 
@@ -127,7 +128,7 @@ export default async function CategoryLandingPage({params,searchParams}:Props){
 
   {!premium&&category.slug!=="emploi"&&filters.length>0&&<section className={`${styles.section} ${styles.filterSection}`}><div className={styles.sectionHead}><div><span>Affiner</span><h2>Critères utiles</h2><p>Les filtres disponibles s’adaptent automatiquement à cette catégorie.</p></div><small>{filters.length} filtres</small></div><div className={styles.filtergrid}>{filters.map((filter,index)=><span key={`${filter.key}-${index}`}>{filter.label}{filter.unit?` · ${filter.unit}`:""}</span>)}</div></section>}
 
-  {category.slug==="emploi"&&<FranceTravailJobFeed apiBase={apiBase()} filters={emploiFilters}/>}
+  {category.slug==="emploi"&&<><EmploiJobAlert filters={emploiFilters}/><FranceTravailJobFeed apiBase={apiBase()} filters={emploiFilters}/></>}
 
   <div className={styles.mobileFilterWrap}><CatalogFilterPanel category={category.slug} initialCategoryTree={tree} initialAttributes={filters}/></div>
 
@@ -140,7 +141,7 @@ export default async function CategoryLandingPage({params,searchParams}:Props){
    </section>
   </div>
 
-  {category.slug==="emploi"&&<><CareerDiscovery/><EmploiOfficialResources/></>}
+  {category.slug==="emploi"&&<><CareerDiscovery/><EmploiLocalDiscovery/><EmploiOfficialResources/></>}
 
   {cities.some(x=>x.count>=3)&&<section className={styles.categoryRailWrap} aria-label="Annonces par ville"><div className={styles.categoryRailLabel}><span>Annonces par ville</span><small>Liens locaux populaires</small></div><div className={styles.categoryRail}>{cities.filter(x=>x.count>=3).map(x=><a key={x.city} href={`/c/${category.slug}/${citySlug(x.city)}`}><span>{category.name} à {x.city}</span><small>{x.count} annonce{x.count>1?"s":""}</small><AppIcon name="chevron-right"/></a>)}</div></section>}
 

@@ -101,6 +101,12 @@ async function loadOffers(conf:Credentials,filters:SearchFilters={}):Promise<Off
  const job=perform();inFlightByQuery.set(key,job);try{return await job}finally{if(inFlightByQuery.get(key)===job)inFlightByQuery.delete(key)}
 }
 
+export async function loadFranceTravailAlertOffers(filters:{departement?:string;motsCles?:string;typeContrat?:"CDI"|"CDD"|"MIS"}) {
+ const conf=await credentials();
+ if(!conf.ready)throw new Error("france_travail_alerts_unavailable");
+ return loadOffers(conf,filters);
+}
+
 export async function registerFranceTravailRoutes(app:FastifyInstance){
  app.post("/admin/integrations/france-travail/check-apis",{preHandler:requireAdminRoles(["SUPER_ADMIN","ADMIN"])},async (_request,reply)=>{
   const conf=await credentials();

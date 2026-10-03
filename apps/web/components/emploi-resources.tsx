@@ -1,7 +1,14 @@
 import { AppIcon } from "./app-icon";
+import { EMPLOI_LOCAL_LANDINGS, emploiLocalHref } from "../lib/emploi-local";
 import { EmploiTrackedLink } from "./emploi-analytics";
 import styles from "./emploi-resources.module.css";
 
+export function EmploiLocalDiscovery(){
+ return <section className={styles.wrap} aria-labelledby="emploi-local-title">
+  <div className={styles.head}><div><p className={styles.kicker}><AppIcon name="location"/> RECHERCHER PAR VILLE ET MÉTIER</p><h2 id="emploi-local-title">Votre métier, <span>près de chez vous</span></h2><p>Des recherches locales ciblées avec les offres France Travail correspondant aux départements.</p></div></div>
+  <div className={styles.localGrid}>{EMPLOI_LOCAL_LANDINGS.map(x=><a key={x.city+"-"+x.sector} href={emploiLocalHref(x)}><AppIcon name="briefcase"/><span><strong>{x.role}</strong><small>{x.cityName} · {x.department}</small></span><AppIcon name="arrow-right"/></a>)}</div>
+ </section>
+}
 export function EmploiOfficialResources(){
  return <section className={styles.wrap} id="ressources-officielles" aria-labelledby="emploi-extras">
   <div className={styles.head}>

@@ -21,8 +21,14 @@ export async function registerEmploiAnalyticsRoutes(app:FastifyInstance){
   const rows=await prisma.$queryRawUnsafe<Array<Day>>(reportSql,days);
   const series=rows.map(x=>({day:String(x.day),searches:Number(x.searches||0),applyClicks:Number(x.applyClicks||0),resourceClicks:Number(x.resourceClicks||0),visitors:Number(x.visitors||0),registrations:Number(x.registrations||0)}));
   const sum=(field:keyof Omit<Day,"day">)=>series.reduce((total,x)=>total+x[field],0);
+  // Aggregate broad job families only; never return individual search queries.
+  const [sectors,departments,activeCount]=await Promise.all([
+   prisma.$queryRawUnsafe<Array<{label:string;count:number}>>("SELECT CASE WHEN LOWER(\"query\") ~ '(develop|informat|web|programme)' THEN 'Informatique' WHEN LOWER(\"query\") ~ '(chauff|conduct|livr|transport)' THEN 'Transport' WHEN LOWER(\"query\") ~ '(vende|vente|commercial|boutique)' THEN 'Commerce' WHEN LOWER(\"query\") ~ '(cuisin|restaura|serveur|hotel)' THEN 'Restauration' WHEN LOWER(\"query\") ~ '(secr|assist|admin|comptab)' THEN 'Administratif' WHEN LOWER(\"query\") ~ '(macon|maçon|chantier|batiment|bâtiment)' THEN 'BTP' WHEN LOWER(\"query\") ~ '(soins|infirm|santé|aide.soi)' THEN 'Santé' ELSE 'Autres métiers' END AS label, COUNT(*)::int AS count FROM \"SavedSearch\" WHERE \"alertEnabled\"=TRUE AND \"filters\"->>'kind'='FRANCE_TRAVAIL_EMPLOI' GROUP BY 1 ORDER BY 2 DESC LIMIT 8"),
+   prisma.$queryRawUnsafe<Array<{department:string;count:number}>>("SELECT \"filters\"->>'departement' AS department,COUNT(*)::int AS count FROM \"SavedSearch\" WHERE \"alertEnabled\"=TRUE AND \"filters\"->>'kind'='FRANCE_TRAVAIL_EMPLOI' AND COALESCE(\"filters\"->>'departement','')<>'' GROUP BY 1 ORDER BY 2 DESC LIMIT 8"),
+   prisma.$queryRawUnsafe<Array<{count:number}>>("SELECT COUNT(*)::int AS count FROM \"SavedSearch\" WHERE \"alertEnabled\"=TRUE AND \"filters\"->>'kind'='FRANCE_TRAVAIL_EMPLOI'")
+  ]);
   return reply.header("cache-control","private, no-store").send({
-   days,timezone:"Europe/Paris",series,
+   days,timezone:"Europe/Paris",series,emploiAlerts:{active:Number(activeCount[0]?.count??0),sectors,departments},
    totals:{visitors:sum("visitors"),searches:sum("searches"),applyClicks:sum("applyClicks"),resourceClicks:sum("resourceClicks"),registrations:sum("registrations")},
    caveats:{
     searches:"Seules les recherches des visiteurs ayant accepté les cookies analytiques sont suivies.",
