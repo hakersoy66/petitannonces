@@ -838,6 +838,12 @@ export async function registerListingImportRoutes(app:FastifyInstance){
     }
     const histovecUrl=d.histovecUrl?normalizeHistovecShareUrl(d.histovecUrl):null;if(d.histovecUrl&&!histovecUrl)return reply.code(400).send({error:"invalid_histovec_url"});
     const cleanDescription=cleanImportedDescription(d.description,d.sourceUrl);
+    // Recheck warranty evidence server-side. A preview may omit hints (older clients,
+    // pasted text, or fallback extractors), so use the actual imported description.
+    // The commercial offer still requires explicit seller confirmation in the wizard.
+    const importedWarrantyHint=sourceType==="LEBONCOIN"&&category.domain==="VEHICLE"&&user.kind==="PROFESSIONNEL"
+      ?(detectLeboncoinVehicleWarranty(cleanDescription)??d.warrantyHint??null)
+      :null;
     const fingerprint=importFingerprint({sourceUrl:d.sourceUrl,category:category.slug,title:d.title,priceMinor:d.priceMinor,city:effectiveCity,postalCode:effectivePostalCode});
     const prior=await existingImport(user.id,fingerprint,d.sourceUrl);
     if(prior){
@@ -866,8 +872,8 @@ export async function registerListingImportRoutes(app:FastifyInstance){
     const listing=await prisma.listing.create({data:{sellerId:user.id,categoryId:category.id,title:d.title||undefined,description:cleanDescription&&cleanDescription.length>=20?cleanDescription:undefined,priceMinor:d.priceMinor??undefined,city:effectiveCity||undefined,postalCode:effectivePostalCode||undefined,draftSavedAt:new Date()},include:{category:true}});
     const recorded=await recordImport(user.id,listing.id,sourceType,d.sourceUrl,fingerprint);
     if(!recorded){await prisma.listing.delete({where:{id:listing.id}}).catch(()=>undefined);const winner=await existingImport(user.id,fingerprint,d.sourceUrl);if(winner){const existing=await prisma.listing.findFirst({where:{id:winner.listingId,sellerId:user.id},select:{id:true,title:true,status:true}});if(existing)return reply.send({duplicate:true,duplicateKind:"exact",listing:existing,editUrl:`/deposer-une-annonce?listingId=${encodeURIComponent(existing.id)}`});}return reply.code(409).send({error:"import_conflict"});}
-    if(sourceType==="LEBONCOIN"&&category.domain==="VEHICLE"&&user.kind==="PROFESSIONNEL"&&d.warrantyHint){
-      const h=d.warrantyHint;
+    if(importedWarrantyHint){
+      const h=importedWarrantyHint;
       await prisma.$executeRawUnsafe(
         `INSERT INTO "VehicleWarranty" ("listingId","commercialOffered","commercialMonths","commercialCoverage","commercialProvider","importMonths","importCoverage","importEvidence")
         VALUES ($1,FALSE,NULL,NULL,NULL,$2,$3,$4) ON CONFLICT ("listingId")
@@ -897,7 +903,7 @@ export async function registerListingImportRoutes(app:FastifyInstance){
     let media:{imported:number;failed:number;reasons?:string[]}={imported:0,failed:0,reasons:[]};if(effectiveImageUrls.length&&d.sourceUrl){media=await importListingImages(listing.id,effectiveImageUrls,d.sourceUrl);}
     const preflight=await evaluateListing(listing.id,user.id);
     const preflightErrors=preflight?.errors??[];
-    const resumeStep=sourceType==="LEBONCOIN"&&category.domain==="VEHICLE"&&user.kind==="PROFESSIONNEL"&&d.warrantyHint?Math.min(2,importResumeStep(preflightErrors)):importResumeStep(preflightErrors);
+    const resumeStep=importedWarrantyHint?Math.min(2,importResumeStep(preflightErrors)):importResumeStep(preflightErrors);
     const missing=[...new Set(preflightErrors.map(importIssueLabel))];
     if(media.failed>0){
       request.log.warn({listingId:listing.id,source:sourceType,imported:media.imported,failed:media.failed,reasons:media.reasons??[]}, "listing_import_media_partial");
