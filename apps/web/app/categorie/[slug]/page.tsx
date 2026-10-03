@@ -5,6 +5,7 @@ import { CatalogFilterPanel } from "../../../components/catalog-filter-panel";
 import { AppIcon } from "../../../components/app-icon";
 import { MarketplaceListingCard } from "../../../components/marketplace-listing-card";
 import { PremiumCategoryIntro } from "../../../components/premium-category-intro";
+import { FranceTravailJobFeed } from "../../../components/france-travail-job-feed";
 import { arrangePromotedFlow, type ListingPromotion } from "../../../lib/listing-promotions";
 import styles from "./page.module.css";
 
@@ -125,6 +126,8 @@ export default async function CategoryLandingPage({params,searchParams}:Props){
    {totalPages>1&&<nav className={styles.pagination} aria-label="Pagination des annonces"><a className={page<=1?styles.disabled:""} aria-disabled={page<=1} href={pageHref(category.slug,Math.max(1,page-1))}>← Précédent</a><div>{pagination.map((n,index)=>{const prev=pagination[index-1];return <span key={n}>{prev&&n-prev>1&&<i>…</i>}<a className={n===page?styles.activePage:""} aria-current={n===page?"page":undefined} href={pageHref(category.slug,n)}>{n}</a></span>})}</div><a className={page>=totalPages?styles.disabled:""} aria-disabled={page>=totalPages} href={pageHref(category.slug,Math.min(totalPages,page+1))}>Suivant →</a></nav>}
    </section>
   </div>
+
+  {category.slug==="emploi"&&<FranceTravailJobFeed apiBase={apiBase()}/>}
 
   {cities.some(x=>x.count>=3)&&<section className={styles.categoryRailWrap} aria-label="Annonces par ville"><div className={styles.categoryRailLabel}><span>Annonces par ville</span><small>Liens locaux populaires</small></div><div className={styles.categoryRail}>{cities.filter(x=>x.count>=3).map(x=><a key={x.city} href={`/c/${category.slug}/${citySlug(x.city)}`}><span>{category.name} à {x.city}</span><small>{x.count} annonce{x.count>1?"s":""}</small><AppIcon name="chevron-right"/></a>)}</div></section>}
 

@@ -1,0 +1,19 @@
+.section{margin:24px 0 34px;padding:clamp(18px,2.5vw,30px);border:1px solid #e6e3fa;border-radius:24px;background:linear-gradient(135deg,#fbfaff 0%,#f4f5ff 100%)}
+.heading{display:flex;gap:20px;align-items:flex-start;justify-content:space-between;margin-bottom:22px}
+.kicker{font-size:11px;font-weight:900;letter-spacing:1.6px;color:#6953de;margin:0 0 9px}
+.heading h2{font-size:clamp(21px,2vw,29px);line-height:1.24;margin:0 0 9px;color:#1e2439}
+.heading p:not(.kicker){color:#687087;line-height:1.55;max-width:670px;margin:0}
+.source{flex-shrink:0;color:#5e46ca;font-size:12px;font-weight:800;background:#fff;padding:9px 12px;border:1px solid #e4dffc;border-radius:24px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,290px),1fr));gap:14px}
+.card{display:flex;flex-direction:column;gap:12px;padding:19px;background:#fff;border:1px solid #e8e9f1;border-radius:18px;min-width:0;box-shadow:0 4px 16px rgba(32,24,87,.025)}
+.cardTop{display:flex;justify-content:space-between;align-items:center;gap:9px;min-width:0}
+.contract{background:#f0edff;color:#5c45cc;border-radius:999px;padding:5px 10px;font-size:11px;font-weight:800;white-space:nowrap}
+.city{color:#616a80;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:55%}
+.card h3{font-size:17px;font-weight:850;color:#22283c;line-height:1.35;margin:0}
+.company{color:#515970;margin:0;font-size:13px;font-weight:700}
+.description{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;color:#6c7387;font-size:13px;line-height:1.5;margin:0}
+.footer{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;margin-top:auto;padding-top:13px;border-top:1px solid #eeedf4}
+.footer div{display:flex;flex-direction:column;gap:3px;min-width:0}.salary{color:#253447;font-size:12px;font-weight:800}.footer small{font-size:11px;color:#8b92a1}
+.footer a{background:#5b4cf0;border-radius:11px;color:#fff;text-decoration:none;padding:10px 12px;font-size:12px;font-weight:800;white-space:nowrap}.footer a:hover{background:#493bda}
+.notice{font-size:12px;color:#7c8296;line-height:1.55;margin:16px 0 0}
+@media(max-width:680px){.heading{display:block}.source{display:inline-block;margin-top:13px}.section{border-radius:18px;margin:17px 0 25px}.grid{grid-template-columns:1fr}.card{padding:15px}}
