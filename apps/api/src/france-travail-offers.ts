@@ -14,7 +14,7 @@ type Offer = {
 };
 let accessToken: {value:string; validUntil:number;fingerprint:string}|null=null;
 const responseCache=new Map<string,{expires:number;items:Offer[]}>();
-let inFlight:Promise<Offer[]>|null=null;
+const inFlightByQuery=new Map<string,Promise<Offer[]>>();
 let lastFingerprint="";
 
 async function credentials():Promise<Credentials>{
@@ -34,7 +34,7 @@ async function credentials():Promise<Credentials>{
 
 async function token(id:string,secret:string){
  const fingerprint=createHash("sha256").update(id+"\u0000"+secret).digest("hex");
- if(lastFingerprint!==fingerprint){responseCache.clear();inFlight=null;lastFingerprint=fingerprint}
+ if(lastFingerprint!==fingerprint){responseCache.clear();inFlightByQuery.clear();lastFingerprint=fingerprint}
  if(accessToken?.validUntil&&accessToken.fingerprint===fingerprint&&Date.now()<accessToken.validUntil)return accessToken.value;
  const form=new URLSearchParams({grant_type:"client_credentials",client_id:id,client_secret:secret,scope:"api_offresdemploiv2 o2dsoffre"});
  const r=await fetch(TOKEN_URL,{method:"POST",headers:{"content-type":"application/x-www-form-urlencoded"},body:form,signal:AbortSignal.timeout(9000)});
@@ -67,9 +67,13 @@ function normalize(input:unknown):Offer|null{
  };
 }
 
-async function fetchOffers(bearer:string,department?:string):Promise<Offer[]>{
- const query=new URLSearchParams({range:"0-19"});
- if(department)query.set("departement",department);
+type SearchFilters={departement?:string;motsCles?:string;typeContrat?:"CDI"|"CDD"|"MIS";page?:number};
+async function fetchOffers(bearer:string,filters:SearchFilters={}):Promise<Offer[]>{
+ const page=Math.max(1,Math.min(5,filters.page??1));
+ const query=new URLSearchParams({range:`${(page-1)*12}-${page*12-1}`});
+ if(filters.departement)query.set("departement",filters.departement);
+ if(filters.motsCles)query.set("motsCles",filters.motsCles);
+ if(filters.typeContrat)query.set("typeContrat",filters.typeContrat);
  const r=await fetch(API_URL+"?"+query,{headers:{authorization:"Bearer "+bearer,accept:"application/json"},signal:AbortSignal.timeout(12000)});
  if(r.status===401)accessToken=null;
  if(!r.ok)throw new Error("france_travail_search_"+r.status);
@@ -80,22 +84,21 @@ async function fetchOffers(bearer:string,department?:string):Promise<Offer[]>{
   .filter(item=>{if(seen.has(item.id))return false;seen.add(item.id);return true});
 }
 
-async function loadOffers(conf:Credentials,department?:string):Promise<Offer[]>{
- const key=department??"fr";
+async function loadOffers(conf:Credentials,filters:SearchFilters={}):Promise<Offer[]>{
+ const key=JSON.stringify([filters.departement??"",filters.motsCles??"",filters.typeContrat??"",filters.page??1]);
  const fingerprint=createHash("sha256").update(conf.id+"\u0000"+conf.secret).digest("hex");
- if(lastFingerprint!==fingerprint){responseCache.clear();inFlight=null;lastFingerprint=fingerprint}
+ if(lastFingerprint!==fingerprint){responseCache.clear();inFlightByQuery.clear();lastFingerprint=fingerprint}
  const cached=responseCache.get(key);
  if(cached&&cached.expires>Date.now()&&accessToken?.fingerprint===lastFingerprint)return cached.items;
- if(key==="fr"&&inFlight)return inFlight;
+ const ongoing=inFlightByQuery.get(key);if(ongoing)return ongoing;
  const perform=async()=>{
   const bearer=await token(conf.id,conf.secret);
-  const items=await fetchOffers(bearer,department);
+  const items=await fetchOffers(bearer,filters);
   responseCache.set(key,{expires:Date.now()+5*60_000,items});
   if(responseCache.size>35)for(const [k,v] of responseCache)if(v.expires<Date.now())responseCache.delete(k);
   return items;
  };
- if(key==="fr"){inFlight=perform();try{return await inFlight}finally{inFlight=null}}
- return perform();
+ const job=perform();inFlightByQuery.set(key,job);try{return await job}finally{if(inFlightByQuery.get(key)===job)inFlightByQuery.delete(key)}
 }
 
 export async function registerFranceTravailRoutes(app:FastifyInstance){
@@ -122,16 +125,21 @@ export async function registerFranceTravailRoutes(app:FastifyInstance){
   return reply.header("cache-control","no-store").send({results,notice:"A valid OAuth scope does not by itself establish downstream API access or redistribution rights."});
  });
  app.get("/public/emploi/france-travail",async(request,reply)=>{
-  const parsed=z.object({departement:z.string().regex(/^(?:0[1-9]|[1-8][0-9]|9[0-5]|97[1-6]|98[4-8]|2A|2B)$/).optional()}).safeParse(request.query);
+  const parsed=z.object({
+  departement:z.string().regex(/^(?:0[1-9]|[1-8][0-9]|9[0-5]|97[1-6]|98[4-8]|2A|2B)$/).optional(),
+  motsCles:z.string().trim().min(2).max(80).regex(/^[\p{L}\p{N}\p{M}\s.,’\u0027&+\-\/()]+$/u).optional(),
+  typeContrat:z.enum(["CDI","CDD","MIS"]).optional(),
+  page:z.coerce.number().int().min(1).max(5).optional(),
+ }).strict().safeParse(request.query);
   if(!parsed.success)return reply.code(400).send({error:"invalid_filter"});
   const conf=await credentials();
   if(!conf.ready)return reply.header("cache-control","no-store").code(503).send({
    enabled:false,reason:!conf.enabled?"disabled":!conf.id||!conf.secret?"credentials_missing":"redistribution_not_approved",items:[]
   });
   try{
-   const items=await loadOffers(conf,parsed.data.departement);
+   const items=await loadOffers(conf,parsed.data);
    return reply.header("cache-control","public, max-age=180, stale-while-revalidate=120")
-    .send({enabled:true,source:"France Travail",updatedAt:new Date().toISOString(),items});
+    .send({enabled:true,source:"France Travail",updatedAt:new Date().toISOString(),items,page:parsed.data.page??1,hasMore:items.length===12});
   }catch(error){
    request.log.warn({reason:error instanceof Error?error.message:"request_failed"},"france_travail_fetch_failed");
    return reply.header("cache-control","no-store").code(502).send({enabled:false,reason:"upstream_unavailable",items:[]});
