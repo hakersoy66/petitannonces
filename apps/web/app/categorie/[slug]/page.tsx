@@ -7,6 +7,7 @@ import { MarketplaceListingCard } from "../../../components/marketplace-listing-
 import { PremiumCategoryIntro } from "../../../components/premium-category-intro";
 import { CareerDiscovery, FranceTravailJobFeed } from "../../../components/france-travail-job-feed";
 import { EmploiHub, type EmploiFilters } from "../../../components/emploi-hub";
+import { EmploiOfficialResources } from "../../../components/emploi-resources";
 import { arrangePromotedFlow, type ListingPromotion } from "../../../lib/listing-promotions";
 import styles from "./page.module.css";
 
@@ -139,7 +140,7 @@ export default async function CategoryLandingPage({params,searchParams}:Props){
    </section>
   </div>
 
-  {category.slug==="emploi"&&<CareerDiscovery/>}
+  {category.slug==="emploi"&&<><CareerDiscovery/><EmploiOfficialResources/></>}
 
   {cities.some(x=>x.count>=3)&&<section className={styles.categoryRailWrap} aria-label="Annonces par ville"><div className={styles.categoryRailLabel}><span>Annonces par ville</span><small>Liens locaux populaires</small></div><div className={styles.categoryRail}>{cities.filter(x=>x.count>=3).map(x=><a key={x.city} href={`/c/${category.slug}/${citySlug(x.city)}`}><span>{category.name} à {x.city}</span><small>{x.count} annonce{x.count>1?"s":""}</small><AppIcon name="chevron-right"/></a>)}</div></section>}
 

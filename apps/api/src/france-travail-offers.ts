@@ -110,18 +110,26 @@ export async function registerFranceTravailRoutes(app:FastifyInstance){
    {id:"rome-fiches",scope:"api_rome-fiches-metiersv1 nomenclatureRome"},
    {id:"bonne-boite",scope:"api_labonneboitev2"},
   ];
-  const results: Array<{id:string;status:"authorized_scope"|"subscription_required"|"credentials_invalid"|"unavailable"}>=[];
+  const results: Array<{id:string;status:"authorized_scope"|"subscription_required"|"credentials_invalid"|"unavailable"|"data_access_pending"|"documentation_required"}>=[];
   for(const product of products){
    try{
     const params=new URLSearchParams({grant_type:"client_credentials",client_id:conf.id,client_secret:conf.secret,scope:product.scope});
     const response=await fetch(TOKEN_URL,{method:"POST",headers:{"content-type":"application/x-www-form-urlencoded"},body:params,signal:AbortSignal.timeout(9000)});
     const body=await response.json().catch(()=>null) as {error?:string;access_token?:string}|null;
-    const status=response.ok&&Boolean(body?.access_token)?"authorized_scope"
+    let status:"authorized_scope"|"subscription_required"|"credentials_invalid"|"unavailable"|"data_access_pending"|"documentation_required"=response.ok&&Boolean(body?.access_token)?"authorized_scope"
       :body?.error==="invalid_scope"||body?.error==="unauthorized_client"?"subscription_required"
       :body?.error==="invalid_client"?"credentials_invalid":"unavailable";
+    if(product.id==="bonne-boite"&&status==="authorized_scope"&&body?.access_token){
+     try{
+      const probe=await fetch("https://api.francetravail.io/partenaire/labonneboite/v2/entreprises?rome=M1607&latitude=48.8566&longitude=2.3522",{headers:{authorization:"Bearer "+body.access_token,accept:"application/json"},signal:AbortSignal.timeout(9000)});
+      status=probe.ok?"authorized_scope":probe.status===403?"data_access_pending":"documentation_required";
+     }catch{status="unavailable"}
+    }
     results.push({id:product.id,status});
    }catch{results.push({id:product.id,status:"unavailable"})}
   }
+  results.push({id:"events",status:"documentation_required"});
+  results.push({id:"market",status:"documentation_required"});
   return reply.header("cache-control","no-store").send({results,notice:"A valid OAuth scope does not by itself establish downstream API access or redistribution rights."});
  });
  app.get("/public/emploi/france-travail",async(request,reply)=>{

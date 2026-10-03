@@ -1,4 +1,5 @@
 import { AppIcon } from "./app-icon";
+import { EmploiTrackedLink } from "./emploi-analytics";
 import { emploiHref, type EmploiFilters } from "./emploi-hub";
 import styles from "./france-travail-job-feed.module.css";
 
@@ -47,7 +48,7 @@ export async function FranceTravailJobFeed({apiBase,filters}:{apiBase:string;fil
      <div>{job.salary&&<span className={styles.salary}>{job.salary}</span>}
        {job.publishedAt&&!Number.isNaN(Date.parse(job.publishedAt))&&<small><AppIcon name="clock"/> {new Date(job.publishedAt).toLocaleDateString("fr-FR",{day:"numeric",month:"short",year:"numeric"})}</small>}
      </div>
-     <a href={job.applyUrl} rel="noopener noreferrer" target="_blank" aria-label={"Consulter l’offre officielle : "+job.title}>Voir l’offre <AppIcon name="arrow-right"/></a>
+     <EmploiTrackedLink href={job.applyUrl} kind="application" label={job.id} external>Voir l’offre <AppIcon name="arrow-right"/></EmploiTrackedLink>
     </div>
    </article>)}
    </div>

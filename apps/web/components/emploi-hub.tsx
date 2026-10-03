@@ -1,4 +1,6 @@
+"use client";
 import { AppIcon } from "./app-icon";
+import { analyticsAllowed,trackSiteConversion } from "./site-telemetry";
 import styles from "./emploi-hub.module.css";
 
 export type EmploiFilters={q:string;departement:string;contrat:""|"CDI"|"CDD"|"MIS";page:number};
@@ -37,7 +39,7 @@ export function EmploiHub({filters,total}:{filters:EmploiFilters;total:number}){
       <div className={styles.floating}><AppIcon name="sparkles"/> Des métiers à découvrir</div>
     </div>
    </div>
-   <form action="/categorie/emploi" method="GET" className={styles.form} aria-label="Rechercher les offres officielles France Travail">
+   <form action="/categorie/emploi" method="GET" className={styles.form} aria-label="Rechercher les offres officielles France Travail" onSubmit={event=>{if(!analyticsAllowed())return;const data=new FormData(event.currentTarget);trackSiteConversion("JOB_SEARCHED","job_search",{has_keyword:String(data.get("ft_q")??"").trim().length>=2,department:String(data.get("ft_dept")??"").trim().slice(0,3),contract_type:String(data.get("ft_contract")??"").slice(0,3)})}}>
      <div className={styles.field}><label htmlFor="ft-q">Métier ou mot-clé</label><div><AppIcon name="search"/><input id="ft-q" type="search" name="ft_q" maxLength={80} defaultValue={filters.q} placeholder="Développeur, vendeur, chauffeur…"/></div></div>
      <div className={styles.field}><label htmlFor="ft-dept">Département</label><div><AppIcon name="location"/><input id="ft-dept" name="ft_dept" inputMode="text" maxLength={3} defaultValue={filters.departement} placeholder="Ex. 75, 69, 2A"/></div></div>
      <div className={styles.field}><label htmlFor="ft-contract">Contrat</label><div><AppIcon name="briefcase"/><select id="ft-contract" name="ft_contract" defaultValue={filters.contrat}><option value="">Tous les contrats</option><option value="CDI">CDI</option><option value="CDD">CDD</option><option value="MIS">Intérim</option></select></div></div>
