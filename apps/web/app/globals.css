@@ -1298,3 +1298,19 @@ input,select,textarea,button{max-width:100%}
   .footer-mobile-legal a{font-size:7.3px!important}
   .footer-mobile-bottom>span{font-size:10px!important}
 }
+
+/* Contextual category label directly next to the original site-header logo. */
+.site-header .brand-modern:has(.header-category-brand){display:inline-flex;align-items:center;gap:0;min-width:0;max-width:none}
+.site-header .header-category-brand{display:inline-flex;align-items:center;gap:11px;flex:0 0 auto;margin-left:14px;white-space:nowrap;color:#302d44;font-size:18px;font-weight:850;letter-spacing:-.035em;line-height:1.2}
+.site-header .header-category-divider{display:block;width:2px;height:25px;flex:0 0 2px;border-radius:2px;background:#c9c4e2}
+@media (min-width:761px) and (max-width:1100px){.site-header .header-category-brand{font-size:15px;gap:8px;margin-left:10px}.site-header .header-category-divider{height:22px}}
+@media (max-width:760px){
+ .site-header .header-brand-cluster .brand-modern:has(.header-category-brand){max-width:calc(100vw - 67px)!important}
+ .site-header .brand-modern:has(.header-category-brand) .brand-logo-img{max-width:min(41vw,160px)!important;height:36px!important}
+ .site-header .header-category-brand{font-size:clamp(12px,3.5vw,15px);gap:7px;margin-left:9px}
+ .site-header .header-category-divider{height:21px;width:1.5px;flex-basis:1.5px}
+}
+@media(max-width:380px){
+ .site-header .brand-modern:has(.header-category-brand) .brand-logo-img{max-width:39vw!important}
+ .site-header .header-category-brand{font-size:12px;gap:6px;margin-left:7px}
+}

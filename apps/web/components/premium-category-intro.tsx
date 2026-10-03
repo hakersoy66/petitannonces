@@ -49,11 +49,6 @@ export function PremiumCategoryIntro({name,slug,domain,intro,total,related}:Prop
   return <>
     <section className={[styles.hero,property?styles.property:styles.vehicle].join(" ")} aria-label={property?"Rechercher un bien immobilier":"Rechercher un véhicule"}>
       <div className={styles.inner}>
-        <div className={styles.brand}>
-          <a href="/" className={styles.brandHome} aria-label="Petitannonces, accueil"><img className={styles.brandLogo} src="/branding/mobile-logo-solid.svg" alt="Petitannonces" width="1951" height="248"/></a>
-          <span className={styles.brandDivider} aria-hidden="true"/>
-          <strong className={styles.brandCategory}>{property?"Immobilier":"Automobile"}</strong>
-        </div>
         <div className={styles.intro}>
           <span>{property?"Vente, location & nouveaux projets":"Occasions, modèles & belles découvertes"}</span>
           <h1>{title}</h1>

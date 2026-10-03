@@ -29,6 +29,23 @@ function categoryIcon(category:Category):AppIconName{
  return "list";
 }
 
+function categoryHeaderLabel(pathname:string|null,categories:Category[]):"Immobilier"|"Automobile"|null{
+ const slug=pathname?.match(/^\/categorie\/([^/?#]+)/)?.[1];
+ if(!slug)return null;
+ if(slug==="immobilier")return "Immobilier";
+ if(slug==="vehicules"||slug==="voitures")return "Automobile";
+ const find=(nodes:Category[]):Category|null=>{
+  for(const node of nodes){
+   if(node.slug===slug)return node;
+   const nested=find(node.children??[]);
+   if(nested)return nested;
+  }
+  return null;
+ };
+ const domain=find(categories)?.domain;
+ return domain==="REAL_ESTATE"?"Immobilier":domain==="VEHICLE"?"Automobile":null;
+}
+
 function categoryAdvice(category:Category){
  const slug=category.slug.toLowerCase();
  if(category.domain==="VEHICLE"||slug.includes("vehicule"))return{
@@ -193,10 +210,11 @@ export function SiteHeader({initialBrand,initialCategories}:{initialBrand?:Publi
  const moreOpen=activeCategoryId==="__more__";
  const activeCategory=moreOpen?null:(categories.find(category=>category.id===activeCategoryId)??null);
  const advice=activeCategory?categoryAdvice(activeCategory):null;
+ const headerCategory=categoryHeaderLabel(pathname,categories);
  return <><header className="site-header">
   <div className="header-wide">
    <div className="header-brand-cluster">
-    <a className="brand brand-modern" href="/" aria-label={`${brand.siteName}, accueil`}>{brand.logoUrl?<picture className="brand-logo-picture"><source media="(max-width: 720px)" srcSet={brand.mobileLogoUrl??brand.logoUrl}/><img className="brand-logo-img" src={brand.logoUrl} alt={brand.siteName}/></picture>:!brandResolved?<span className="brand-logo-placeholder" aria-hidden="true"/>:brand.siteName==="Petit Annonces"?<span className="brand-name"><b>Petit</b> <strong>Annonces</strong></span>:<span className="brand-name"><b>{brand.siteName}</b></span>}</a>
+    <a className="brand brand-modern" href="/" aria-label={`${brand.siteName}, accueil`}>{brand.logoUrl?<picture className="brand-logo-picture"><source media="(max-width: 720px)" srcSet={brand.mobileLogoUrl??brand.logoUrl}/><img className="brand-logo-img" src={brand.logoUrl} alt={brand.siteName}/></picture>:!brandResolved?<span className="brand-logo-placeholder" aria-hidden="true"/>:brand.siteName==="Petit Annonces"?<span className="brand-name"><b>Petit</b> <strong>Annonces</strong></span>:<span className="brand-name"><b>{brand.siteName}</b></span>}{headerCategory&&<span className="header-category-brand"><span className="header-category-divider" aria-hidden="true"/><span>{headerCategory}</span></span>}</a>
     <a className="mobile-account-trigger mobile-notification-trigger" href={authenticated?"/mon-compte/notifications":"/connexion?next=%2Fmon-compte%2Fnotifications"} aria-label="Notifications"><AppIcon name="bell"/>{authenticated&&summary.unreadNotifications>0&&<i className="mobile-notification-count">{summary.unreadNotifications>99?"99+":summary.unreadNotifications}</i>}</a>
    </div>
    <form ref={searchFormRef} className={`header-search header-ai-search ${pathname==="/"?"header-search-home":"header-search-inner"}`} role="search" onSubmit={submitAiSearch}>
