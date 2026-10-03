@@ -1,9 +1,10 @@
 "use client";
 import { AppIcon } from "./app-icon";
 import { analyticsAllowed,trackSiteConversion } from "./site-telemetry";
+export type EmploiFilters={q:string;departement:string;contrat:""|"CDI"|"CDD"|"MIS";page:number};
 import styles from "./emploi-hub.module.css";
 
-export type EmploiFilters={q:string;departement:string;contrat:""|"CDI"|"CDD"|"MIS";page:number};
+
 const places=[
  {name:"Paris",dept:"75"},{name:"Lyon",dept:"69"},{name:"Marseille",dept:"13"},
  {name:"Toulouse",dept:"31"},{name:"Bordeaux",dept:"33"},{name:"Lille",dept:"59"}

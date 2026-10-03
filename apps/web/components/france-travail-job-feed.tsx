@@ -1,6 +1,6 @@
 import { AppIcon } from "./app-icon";
 import { EmploiTrackedLink } from "./emploi-analytics";
-import { emploiHref, type EmploiFilters } from "./emploi-hub";
+import { emploiHref, type EmploiFilters } from "../lib/emploi-links";
 import styles from "./france-travail-job-feed.module.css";
 
 type Job={
