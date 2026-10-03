@@ -98,6 +98,28 @@ async function loadOffers(conf:Credentials,department?:string):Promise<Offer[]>{
 }
 
 export async function registerFranceTravailRoutes(app:FastifyInstance){
+ app.post("/admin/integrations/france-travail/check-apis",{preHandler:requireAdminRoles(["SUPER_ADMIN","ADMIN"])},async (_request,reply)=>{
+  const conf=await credentials();
+  if(!conf.id||!conf.secret)return reply.code(409).send({error:"france_travail_credentials_missing"});
+  const products=[
+   {id:"rome-metiers",scope:"api_rome-metiersv1 nomenclatureRome"},
+   {id:"rome-fiches",scope:"api_rome-fiches-metiersv1 nomenclatureRome"},
+   {id:"bonne-boite",scope:"api_labonneboitev2"},
+  ];
+  const results: Array<{id:string;status:"authorized_scope"|"subscription_required"|"credentials_invalid"|"unavailable"}>=[];
+  for(const product of products){
+   try{
+    const params=new URLSearchParams({grant_type:"client_credentials",client_id:conf.id,client_secret:conf.secret,scope:product.scope});
+    const response=await fetch(TOKEN_URL,{method:"POST",headers:{"content-type":"application/x-www-form-urlencoded"},body:params,signal:AbortSignal.timeout(9000)});
+    const body=await response.json().catch(()=>null) as {error?:string;access_token?:string}|null;
+    const status=response.ok&&Boolean(body?.access_token)?"authorized_scope"
+      :body?.error==="invalid_scope"||body?.error==="unauthorized_client"?"subscription_required"
+      :body?.error==="invalid_client"?"credentials_invalid":"unavailable";
+    results.push({id:product.id,status});
+   }catch{results.push({id:product.id,status:"unavailable"})}
+  }
+  return reply.header("cache-control","no-store").send({results,notice:"A valid OAuth scope does not by itself establish downstream API access or redistribution rights."});
+ });
  app.get("/public/emploi/france-travail",async(request,reply)=>{
   const parsed=z.object({departement:z.string().regex(/^(?:0[1-9]|[1-8][0-9]|9[0-5]|97[1-6]|98[4-8]|2A|2B)$/).optional()}).safeParse(request.query);
   if(!parsed.success)return reply.code(400).send({error:"invalid_filter"});
