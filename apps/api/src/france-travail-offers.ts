@@ -38,7 +38,11 @@ async function token(id:string,secret:string){
  if(accessToken?.validUntil&&accessToken.fingerprint===fingerprint&&Date.now()<accessToken.validUntil)return accessToken.value;
  const form=new URLSearchParams({grant_type:"client_credentials",client_id:id,client_secret:secret,scope:"api_offresdemploiv2 o2dsoffre"});
  const r=await fetch(TOKEN_URL,{method:"POST",headers:{"content-type":"application/x-www-form-urlencoded"},body:form,signal:AbortSignal.timeout(9000)});
- if(!r.ok)throw new Error("france_travail_oauth_"+r.status);
+ if(!r.ok){
+  const errorBody=await r.json().catch(()=>null) as {error?:string}|null;
+  const category=errorBody?.error==="invalid_client"?"invalid_client":errorBody?.error==="invalid_scope"?"invalid_scope":errorBody?.error==="unauthorized_client"?"unauthorized_client":"http_"+r.status;
+  throw new Error("france_travail_oauth_"+category);
+ }
  const data=await r.json() as {access_token?:string;expires_in?:number};
  if(!data.access_token)throw new Error("france_travail_oauth_missing_token");
  accessToken={value:data.access_token,validUntil:Date.now()+Math.max(60,Number(data.expires_in??1400)-90)*1000,fingerprint};
