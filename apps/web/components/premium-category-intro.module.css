@@ -76,3 +76,23 @@
 
 /* Full-width breakout within the existing SEO category container. */
 .hero{left:50%;width:100vw;margin-left:-50vw}
+
+/* SVG category icons and Petitannonces | category wordmark */
+.brand{gap:13px;align-items:center}
+.brandHome{display:inline-flex;align-items:center;flex:0 1 auto;min-width:0;text-decoration:none}
+.brandLogo{display:block;width:202px;max-width:100%;height:auto;object-fit:contain}
+.brandDivider{display:block;flex:0 0 2px;width:2px;height:27px;border-radius:2px;background:#c9c3e7}
+.brandCategory{display:block;color:#33304c;font-size:22px;line-height:1.1;letter-spacing:-.025em;font-weight:850;white-space:nowrap}
+.vehicle .brandCategory{color:#33436b}
+.types i{display:grid;place-items:center;flex:0 0 48px;width:48px;height:48px;border-radius:14px;background:#f2f0ff;color:#6451d7;font-size:22px}
+.types i svg{display:block;width:23px;height:23px}
+.types>a:hover i,.types>.current i{background:#e8e2ff;color:#513be1}
+@media(max-width:700px){
+ .brand{gap:9px;margin-bottom:18px}
+ .brandLogo{width:154px}
+ .brandDivider{height:23px}
+ .brandCategory{font-size:17px}
+ .types i{width:43px;height:43px;flex-basis:43px;border-radius:12px}
+ .types i svg{width:20px;height:20px}
+}
+@media(max-width:380px){.brandLogo{width:137px}.brandCategory{font-size:16px}.brandDivider{height:20px}}

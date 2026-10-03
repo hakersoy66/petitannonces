@@ -1,4 +1,11 @@
 import { AppIcon } from "./app-icon";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
+import {
+  faBed, faBolt, faBuilding, faCar, faCity, faHouse, faKey,
+  faMotorcycle, faSailboat, faScrewdriverWrench, faSquareParking,
+  faTree, faTruck, faVanShuttle, faWarehouse,
+} from "@fortawesome/free-solid-svg-icons";
 import styles from "./premium-category-intro.module.css";
 
 type CategoryLink={name:string;slug:string};
@@ -11,23 +18,26 @@ type Props={
   related:CategoryLink[];
 };
 
-function symbol(slug:string,property:boolean){
+function symbol(slug:string,name:string,property:boolean):IconDefinition{
+  const value=(slug+" "+name).normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
   if(property){
-    if(/location|colocation/.test(slug))return "🔑";
-    if(/vente|maison|villa/.test(slug))return "🏡";
-    if(/terrain/.test(slug))return "🌿";
-    if(/bureau|commerce/.test(slug))return "🏢";
-    if(/parking|garage/.test(slug))return "🚘";
-    return "🏠";
+    if(/location|louer|colocation/.test(value))return faKey;
+    if(/appartement|studio/.test(value))return faBuilding;
+    if(/maison|villa|pavillon/.test(value))return faHouse;
+    if(/terrain|jardin|parcelle/.test(value))return faTree;
+    if(/bureau|commerce|boutique|local/.test(value))return faCity;
+    if(/parking|stationnement|garage/.test(value))return faSquareParking;
+    if(/chambre/.test(value))return faBed;
+    if(/entrepot|hangar/.test(value))return faWarehouse;
+    return faHouse;
   }
-  if(/moto|scooter/.test(slug))return "🏍️";
-  if(/camping|caravane/.test(slug))return "🚐";
-  if(/nautisme/.test(slug))return "⛵";
-  if(/piece|accessoire/.test(slug))return "🛠️";
-  if(/electrique|hybride/.test(slug))return "⚡";
-  if(/utilitaire/.test(slug))return "🚚";
-  if(/suv|cross/.test(slug))return "🚙";
-  return "🚗";
+  if(/moto|scooter|deux-roues|quad/.test(value))return faMotorcycle;
+  if(/camping|caravane|van|fourgon/.test(value))return faVanShuttle;
+  if(/bateau|nautisme|voilier/.test(value))return faSailboat;
+  if(/piece|accessoire|entretien/.test(value))return faScrewdriverWrench;
+  if(/electrique|hybride/.test(value))return faBolt;
+  if(/utilitaire|camion|poids-lourd/.test(value))return faTruck;
+  return faCar;
 }
 
 export function PremiumCategoryIntro({name,slug,domain,intro,total,related}:Props){
@@ -40,8 +50,9 @@ export function PremiumCategoryIntro({name,slug,domain,intro,total,related}:Prop
     <section className={[styles.hero,property?styles.property:styles.vehicle].join(" ")} aria-label={property?"Rechercher un bien immobilier":"Rechercher un véhicule"}>
       <div className={styles.inner}>
         <div className={styles.brand}>
-          <span className={styles.brandIcon}><AppIcon name={property?"home":"car"}/></span>
-          <span><small>PETIT ANNONCES</small><strong>{property?"Immobilier":"Automobile"}</strong></span>
+          <a href="/" className={styles.brandHome} aria-label="Petitannonces, accueil"><img className={styles.brandLogo} src="/branding/mobile-logo-solid.svg" alt="Petitannonces" width="1951" height="248"/></a>
+          <span className={styles.brandDivider} aria-hidden="true"/>
+          <strong className={styles.brandCategory}>{property?"Immobilier":"Automobile"}</strong>
         </div>
         <div className={styles.intro}>
           <span>{property?"Vente, location & nouveaux projets":"Occasions, modèles & belles découvertes"}</span>
@@ -70,7 +81,7 @@ export function PremiumCategoryIntro({name,slug,domain,intro,total,related}:Prop
       </div>
       <div className={styles.types}>{related.slice(0,8).map((item)=>
         <a key={item.slug} href={"/categorie/"+item.slug} className={item.slug===slug?styles.current:""} aria-current={item.slug===slug?"page":undefined}>
-          <i aria-hidden="true">{symbol(item.slug,property)}</i>
+          <i aria-hidden="true"><FontAwesomeIcon icon={symbol(item.slug,item.name,property)}/></i>
           <strong>{item.name}</strong>
           <span>Découvrir <AppIcon name="arrow-right"/></span>
         </a>
