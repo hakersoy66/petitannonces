@@ -15,6 +15,7 @@ import { AppIcon, type AppIconName } from "../../../components/app-icon";
 import { VacationAvailabilityChecker } from "../../../components/vacation-availability-checker";
 import { VacationListingReviews } from "../../../components/vacation-listing-reviews";
 import { PayPalPayLaterBadge } from "../../../components/paypal-pay-later-badge";
+import { VehicleWarrantyCard } from "../../../components/vehicle-warranty-card";
 import { attributeToText, fetchPublicListing, fetchSimilarListings, formatMoney } from "../../../lib/public-listing";
 import { formatListingPrice, listingPriceCopy } from "../../../lib/listing-price";
 import { promotionClass, promotionLabel } from "../../../lib/listing-promotions";
@@ -304,7 +305,8 @@ export default async function ListingPage({params}:Props){
     </div>
     {showCredit&&<CreditSimulator priceMinor={listing.priceMinor!} isRealEstate={isProperty}/>}
    </section>
-   {vehicleHistoryCard&&<div className={styles.desktopVehicleHistory}>{vehicleHistoryCard}</div>}
+   {isVehicle&&listing.seller.kind==="PROFESSIONNEL"&&<div className={styles.vehicleWarrantySlot}><VehicleWarrantyCard warranty={listing.vehicleWarranty}/></div>}
+    {vehicleHistoryCard&&<div className={styles.desktopVehicleHistory}>{vehicleHistoryCard}</div>}
    {isVacation&&isActive&&<VacationListingReviews listingId={listing.id}/>}
    {isProperty&&listing.energy&&<section className={`${styles.detailsCard} ${styles.energyCard}`}><div className={styles.energyCardHead}><span className={styles.energyCardIcon}><AppIcon name="bolt"/></span><div><h2>Performance énergétique</h2><p>Classe énergétique du logement et niveau d’émissions de gaz à effet de serre.</p></div></div><div className={styles.energyRow}><EnergyScale value={listing.energy.energyClass} label="DPE"/><EnergyScale value={listing.energy.climateClass} label="GES"/></div></section>}
    {similar.length>0&&<section className={styles.similarSection}><div className={styles.sectionTitle}><div><span>À découvrir aussi</span><h2>Annonces similaires</h2></div><a href={`/recherche?category=${encodeURIComponent(listing.category.slug)}`}>Voir toutes <AppIcon name="arrow-right"/></a></div><div className={styles.similarGrid}>{similar.map(item=><MarketplaceListingCard key={item.id} variant="similar" item={{...item,category:item.category??listing.category}}/>)}</div></section>}

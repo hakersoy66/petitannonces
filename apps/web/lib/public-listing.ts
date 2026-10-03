@@ -23,6 +23,7 @@ export type PublicListingDetail = {
   media: Array<{ id: string; url: string; mimeType: string; width: number | null; height: number | null; altText: string | null; isCover: boolean }>;
   vehicle: Record<string, unknown> | null;
   vehicleHistory: { checkedAt:string|null; firstRegistrationDate:string|null; sraClass:string|null; theftRiskLevel:string|null; originalNewValueEuro:number|null; ownerChanges:number|null; controlledDamageCount:number|null; administrativeStatus:string|null; technicalInspectionDate:string|null; technicalInspectionResult:string|null; mileageKm:number|null; officialHistovecUrl:string|null } | null;
+  vehicleWarranty: {commercialOffered:boolean;commercialMonths:number|null;commercialCoverage:string|null;commercialProvider:string|null}|null;
   property: Record<string, unknown> | null;
   energy: Record<string, unknown> | null;
   productSafety: { manufacturerName:string|null; manufacturerPostalAddress:string|null; manufacturerEmail:string|null; responsiblePersonName:string|null; responsiblePersonPostalAddress:string|null; responsiblePersonEmail:string|null; productIdentifier:string|null; model:string|null; ean:string|null; ceMarked:boolean|null; safetyWarning:string|null } | null;

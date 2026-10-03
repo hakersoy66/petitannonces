@@ -137,10 +137,14 @@ export async function registerListingRoutes(app: FastifyInstance) {
     if (!listing) return reply.code(404).send({ error: "draft_not_found" });
     const importRows = await prisma.$queryRawUnsafe<Array<{sourceUrl:string|null;sourceType:string;createdAt:Date}>>(`SELECT "sourceUrl","sourceType","createdAt" FROM "ListingImportLog" WHERE "listingId"=$1 AND "userId"=$2 ORDER BY "createdAt" DESC LIMIT 1`, listing.id, user.id).catch(()=>[]);
     let histovecUrl:string|null=null;if(listing.category.domain==="VEHICLE"){await ensureVehicleOfficialReportTable();const reportRows=await prisma.$queryRawUnsafe<Array<{histovecUrl:string|null}>>(`SELECT "histovecUrl" FROM "VehicleOfficialReport" WHERE "listingId"=$1 LIMIT 1`,listing.id).catch(()=>[]);histovecUrl=reportRows[0]?.histovecUrl??null;}
+    const warrantyRows=listing.category.domain==="VEHICLE"&&user.kind==="PROFESSIONNEL"
+      ?await prisma.$queryRawUnsafe<Array<{commercialOffered:boolean;commercialMonths:number|null;commercialCoverage:string|null;commercialProvider:string|null}>>(`SELECT "commercialOffered","commercialMonths","commercialCoverage","commercialProvider" FROM "VehicleWarranty" WHERE "listingId"=$1 LIMIT 1`,listing.id)
+      :[];
+
     return reply.send({ importInfo: importRows[0] ?? null, listing: {
       id: listing.id, title: listing.title, description: listing.description, city: listing.city, postalCode: listing.postalCode, region: listing.region, latitude: listing.latitude, longitude: listing.longitude, draftSavedAt: listing.draftSavedAt, category: listing.category,
       attributes: listing.attributes.map((item) => ({ attributeId: item.attributeId, key: item.attribute.key, value: item.valueJson ?? item.valueNumber ?? item.valueBoolean ?? item.valueText })),
-      vehicle: listing.vehicle, histovecUrl, property: listing.property, energy: listing.energy,
+      vehicle: listing.vehicle, histovecUrl, vehicleWarranty: warrantyRows[0]??null, property: listing.property, energy: listing.energy,
     } });
   });
 
@@ -482,6 +486,36 @@ export async function registerListingRoutes(app: FastifyInstance) {
     if(!normalized){await prisma.$executeRawUnsafe(`DELETE FROM "VehicleOfficialReport" WHERE "listingId"=$1`,draft.id);return reply.send({saved:true,histovecUrl:null});}
     await prisma.$executeRawUnsafe(`INSERT INTO "VehicleOfficialReport" ("listingId","histovecUrl","createdAt","updatedAt") VALUES ($1,$2,NOW(),NOW()) ON CONFLICT ("listingId") DO UPDATE SET "histovecUrl"=EXCLUDED."histovecUrl","updatedAt"=NOW()`,draft.id,normalized);
     return reply.send({saved:true,histovecUrl:normalized});
+  });
+
+  app.put("/listings/:id/vehicle/warranty", async (request, reply) => {
+    const user=await requireListingUser(request,reply);if(!user)return;
+    const params=idParams.safeParse(request.params);
+    const body=z.discriminatedUnion("commercialOffered",[
+      z.object({commercialOffered:z.literal(false)}),
+      z.object({
+        commercialOffered:z.literal(true),
+        commercialMonths:z.number().int().min(1).max(60),
+        commercialCoverage:z.string().trim().min(10).max(1200),
+        commercialProvider:z.string().trim().max(120).nullish(),
+      }),
+    ]).safeParse(request.body);
+    if(!params.success||!body.success)return reply.code(400).send({error:"invalid_warranty"});
+    if(user.kind!=="PROFESSIONNEL")return reply.code(403).send({error:"professional_account_required"});
+    const draft=await ownedDraft(params.data.id,user.id);
+    if(!draft)return reply.code(404).send({error:"draft_not_found"});
+    if(draft.category.domain!=="VEHICLE")return reply.code(400).send({error:"vehicle_category_required"});
+    const data=body.data;
+    const months=data.commercialOffered?data.commercialMonths:null;
+    const coverage=data.commercialOffered?data.commercialCoverage:null;
+    const provider=data.commercialOffered?data.commercialProvider?.trim()||null:null;
+    await prisma.$executeRawUnsafe(
+      `INSERT INTO "VehicleWarranty" ("listingId","commercialOffered","commercialMonths","commercialCoverage","commercialProvider","createdAt","updatedAt")
+       VALUES ($1,$2,$3,$4,$5,NOW(),NOW()) ON CONFLICT ("listingId")
+       DO UPDATE SET "commercialOffered"=EXCLUDED."commercialOffered","commercialMonths"=EXCLUDED."commercialMonths","commercialCoverage"=EXCLUDED."commercialCoverage","commercialProvider"=EXCLUDED."commercialProvider","updatedAt"=NOW()`,
+      draft.id,data.commercialOffered,months,coverage,provider,
+    );
+    return reply.send({saved:true,vehicleWarranty:{commercialOffered:data.commercialOffered,commercialMonths:months,commercialCoverage:coverage,commercialProvider:provider}});
   });
 
   app.put("/listings/:id/vehicle", async (request, reply) => {

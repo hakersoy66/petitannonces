@@ -1,0 +1,16 @@
+.section{display:grid;gap:16px;padding:19px;border:1px solid #dedcf2;border-radius:18px;background:linear-gradient(140deg,#fbfaff,#fff);color:#292a3a}
+.heading{display:flex;gap:12px;align-items:center}
+.icon{flex:0 0 42px;width:42px;height:42px;border-radius:13px;display:grid;place-items:center;background:#eeecff;color:#5644db}
+.heading strong{display:block;font-size:17px;letter-spacing:-.02em}.heading p{margin:3px 0 0;font-size:12px;color:#77758b;line-height:1.4}
+.legal{border-radius:14px;background:#f1f6ff;border:1px solid #e0e9fa;padding:14px 15px}
+.legal>div{display:flex;align-items:center;gap:9px;color:#283653}.legal>div svg{color:#4a5bd2}.legal strong{font-size:14px}.legal b{margin-left:auto;white-space:nowrap;font-size:15px}.legal p{font-size:12px;line-height:1.6;margin:8px 0;color:#414b60}.legal small{display:block;font-size:11px;line-height:1.5;color:#65758e}
+.fieldset{border:0;padding:0;margin:0;display:grid;gap:10px}.fieldset legend{font-size:14px;font-weight:850;margin-bottom:11px}
+.radio{display:flex;align-items:center;gap:10px;padding:12px;background:white;border:1px solid #e4e3ed;border-radius:12px;font-size:13px;font-weight:700;cursor:pointer}.radio input{accent-color:#5b4cf0;width:17px;height:17px;flex:0 0 auto}
+.extra{display:grid;gap:14px;padding:15px;border:1px solid #e7e4f1;border-radius:14px;background:#fff}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.extra label{min-width:0;display:grid;gap:7px;font-size:12px;font-weight:800}
+.extra input,.extra select,.extra textarea{width:100%;box-sizing:border-box;min-width:0;border:1px solid #dcdbe8;border-radius:11px;padding:11px 12px;background:#fff;color:#242636;font:inherit;font-size:14px}
+.extra textarea{resize:vertical;min-height:90px;line-height:1.45}
+.extra small{font-size:11px;font-weight:500;color:#717083;line-height:1.4}.extra em{font-style:normal;color:#b42d39;font-size:12px}
+.note{display:flex;align-items:start;gap:8px;margin:0;color:#6b687d;font-size:11px;line-height:1.55}.note svg{margin-top:2px;flex:0 0 auto}
+@media(max-width:650px){.section{padding:14px;gap:13px}.two{grid-template-columns:1fr}.heading strong{font-size:15px}.legal{padding:12px}.fieldset legend{font-size:13px}}
