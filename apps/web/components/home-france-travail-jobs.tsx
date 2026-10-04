@@ -4,6 +4,7 @@ export type HomeFranceTravailJob={
   id:string;
   title:string;
   company:string|null;
+  logoUrl:string|null;
   city:string|null;
   contract:string|null;
   publishedAt:string|null;
@@ -11,13 +12,34 @@ export type HomeFranceTravailJob={
   source:"FRANCE_TRAVAIL";
 };
 
+const MANPOWER_LOGO="https://newsroom.manpowergroup.fr/wp-content/uploads/2017/08/765111-500x409.png";
+
+function companyLogo(job:HomeFranceTravailJob):string|null{
+  if(job.logoUrl){
+    try{const u=new URL(job.logoUrl);if(u.protocol==="https:"&&u.hostname.includes("."))return u.toString()}catch{}
+  }
+  // Verified, brand-specific press image from ManpowerGroup's official newsroom.
+  if(/^MANPOWER(?: FRANCE)?$/i.test((job.company??"").trim()))return MANPOWER_LOGO;
+  return null;
+}
+
+function companyInitials(value:string|null):string{
+  if(!value?.trim())return "FT";
+  const words=value.trim().replace(/[^\p{L}\p{N} ]/gu,"").split(/\s+/).filter(Boolean);
+  return (words.length>1?words.slice(0,2).map(x=>x[0]):[words[0]?.slice(0,2)]).filter(Boolean).join("").toUpperCase();
+}
+
 function OfficialJobCard({job}:{job:HomeFranceTravailJob}){
+  const logo=companyLogo(job);
   return <article className="home-ft-job-card">
-    <div className="home-ft-job-top"><span className="home-ft-job-contract">{job.contract||"Offre d'emploi"}</span><span className="home-ft-job-source">France Travail</span></div>
-    <div className="home-ft-job-icon"><AppIcon name="briefcase"/></div>
+    <div className="home-ft-job-top"><span className="home-ft-job-contract">{job.contract||"Emploi"}</span><span className="home-ft-job-source"><AppIcon name="circle-check"/> France Travail</span></div>
+    <div className="home-ft-job-employer-row">
+      <span className="home-ft-job-logo" aria-hidden="true"><b>{companyInitials(job.company)}</b>{logo&&<i style={{backgroundImage:`url("${logo}")`}}/>}</span>
+      <div className="home-ft-job-employer"><small>Entreprise</small><strong>{job.company||"Employeur non précisé"}</strong></div>
+    </div>
     <h3><a href={job.applyUrl} target="_blank" rel="noopener noreferrer">{job.title}</a></h3>
-    <div className="home-ft-job-company">{job.company||"Employeur non précisé"}</div>
-    <div className="home-ft-job-bottom"><span><AppIcon name="location"/>{job.city||"France"}</span><a href={job.applyUrl} target="_blank" rel="noopener noreferrer" aria-label={`Consulter l'offre France Travail : ${job.title}`}>Voir l’offre <AppIcon name="arrow-right"/></a></div>
+    <div className="home-ft-job-location"><AppIcon name="location"/><span>{job.city||"France"}</span></div>
+    <div className="home-ft-job-bottom"><a href={job.applyUrl} target="_blank" rel="noopener noreferrer" aria-label={`Consulter l'offre France Travail : ${job.title}`}>Voir l’offre <AppIcon name="arrow-right"/></a></div>
   </article>;
 }
 

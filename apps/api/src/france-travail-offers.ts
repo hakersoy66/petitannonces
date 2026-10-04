@@ -9,7 +9,7 @@ const TOKEN_URL = "https://entreprise.francetravail.fr/connexion/oauth2/access_t
 const API_URL = "https://api.francetravail.io/partenaire/offresdemploi/v2/offres/search";
 type Credentials = { id:string;secret:string;licensed:boolean;enabled:boolean;ready:boolean };
 type Offer = {
- id:string;title:string;company:string|null;city:string|null;contract:string|null;
+ id:string;title:string;company:string|null;logoUrl:string|null;city:string|null;contract:string|null;
  salary:string|null;publishedAt:string|null;description:string|null;romeCode:string|null;source:"FRANCE_TRAVAIL";applyUrl:string;
 };
 let accessToken: {value:string; validUntil:number;fingerprint:string}|null=null;
@@ -49,6 +49,15 @@ async function token(id:string,secret:string){
  return accessToken.value;
 }
 
+function officialCompanyLogo(value:unknown):string|null{
+ if(typeof value!=="string"||value.length>700)return null;
+ try{
+  const parsed=new URL(value.trim());
+  if(parsed.protocol!=="https:"||parsed.username||parsed.password||!parsed.hostname.includes("."))return null;
+  if(parsed.hostname==="localhost"||/^\\d+\\.\\d+\\.\\d+\\.\\d+$/.test(parsed.hostname))return null;
+  return parsed.toString();
+ }catch{return null}
+}
 function normalize(input:unknown):Offer|null{
  if(!input||typeof input!=="object")return null;
  const x=input as Record<string,any>,id=String(x.id??"").trim();
@@ -57,6 +66,7 @@ function normalize(input:unknown):Offer|null{
  if(!title)return null;
  return{
   id,title,company:String(x.entreprise?.nom??"").trim().slice(0,200)||null,
+  logoUrl:officialCompanyLogo(x.entreprise?.logo),
   city:String(x.lieuTravail?.libelle??"").trim().slice(0,140)||null,
   contract:String(x.typeContratLibelle??x.typeContrat??"").trim().slice(0,120)||null,
   salary:String(x.salaire?.libelle??"").trim().slice(0,140)||null,
