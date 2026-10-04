@@ -899,7 +899,7 @@
 
 /* 2026-09-10 desktop homepage +15% content scale; hero/header/footer and mobile/PWA intentionally unchanged */
 @media(min-width:901px){
-  .home-page-shell .desktop-market-home .home-body-shell{width:min(1587px,calc(100% - 48px))}
+  .home-page-shell .desktop-market-home .home-body-shell{width:min(1380px,calc(100% - 48px))}
   .home-page-shell .market-home-featured{padding:23px 0 28px}
   .home-page-shell .market-home-discovery{padding:7px 0 35px}
   .home-page-shell .market-home-stores{padding:5px 0 23px}
