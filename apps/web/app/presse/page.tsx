@@ -21,7 +21,7 @@ export default async function PressePage(){
  const org={"@context":"https://schema.org","@type":"Organization",name,url:"https://petitannonces.fr",logo:logo??"https://petitannonces.fr/icons/icon-512.png",description:"Plateforme française de petites annonces pour particuliers et professionnels."};
  return <div style={{minHeight:"100vh",background:"#f7f7fb"}}>
   <script type="application/ld+json" dangerouslySetInnerHTML={{__html:safe(org)}}/>
-  <main style={{width:"min(1120px,calc(100% - 24px))",margin:"0 auto",padding:"42px 0 72px"}}>
+  <main style={{width:"min(1380px,calc(100% - 24px))",margin:"0 auto",padding:"42px 0 72px"}}>
    <section style={{padding:"clamp(28px,5vw,54px)",borderRadius:28,background:"linear-gradient(135deg,#171725,#403796)",color:"#fff",boxShadow:"0 24px 70px rgba(41,34,92,.16)"}}>
     <span style={{display:"inline-flex",padding:"7px 11px",border:"1px solid rgba(255,255,255,.2)",borderRadius:999,fontSize:11,fontWeight:900,letterSpacing:".08em",textTransform:"uppercase"}}>Presse & médias</span>
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(260px,1fr))",gap:28,alignItems:"center",marginTop:18}}>

@@ -27,13 +27,13 @@ const safe=(value:unknown)=>JSON.stringify(value).replace(/</g,"\\u003c");
 
 export default async function ObservatoirePage(){
  const d=await data();
- if(!d)return <main style={{width:"min(980px,calc(100% - 24px))",margin:"0 auto",padding:"48px 0 80px"}}><h1>Observatoire Petit Annonces</h1><p>Les données sont momentanément indisponibles.</p></main>;
+ if(!d)return <main style={{width:"min(1380px,calc(100% - 24px))",margin:"0 auto",padding:"48px 0 80px"}}><h1>Observatoire Petit Annonces</h1><p>Les données sont momentanément indisponibles.</p></main>;
  const topCity=Math.max(1,...d.cities.map(x=>x.count));
  const topCat=Math.max(1,...d.categories.map(x=>x.count));
  const dataset={"@context":"https://schema.org","@type":"Dataset",name:"Observatoire Petit Annonces",description:"Statistiques agrégées des annonces actives publiées sur Petit Annonces en France.",url:"https://petitannonces.fr/observatoire",creator:{"@type":"Organization",name:"Petit Annonces",url:"https://petitannonces.fr"},dateModified:d.generatedAt,spatialCoverage:{"@type":"Place",name:"France"},measurementTechnique:"Agrégation des annonces actives publiées sur Petit Annonces"};
  return <div style={{minHeight:"100vh",background:"#f7f7fb",color:"#222331"}}>
   <script type="application/ld+json" dangerouslySetInnerHTML={{__html:safe(dataset)}}/>
-  <main style={{width:"min(1160px,calc(100% - 24px))",margin:"0 auto",padding:"30px 0 80px"}}>
+  <main style={{width:"min(1380px,calc(100% - 24px))",margin:"0 auto",padding:"30px 0 80px"}}>
    <nav style={{fontSize:13,color:"#747584",marginBottom:14}}><a href="/" style={{color:"#5b4cf0"}}>Accueil</a> › Observatoire</nav>
    <header style={{padding:"clamp(30px,5vw,58px)",borderRadius:28,background:"linear-gradient(135deg,#151522,#332d72 55%,#5b4cf0)",color:"#fff",boxShadow:"0 24px 70px rgba(32,28,79,.16)"}}>
     <span style={{fontSize:11,fontWeight:950,letterSpacing:1.2,textTransform:"uppercase",opacity:.76}}>Données du catalogue</span>

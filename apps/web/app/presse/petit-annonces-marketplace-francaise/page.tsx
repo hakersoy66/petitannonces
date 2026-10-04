@@ -18,7 +18,7 @@ export default function CommuniquePage(){
  const article={"@context":"https://schema.org","@type":"NewsArticle",headline:"Petit Annonces développe une marketplace française de petites annonces",datePublished:published,dateModified:published,mainEntityOfPage:URL,publisher:{"@type":"Organization",name:"Petit Annonces",url:"https://petitannonces.fr",logo:{"@type":"ImageObject",url:"https://petitannonces.fr/icons/icon-512.png"}},author:{"@type":"Organization",name:"Petit Annonces"},description:"Petit Annonces développe une plateforme française de petites annonces gratuites pour particuliers et professionnels."};
  return <div style={{minHeight:"100vh",background:"#f7f7fb"}}>
   <script type="application/ld+json" dangerouslySetInnerHTML={{__html:safe(article)}}/>
-  <main style={{width:"min(920px,calc(100% - 24px))",margin:"0 auto",padding:"38px 0 76px"}}>
+  <main style={{width:"min(1380px,calc(100% - 24px))",margin:"0 auto",padding:"38px 0 76px"}}>
    <nav aria-label="Fil d’Ariane" style={{fontSize:13,color:"#747584",marginBottom:16}}><a href="/" style={{color:"#5b4cf0"}}>Accueil</a> › <a href="/presse" style={{color:"#5b4cf0"}}>Presse</a> › Communiqué</nav>
    <article style={{background:"#fff",border:"1px solid #e6e4ef",borderRadius:26,overflow:"hidden",boxShadow:"0 18px 60px rgba(35,31,77,.08)"}}>
     <header style={{padding:"clamp(28px,5vw,48px)",background:"linear-gradient(135deg,#171725,#403796)",color:"#fff"}}>
