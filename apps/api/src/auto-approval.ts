@@ -1,4 +1,4 @@
-import { randomInt, randomUUID } from "node:crypto";
+import { randomInt } from "node:crypto";
 import { prisma } from "@pa/database";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
@@ -13,10 +13,20 @@ import { notifyListingIndexNow } from "./indexnow.js";
 import { prepareListingSocialPost } from "./social-growth.js";
 import { notifyFollowersForListing } from "./following.js";
 import { notifyInstantSavedSearchesForListing } from "./saved-search-alerts.js";
+import { queueAdminRoleEmail } from "./transactional-email.js";
 
 const SETTINGS_KEY="moderation.autoApproval";
 const ADMIN_ROLES=["SUPER_ADMIN","ADMIN"] as const;
-const DEFAULT_SETTINGS={enabled:true,minDelaySeconds:60,maxDelaySeconds:120,minTrustScore:75,maxRiskScore:20,requireReliableSeller:true,requireEmailVerified:true};
+const DEFAULT_SETTINGS={enabled:true,minDelaySeconds:60,maxDelaySeconds:60,minTrustScore:75,maxRiskScore:20,requireReliableSeller:true,requireEmailVerified:true};
+const MIN_CLEAN_MANUAL_APPROVALS=3;
+const HISTORY_VIOLATION_DAYS=180;
+
+// A seller with a proven history of three human-approved, incident-free ads
+// can be trusted even without marketplace sales/reviews. Keep this separate
+// from the marketplace reputation badge (which requires completed sales).
+export function listingHistoryTrustScore(manualApprovals:number,accountAgeDays:number){
+ return Math.min(90,50+(accountAgeDays>=7?10:0)+Math.min(6,Math.max(0,manualApprovals))*5);
+}
 const settingsSchema=z.object({
   enabled:z.boolean(),
   minDelaySeconds:z.number().int().min(60).max(600),
@@ -58,19 +68,36 @@ async function adminId(request:any){
 export async function evaluateAutoApprovalEligibility(sellerId:string,settings?:AutoApprovalSettings){
   const cfg=settings??await getAutoApprovalSettings();
   if(!cfg.enabled)return{eligible:false as const,reason:"disabled"};
-  const [rep,risk,user,openCase]=await Promise.all([
+  const [rep,risk,user,openCase,history,activeHold,activeReports]=await Promise.all([
     getUserReputation(sellerId),
     getUserRiskPolicy(sellerId),
-    prisma.user.findUnique({where:{id:sellerId},select:{status:true,emailVerifiedAt:true}}),
+    prisma.user.findUnique({where:{id:sellerId},select:{status:true,emailVerifiedAt:true,createdAt:true}}),
     prisma.$queryRawUnsafe<Array<{id:string}>>(`SELECT "id" FROM "ModerationCase" WHERE "targetType"='USER' AND "targetId"=$1 AND "status" NOT IN ('RESOLVED','CLOSED') LIMIT 1`,sellerId),
+    prisma.$queryRawUnsafe<Array<{approved:number;violations:number}>>(`
+      SELECT
+       COUNT(DISTINCT c."targetId") FILTER(WHERE c."status"='RESOLVED' AND c."decisionReasonCode"='MANUAL_APPROVAL' AND c."updatedAt">=CURRENT_TIMESTAMP-INTERVAL '365 days')::int AS approved,
+       COUNT(*) FILTER(WHERE c."decisionReasonCode" IN ('PROHIBITED_CONTENT','INCOMPLETE_INFORMATION','INSUFFICIENT_PHOTOS','DUPLICATE_LISTING','PROHIBITED_ITEM','CONTENT_POLICY_BLOCK','FRAUD','SPAM') AND c."updatedAt">=CURRENT_TIMESTAMP-($2::int*INTERVAL '1 day'))::int AS violations
+      FROM "ModerationCase" c JOIN "Listing" l ON c."targetType"='LISTING' AND l."id"=c."targetId"
+      WHERE l."sellerId"=$1`,sellerId,HISTORY_VIOLATION_DAYS),
+    prisma.$queryRawUnsafe<Array<{id:string}>>(`SELECT "id" FROM "ListingSpamHold" WHERE "userId"=$1 AND "status" IN ('PENDING','REJECTED') AND "updatedAt">=CURRENT_TIMESTAMP-INTERVAL '180 days' LIMIT 1`,sellerId),
+    prisma.$queryRawUnsafe<Array<{id:string}>>(`SELECT tr."id" FROM "TrustReport" tr LEFT JOIN "Listing" l ON tr."targetType"='LISTING' AND l."id"=tr."targetId" WHERE tr."status" NOT IN ('DISMISSED','CLOSED') AND ((tr."targetType"='USER' AND tr."targetId"=$1) OR l."sellerId"=$1) LIMIT 1`,sellerId),
   ]);
   if(!user||user.status!=="ACTIVE")return{eligible:false as const,reason:"account_not_active"};
   if(!rep)return{eligible:false as const,reason:"reputation_unavailable"};
-  const phoneVerified=Boolean(rep.metrics.phoneVerified);
-  if(risk.level!=="LOW"||risk.reviewRequired||risk.score>cfg.maxRiskScore)return{eligible:false as const,reason:"risk_review_required",trustScore:rep.trust.score,riskScore:risk.score,phoneVerified};
-  if(openCase.length)return{eligible:false as const,reason:"open_user_moderation_case",trustScore:rep.trust.score,riskScore:risk.score,phoneVerified};
-  if(!phoneVerified)return{eligible:false as const,reason:"phone_not_verified_manual_moderation",trustScore:rep.trust.score,riskScore:risk.score,phoneVerified:false};
-  return{eligible:true as const,reason:"phone_verified",trustScore:rep.trust.score,riskScore:risk.score,phoneVerified:true};
+  const ageDays=(Date.now()-user.createdAt.getTime())/86400000;
+  const manualApprovals=history[0]?.approved??0;
+  const trustScore=Math.max(rep.trust.score,listingHistoryTrustScore(manualApprovals,ageDays));
+  const base={trustScore,riskScore:risk.score,phoneVerified:Boolean(rep.metrics.phoneVerified),manualApprovals};
+  if(cfg.requireEmailVerified&&!user.emailVerifiedAt)return{eligible:false as const,reason:"email_not_verified",...base};
+  if(!base.phoneVerified)return{eligible:false as const,reason:"phone_not_verified",...base};
+  if(ageDays<7)return{eligible:false as const,reason:"account_too_recent",...base};
+  if(manualApprovals<MIN_CLEAN_MANUAL_APPROVALS)return{eligible:false as const,reason:"insufficient_manually_approved_history",...base};
+  if((history[0]?.violations??0)>0||activeHold.length||activeReports.length)return{eligible:false as const,reason:"moderation_history_or_report",...base};
+  if(risk.level!=="LOW"||risk.reviewRequired||risk.commerceReviewRequired||risk.messagingRestricted||risk.offerRestricted||risk.score>cfg.maxRiskScore)return{eligible:false as const,reason:"risk_review_required",...base};
+  if(openCase.length)return{eligible:false as const,reason:"open_user_moderation_case",...base};
+  if(cfg.requireReliableSeller&&!(rep.trust.reliableSeller||manualApprovals>=MIN_CLEAN_MANUAL_APPROVALS))return{eligible:false as const,reason:"not_reliable",...base};
+  if(trustScore<cfg.minTrustScore)return{eligible:false as const,reason:"trust_score_below_threshold",...base};
+  return{eligible:true as const,reason:"trusted_clean_listing_history",...base};
 }
 
 export async function scheduleTrustedListingAutoApproval(listingId:string,sellerId:string){
@@ -78,7 +105,7 @@ export async function scheduleTrustedListingAutoApproval(listingId:string,seller
   const cfg=await getAutoApprovalSettings();
   const eligibility=await evaluateAutoApprovalEligibility(sellerId,cfg);
   if(!eligibility.eligible)return{scheduled:false as const,...eligibility};
-  const delaySeconds=eligibility.reason==="phone_verified"?randomInt(60,121):(cfg.minDelaySeconds===cfg.maxDelaySeconds?cfg.minDelaySeconds:randomInt(cfg.minDelaySeconds,cfg.maxDelaySeconds+1));
+  const delaySeconds=cfg.minDelaySeconds===cfg.maxDelaySeconds?cfg.minDelaySeconds:randomInt(cfg.minDelaySeconds,cfg.maxDelaySeconds+1);
   // Use the database clock for both scheduling and worker comparisons. The app host
   // and PostgreSQL may have different timezone/clock configuration; mixing clocks
   // can make a future approval look immediately due.
@@ -87,21 +114,38 @@ export async function scheduleTrustedListingAutoApproval(listingId:string,seller
   return{scheduled:true as const,eligibleAt,delaySeconds,trustScore:eligibility.trustScore,riskScore:eligibility.riskScore};
 }
 
+async function notifyManualReview(listingId:string,reason:string){
+ await queueAdminRoleEmail({
+  roles:["SUPER_ADMIN","ADMIN"],
+  eventKind:"ADMIN_LISTING_PENDING",
+  title:"Annonce à vérifier manuellement",
+  body:"Une annonce initialement prévue pour validation rapide nécessite désormais une vérification de modération.",
+  actionUrl:"https://admin.petitannonces.fr/moderation",
+  metadata:{purpose:"AUTO_APPROVAL_TO_MANUAL",listingId,reason},
+ }).catch(()=>undefined);
+}
+
 async function approveOne(listingId:string){
   const cfg=await getAutoApprovalSettings();
-  if(!cfg.enabled){await prisma.$executeRawUnsafe(`UPDATE "ListingAutoApprovalQueue" SET "status"='CANCELLED',"reason"='disabled_before_processing',"processedAt"=CURRENT_TIMESTAMP,"updatedAt"=CURRENT_TIMESTAMP WHERE "listingId"=$1 AND "status" IN ('SCHEDULED','PROCESSING')`,listingId);return false}
-  const listing=await prisma.listing.findUnique({where:{id:listingId},select:{id:true,sellerId:true,status:true,title:true,description:true,slug:true,publishedAt:true}});
+  if(!cfg.enabled){await prisma.$executeRawUnsafe(`UPDATE "ListingAutoApprovalQueue" SET "status"='CANCELLED',"reason"='disabled_before_processing',"processedAt"=CURRENT_TIMESTAMP,"updatedAt"=CURRENT_TIMESTAMP WHERE "listingId"=$1 AND "status" IN ('SCHEDULED','PROCESSING')`,listingId);await notifyManualReview(listingId,"disabled_before_processing");return false}
+  const listing=await prisma.listing.findUnique({where:{id:listingId},select:{id:true,sellerId:true,status:true,title:true,description:true,slug:true,publishedAt:true,category:{select:{domain:true}}}});
   if(!listing||listing.status!=="PENDING"){await prisma.$executeRawUnsafe(`UPDATE "ListingAutoApprovalQueue" SET "status"='CANCELLED',"reason"='listing_not_pending',"processedAt"=CURRENT_TIMESTAMP,"updatedAt"=CURRENT_TIMESTAMP WHERE "listingId"=$1`,listingId);return false}
-  const [scan,eligibility,reports,caseRows]=await Promise.all([
+  const [scan,eligibility,reports,caseRows,media,listingFraud]=await Promise.all([
     scanListingContent(listing.title,listing.description),
     evaluateAutoApprovalEligibility(listing.sellerId,cfg),
     prisma.$queryRawUnsafe<Array<{count:bigint}>>(`SELECT COUNT(*)::bigint AS count FROM "TrustReport" WHERE "targetType"='LISTING' AND "targetId"=$1 AND "status" NOT IN ('DISMISSED','CLOSED')`,listing.id),
-    prisma.$queryRawUnsafe<Array<{id:string;riskScore:number}>>(`SELECT "id","riskScore" FROM "ModerationCase" WHERE "targetType"='LISTING' AND "targetId"=$1 AND "status" NOT IN ('RESOLVED','CLOSED') ORDER BY "createdAt" DESC LIMIT 1`,listing.id),
+    prisma.$queryRawUnsafe<Array<{id:string;riskScore:number;status:string}>>(`SELECT "id","riskScore","status" FROM "ModerationCase" WHERE "targetType"='LISTING' AND "targetId"=$1 AND "status" NOT IN ('RESOLVED','CLOSED') ORDER BY "createdAt" DESC LIMIT 1`,listing.id),
+    prisma.$queryRawUnsafe<Array<{ready:number;unfinished:number}>>(`SELECT COUNT(*) FILTER(WHERE "status"='READY' AND "publicUrl" IS NOT NULL)::int AS ready,COUNT(*) FILTER(WHERE "status"<>'READY' OR "publicUrl" IS NULL)::int AS unfinished FROM "ListingMedia" WHERE "listingId"=$1`,listing.id),
+    prisma.$queryRawUnsafe<Array<{score:number|null}>>(`SELECT MAX("score")::int AS score FROM "FraudRiskAssessment" WHERE "subjectType"='LISTING' AND "subjectId"=$1`,listing.id),
   ]);
   const c=caseRows[0];
-  if(scan.blocked||!eligibility.eligible||Number(reports[0]?.count??0n)>0||!c||c.riskScore>cfg.maxRiskScore){
-    const reason=scan.blocked?"content_policy_blocked":!eligibility.eligible?eligibility.reason:Number(reports[0]?.count??0n)>0?"active_report":"listing_risk_too_high";
+  const invalidMedia=(media[0]?.ready??0)<1||(media[0]?.unfinished??0)>0;
+  const requiresHumanReview=listing.category.domain==="ANIMAL"||listing.category.domain==="JOB";
+  const fraudScore=listingFraud[0]?.score??0;
+  if(scan.blocked||!eligibility.eligible||Number(reports[0]?.count??0n)>0||!c||c.status!=="OPEN"||c.riskScore>cfg.maxRiskScore||fraudScore>cfg.maxRiskScore||invalidMedia||requiresHumanReview){
+    const reason=scan.blocked?"content_policy_blocked":!eligibility.eligible?eligibility.reason:Number(reports[0]?.count??0n)>0?"active_report":invalidMedia?"media_requires_review":requiresHumanReview?"sensitive_category_review":"listing_risk_too_high";
     await prisma.$executeRawUnsafe(`UPDATE "ListingAutoApprovalQueue" SET "status"='CANCELLED',"reason"=$2,"processedAt"=CURRENT_TIMESTAMP,"updatedAt"=CURRENT_TIMESTAMP WHERE "listingId"=$1`,listing.id,reason);
+    await notifyManualReview(listing.id,reason);
     return false;
   }
   const firstPublication=listing.publishedAt==null;
@@ -109,10 +153,11 @@ async function approveOne(listingId:string){
   const changed=await prisma.$transaction(async tx=>{
     const u=await tx.listing.updateMany({where:{id:listing.id,status:"PENDING"},data:{status:"PUBLISHED",publishedAt}});
     if(!u.count)return false;
-    const approvalReason=eligibility.reason==="phone_verified"?"AUTO_APPROVED_PHONE_VERIFIED":"AUTO_APPROVED_TRUSTED";
-    const approvalStatement=eligibility.reason==="phone_verified"?"Annonce approuvée automatiquement : téléphone vérifié, risque faible et contrôle automatique de contenu réussi.":"Annonce approuvée automatiquement : vendeur fiable, risque faible et contrôle de contenu réussi.";
-    await tx.$executeRawUnsafe(`UPDATE "ModerationCase" SET "status"='RESOLVED',"automatedDecision"=TRUE,"decisionAction"='NONE'::"ModerationActionType","decisionReasonCode"=$2,"decisionStatement"=$3,"decidedAt"=CURRENT_TIMESTAMP,"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$1`,c.id,approvalReason,approvalStatement);
-    await tx.$executeRawUnsafe(`UPDATE "ListingAutoApprovalQueue" SET "status"='APPROVED',"reason"=$2,"processedAt"=CURRENT_TIMESTAMP,"updatedAt"=CURRENT_TIMESTAMP WHERE "listingId"=$1`,listing.id,eligibility.reason==="phone_verified"?"auto_approved_phone_verified":"auto_approved_trusted");
+    const approvalReason="AUTO_APPROVED_TRUSTED";
+    const approvalStatement="Annonce approuvée après délai de sécurité : contacts vérifiés, trois annonces validées manuellement, score de confiance suffisant et contrôles anti-fraude réussis.";
+    const caseUpdated=await tx.$executeRawUnsafe(`UPDATE "ModerationCase" SET "status"='RESOLVED',"automatedDecision"=TRUE,"decisionAction"='NONE'::"ModerationActionType","decisionReasonCode"=$2,"decisionStatement"=$3,"decidedAt"=CURRENT_TIMESTAMP,"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$1 AND "status"='OPEN' AND "riskScore"<=$4`,c.id,approvalReason,approvalStatement,cfg.maxRiskScore);
+    if(caseUpdated!==1)throw new Error("moderation_case_changed_before_auto_approval");
+    await tx.$executeRawUnsafe(`UPDATE "ListingAutoApprovalQueue" SET "status"='APPROVED',"reason"=$2,"processedAt"=CURRENT_TIMESTAMP,"updatedAt"=CURRENT_TIMESTAMP WHERE "listingId"=$1`,listing.id,"auto_approved_trusted");
     return true;
   });
   if(!changed)return false;
@@ -135,7 +180,7 @@ export async function processDueAutoApprovals(limit=50){
   for(const row of rows){
     const claimed=await prisma.$queryRawUnsafe<Array<{listingId:string}>>(`UPDATE "ListingAutoApprovalQueue" SET "status"='PROCESSING',"updatedAt"=CURRENT_TIMESTAMP WHERE "listingId"=$1 AND "status"='SCHEDULED' RETURNING "listingId"`,row.listingId);
     if(!claimed[0])continue;
-    try{if(await approveOne(row.listingId))approved++}catch(error){await prisma.$executeRawUnsafe(`UPDATE "ListingAutoApprovalQueue" SET "status"='FAILED',"reason"=$2,"processedAt"=CURRENT_TIMESTAMP,"updatedAt"=CURRENT_TIMESTAMP WHERE "listingId"=$1`,row.listingId,error instanceof Error?error.message.slice(0,220):"worker_error").catch(()=>undefined)}
+    try{if(await approveOne(row.listingId))approved++}catch(error){await prisma.$executeRawUnsafe(`UPDATE "ListingAutoApprovalQueue" SET "status"='FAILED',"reason"=$2,"processedAt"=CURRENT_TIMESTAMP,"updatedAt"=CURRENT_TIMESTAMP WHERE "listingId"=$1`,row.listingId,error instanceof Error?error.message.slice(0,220):"worker_error").catch(()=>undefined);await notifyManualReview(row.listingId,"worker_failure")}
   }
   return{processed:rows.length,approved};
 }

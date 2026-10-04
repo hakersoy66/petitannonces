@@ -308,7 +308,9 @@ export async function registerPublicationRoutes(app: FastifyInstance) {
     if(editSession)await finalizeEditSessionCleanup(editSession.workingListingId,user.id,oldMediaKeys);
 
     const autoApproval = listing.status === "PENDING" ? await scheduleTrustedListingAutoApproval(listing.id, user.id).catch(() => ({ scheduled:false as const, reason:"schedule_failed" })) : null;
-    if(listing.status==="PENDING"){
+    // Scheduled trusted ads need no immediate admin notification; only
+    // listings requiring human review enter the moderator e-mail queue.
+    if(listing.status==="PENDING"&&!autoApproval?.scheduled){
       await queueAdminRoleEmail({
         roles:["SUPER_ADMIN","ADMIN"],
         eventKind:"ADMIN_LISTING_PENDING",
