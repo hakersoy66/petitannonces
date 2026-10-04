@@ -629,3 +629,49 @@ html,body{font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased;text
 .admin-growth-nav{display:flex;gap:7px;align-items:center;overflow:auto;margin:2px 0 16px;padding:6px;border:1px solid #e9e6ef;border-radius:14px;background:#faf9fc;scrollbar-width:none}
 .admin-growth-nav::-webkit-scrollbar{display:none}.admin-growth-nav a{height:36px;padding:0 11px;border-radius:10px;display:inline-flex;align-items:center;color:#676271;text-decoration:none;font-size:10.5px;font-weight:900;white-space:nowrap}.admin-growth-nav a:hover{background:#fff;color:#5546da;box-shadow:0 4px 12px rgba(37,31,72,.06)}
 @media(max-width:600px){.admin-growth-nav{margin-top:0}.admin-growth-nav a{height:34px;padding:0 10px}}
+
+/* Anonymous audience summary sits between dashboard commission KPIs and live visitors. */
+.admin-audience-panel{margin-top:16px;padding:18px 20px 20px;min-width:0;overflow:hidden;border-radius:19px}
+.admin-audience-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;min-width:0}
+.admin-audience-intro{min-width:0;flex:1}
+.admin-audience-eyebrow{display:inline-flex;align-items:center;gap:7px;color:#6253dc;font-size:10px;font-weight:900;letter-spacing:.065em}
+.admin-audience-eyebrow svg{width:15px;height:15px;flex:0 0 auto}
+.admin-audience-head h2{margin:7px 0 5px;font-size:20px;line-height:1.2;letter-spacing:-.025em}
+.admin-audience-head p{margin:0;max-width:760px;color:#7a7587;font-size:12px;line-height:1.55;overflow-wrap:anywhere}
+.admin-audience-link{display:inline-flex;align-items:center;gap:7px;flex:0 0 auto;padding:9px 12px;border:1px solid #e8e4f4;border-radius:11px;background:#faf9ff;color:#5949da;font-size:11px;font-weight:850;text-decoration:none}
+.admin-audience-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:17px;min-width:0}
+.admin-audience-metric{display:grid;align-content:start;gap:6px;min-width:0;min-height:142px;padding:15px 16px;border:1px solid #ebe8f3;border-radius:15px;background:linear-gradient(160deg,#fff 0%,#faf9ff 100%)}
+.admin-audience-metric-icon{display:grid;place-items:center;width:31px;height:31px;border-radius:10px;background:#f0ecff;color:#5b4cf0;margin-bottom:2px}
+.admin-audience-metric-icon svg{width:16px;height:16px}
+.admin-audience-metric small{display:block;font-size:11px;font-weight:800;color:#777284;line-height:1.4;overflow-wrap:anywhere}
+.admin-audience-metric strong{display:block;font-size:clamp(25px,2.5vw,34px);font-weight:900;line-height:1.15;color:#28243c;letter-spacing:-.035em;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.admin-audience-metric p{margin:0;font-size:11px;line-height:1.4;color:#9590a1;overflow-wrap:anywhere}
+@media(max-width:980px){
+ .admin-audience-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .admin-audience-metric:last-child{grid-column:1/-1}
+}
+@media(max-width:680px){
+ .admin-audience-panel{padding:14px;margin-top:12px;border-radius:16px}
+ .admin-audience-head{display:grid;grid-template-columns:minmax(0,1fr);gap:11px}
+ .admin-audience-head h2{font-size:18px}
+ .admin-audience-head p{font-size:11.5px}
+ .admin-audience-link{justify-self:start;max-width:100%}
+ .admin-audience-metrics{grid-template-columns:minmax(0,1fr);gap:9px;margin-top:13px}
+ .admin-audience-metric,.admin-audience-metric:last-child{grid-column:1;min-height:0;padding:13px 14px;gap:4px}
+ .admin-audience-metric strong{font-size:28px}
+ .admin-live-head{gap:12px}
+ .admin-live-head-actions{width:100%;min-width:0}
+ .admin-live-summary{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;width:100%}
+ .admin-live-summary span{min-width:0;min-height:39px;white-space:normal;text-align:center;font-size:11px;padding:8px}
+ .admin-live-summary span:last-child{grid-column:1/-1}
+ .admin-live-refresh{min-height:40px}
+ .admin-live-row{min-width:0}
+ .admin-live-identity{min-width:0}
+}
+@media(max-width:390px){
+ .admin-home-main-kpis{grid-template-columns:1fr!important}
+ .admin-home-kpi{min-width:0}
+ .admin-live-head{padding:13px}
+ .admin-live-row{padding:11px 12px;gap:8px}
+ .admin-live-summary span{font-size:10.5px}
+}

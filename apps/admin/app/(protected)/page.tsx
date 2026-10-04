@@ -1,6 +1,6 @@
 import { adminServerFetch } from "../../lib/server-api";
 import { AdminIcon, type AdminIconName } from "../../components/admin-icon";
-import { LiveVisitorsPanel } from "./live-visitors-panel";
+import { AnonymousAudiencePanel, LiveVisitorsPanel, type AnonymousAudience } from "./live-visitors-panel";
 import { UserAttentionPanel, type UserAttention } from "./user-attention-panel";
 
 type Dashboard={kpis:{usersTotal:number;usersToday:number;listingsTotal:number;listingsPublished:number;ordersTotal:number;ordersActive:number;supportOpen:number;moderationOpen:number;disputesOpen:number;gmvMinor:number;platformCommissionMinor:number;visitsToday:number;visitorsToday:number;onlineVisitors:number;onlineMembers:number}};
@@ -15,11 +15,12 @@ const kindLabel=(kind:string)=>kind==="PROFESSIONNEL"?"Pro":"Particulier";
 const trafficLabel=(user:LivePerson)=>{const raw=(user.trafficSource??user.source??"").trim().toLowerCase();const medium=(user.trafficMedium??user.medium??"").trim().toLowerCase();if(["google","googleads","google_ads"].includes(raw)||raw.includes("google"))return medium&&medium!=="(none)"?`Google · ${medium}`:"Google";if(["meta","facebook","fb","instagram","ig"].includes(raw)||raw.includes("facebook")||raw.includes("instagram"))return medium?`Meta · ${medium}`:"Meta";if(raw.includes("bing")||raw.includes("microsoft"))return medium?`Bing · ${medium}`:"Bing";if(raw.includes("tiktok"))return medium?`TikTok · ${medium}`:"TikTok";if(raw&&raw!=="direct"&&raw!=="(direct)")return medium?`${raw} · ${medium}`:raw;try{if(user.referrer){const host=new URL(user.referrer).hostname.replace(/^www\./,"");if(host&&!host.includes("petitannonces.fr"))return`Referral · ${host}`}}catch{}return"Direct";};
 
 export default async function AdminHome(){
- const[d,a30,a7,live,policy,userAttention]=await Promise.all([
+ const[d,a30,a7,live,aggregate,policy,userAttention]=await Promise.all([
   adminServerFetch<Dashboard>("/admin/dashboard"),
   adminServerFetch<AnalyticsSummary>("/admin/analytics/overview?days=30"),
   adminServerFetch<AnalyticsSummary>("/admin/analytics/overview?days=7"),
   adminServerFetch<LiveAnalytics>("/admin/analytics/live"),
+  adminServerFetch<AnonymousAudience>("/admin/analytics/anonymous-audience?days=1"),
   adminServerFetch<ContentPolicyReply>("/admin/moderation/content-policy"),
   adminServerFetch<UserAttention>("/admin/user-attention"),
  ]);
@@ -56,6 +57,7 @@ export default async function AdminHome(){
 
   <div className="admin-grid admin-kpis admin-home-main-kpis">{kpis.map(([icon,label,value,hint])=><article className="admin-card admin-kpi admin-home-kpi" key={label}><div className="admin-kpi-top"><small>{label}</small><span className="admin-kpi-icon"><AdminIcon name={icon}/></span></div><strong>{value}</strong><p>{hint}</p></article>)}</div>
 
+  <AnonymousAudiencePanel initialData={aggregate}/>
   <LiveVisitorsPanel initialData={live}/>
 
   <section className="admin-card admin-section admin-home-focus" style={{marginTop:16}}><div className="admin-section-head"><div><h2>À traiter en priorité</h2><p>Les actions qui demandent votre attention maintenant.</p></div></div><div className="admin-home-focus-grid">{priorities.map(item=><a href={item.href} key={item.label} className={(item.value>0?"needs-action "+item.tone:"is-clear")+(item.className?" "+item.className:"")}><span><AdminIcon name={item.icon}/></span><div><strong>{item.label}</strong><small>{item.detail}</small></div><b>{n(item.value)}</b><em>{item.value>0?"Ouvrir":"OK"}</em></a>)}</div></section>

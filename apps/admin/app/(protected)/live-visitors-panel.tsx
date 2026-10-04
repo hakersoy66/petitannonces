@@ -5,7 +5,7 @@ import {AdminIcon} from "../../components/admin-icon";
 
 type LivePerson={visitorId:string;userId:string|null;email:string|null;name:string|null;avatarUrl:string|null;kind:string|null;currentPath:string|null;landingPath:string|null;lastSeenAt:string;pwaMode:boolean;referrer:string|null;source:string|null;medium:string|null;campaign:string|null;trafficSource:string|null;trafficMedium:string|null;trafficCampaign:string|null};
 type LiveAnalytics={onlineUsers:Array<LivePerson>;onlineSessions:Array<LivePerson>;onlineWindowMinutes:number;summary?:{onlineMembers?:number;onlineVisitors?:number}};
-type AnonymousAudience={today:{estimatedEntries:number;pageViews:number};live:{recentPulseSignals:number;onlineTabsApprox:number};firstMeasuredAt:string|null;};
+export type AnonymousAudience={today:{estimatedEntries:number;pageViews:number};live:{recentPulseSignals:number;onlineTabsApprox:number};firstMeasuredAt:string|null;};
 
 const n=(v:number)=>Number(v??0).toLocaleString("fr-FR");
 const relative=(value:string)=>{const diff=Math.max(0,Date.now()-new Date(value).getTime());const sec=Math.floor(diff/1000);if(sec<20)return"à l’instant";const min=Math.floor(sec/60);if(min<=0)return"il y a moins d’une minute";if(min===1)return"il y a 1 min";return"il y a "+min+" min"};
@@ -26,19 +26,42 @@ function trafficLabel(user:LivePerson){
  return"Direct";
 }
 
+export function AnonymousAudiencePanel({initialData}:{initialData:AnonymousAudience|null}){
+ const [aggregate,setAggregate]=useState<AnonymousAudience|null>(initialData);
+ useEffect(()=>{
+  let active=true;
+  const refresh=async()=>{
+   try{const response=await fetch("/api/admin/analytics/anonymous-audience?days=1",{credentials:"include",cache:"no-store"});
+    if(response.ok){const data=await response.json() as AnonymousAudience;if(active)setAggregate(data)}}catch{}
+  };
+  void refresh();
+  const timer=window.setInterval(()=>void refresh(),30000);
+  return()=>{active=false;window.clearInterval(timer)};
+ },[]);
+ return <section className="admin-card admin-section admin-audience-panel" aria-label="Statistiques de fréquentation agrégée">
+  <div className="admin-audience-head">
+   <div className="admin-audience-intro"><span className="admin-audience-eyebrow"><AdminIcon name="chart"/> STATISTIQUES · SANS COOKIE DE SUIVI</span>
+    <h2>Fréquentation agrégée</h2><p>Inclut les visiteurs ayant refusé l'analyse facultative, sauf opposition spécifique. Estimations anonymes, sans décompte exact des personnes.</p>
+   </div>
+   <a className="admin-audience-link" href="/analytics">Voir Analytics <span aria-hidden="true">→</span></a>
+  </div>
+  <div className="admin-audience-metrics">
+   <article className="admin-audience-metric"><span className="admin-audience-metric-icon"><AdminIcon name="users"/></span><small>Entrées estimées aujourd'hui</small><strong>{aggregate?n(aggregate.today.estimatedEntries):"—"}</strong><p>Ouvertures initiales détectées</p></article>
+   <article className="admin-audience-metric"><span className="admin-audience-metric-icon"><AdminIcon name="chart"/></span><small>Pages vues aujourd'hui</small><strong>{aggregate?n(aggregate.today.pageViews):"—"}</strong><p>Navigation agrégée</p></article>
+   <article className="admin-audience-metric"><span className="admin-audience-metric-icon"><AdminIcon name="clock"/></span><small>Onglets actifs estimés</small><strong>{aggregate?"~"+n(aggregate.live.onlineTabsApprox):"—"}</strong><p>Signaux récents non dédupliqués</p></article>
+  </div>
+ </section>;
+}
+
 export function LiveVisitorsPanel({initialData}:{initialData:LiveAnalytics|null}){
  const[data,setData]=useState<LiveAnalytics|null>(initialData);
- const[aggregate,setAggregate]=useState<AnonymousAudience|null>(null);
  const[refreshing,setRefreshing]=useState(false);
  const sessions=useMemo(()=>data?.onlineSessions??data?.onlineUsers??[],[data]);
  async function refresh(silent=false){
   if(!silent)setRefreshing(true);
   try{const r=await fetch("/api/admin/analytics/live",{credentials:"include",cache:"no-store"});if(r.ok)setData(await r.json() as LiveAnalytics)}catch{}finally{if(!silent)setRefreshing(false)}
  }
- async function refreshAggregate(){
-  try{const r=await fetch("/api/admin/analytics/anonymous-audience?days=1",{credentials:"include",cache:"no-store"});if(r.ok)setAggregate(await r.json() as AnonymousAudience)}catch{}
- }
- useEffect(()=>{void refreshAggregate();const id=window.setInterval(()=>{void refresh(true);void refreshAggregate()},30000);return()=>window.clearInterval(id)},[]);
+ useEffect(()=>{const id=window.setInterval(()=>void refresh(true),30000);return()=>window.clearInterval(id)},[]);
  const members=data?.summary?.onlineMembers??sessions.filter(x=>x.userId).length;
  const anonymous=Math.max(0,sessions.length-members);
  return <section className="admin-card admin-section admin-live-panel">
@@ -49,15 +72,6 @@ export function LiveVisitorsPanel({initialData}:{initialData:LiveAnalytics|null}
     <button type="button" className="admin-live-refresh" onClick={()=>void refresh()} disabled={refreshing}><AdminIcon name="clock"/>{refreshing?"Actualisation…":"Actualiser"}</button>
    </div>
   </div>
-  {aggregate&&<div style={{border:"1px solid #e5e2f2",background:"#faf9ff",borderRadius:16,padding:16,margin:"12px 0"}}>
-   <strong style={{display:"block",marginBottom:5}}>Fréquentation agrégée · sans cookie de suivi</strong>
-   <small style={{color:"#6c6878"}}>Inclut aussi les refus du suivi analytique, hors opposition spécifique. Totaux estimés et anonymes, pas de personnes uniques identifiées.</small>
-   <div className="admin-grid admin-kpis" style={{marginTop:12}}>
-    <article className="admin-card admin-kpi"><small>Entrées estimées aujourd’hui</small><strong>{n(aggregate.today.estimatedEntries)}</strong><p>Chargements initiaux détectés</p></article>
-    <article className="admin-card admin-kpi"><small>Pages vues aujourd’hui</small><strong>{n(aggregate.today.pageViews)}</strong><p>Navigation agrégée</p></article>
-    <article className="admin-card admin-kpi"><small>Onglets actifs · estimation</small><strong>~{n(aggregate.live.onlineTabsApprox)}</strong><p>Signaux des dernières minutes, non dédupliqués</p></article>
-   </div>
-  </div>}
   {sessions.length===0?<div className="admin-live-empty"><span><AdminIcon name="users"/></span><strong>Aucun visiteur actif</strong><small>Les nouvelles sessions apparaîtront automatiquement ici.</small></div>:<div className="admin-live-list">{sessions.map(user=>{const isMember=Boolean(user.userId);const displayName=isMember?(user.name||user.email||"Membre"):"Visiteur anonyme";const source=trafficLabel(user);return <a className="admin-live-row" key={user.visitorId||user.userId||user.lastSeenAt} href={isMember?"/users/"+user.userId:"/analytics"}>
    <span className={"admin-live-avatar "+(isMember?"member":"visitor")}>{user.avatarUrl?<img src={user.avatarUrl} alt=""/>:<b>{isMember?displayName.slice(0,1).toUpperCase():"V"}</b>}<i/></span>
    <span className="admin-live-identity"><strong>{displayName}</strong><small>{isMember?(user.email||"Compte connecté"):"Session "+user.visitorId.slice(0,8)+"…"}</small></span>
