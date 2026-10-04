@@ -1,4 +1,4 @@
-.page{background:#f7f8fd;min-height:calc(100vh - 90px);color:#182137;padding:0 16px 85px}.container{max-width:1160px;margin:auto}
+.page{background:#f7f8fd;min-height:calc(100vh - 90px);color:#182137;padding:0 16px 85px}.container{max-width:1380px;margin:auto}
 .hero{background:radial-gradient(ellipse at top right,#6f5bec70,transparent 50%),linear-gradient(125deg,#131a38,#353075);color:white;border-radius:0 0 25px 25px;padding:34px clamp(20px,5vw,66px) 50px;margin-bottom:24px}
 .back{display:inline-block;color:#d3d0f8;font-size:13px;text-decoration:none;margin-bottom:36px}.badge{font-weight:900;letter-spacing:.15em;font-size:11px;color:#c5b9ff}.hero h1{font-weight:850;font-size:clamp(36px,5.7vw,64px);line-height:1.1;letter-spacing:-.055em;margin:12px 0}.hero h1 span{color:#acffdc}.hero p{max-width:625px;line-height:1.7;color:#e3e0f8;font-size:15px}
 .login,.panel,.welcome{border-radius:20px;background:white;border:1px solid #e1e5ef;box-shadow:0 16px 42px #13193309}

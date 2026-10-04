@@ -39,7 +39,7 @@ export default function DsaNoticePage() {
     const data=await response.json().catch(()=>({}));if(!response.ok){setLookupError(response.status===404?"Référence introuvable.":"Impossible de consulter le suivi pour le moment.");return}setLookupResult(data.notice??null);
   }
 
-  return <><main className="shell" style={{ paddingBlock: 56, maxWidth: 820 }}>
+  return <><main className="shell" style={{ paddingBlock: 56, maxWidth: 1380 }}>
     <p style={{ color: "#5b4cf0", fontWeight: 900, textTransform: "uppercase", fontSize: 12 }}>Digital Services Act</p>
     <h1 style={{ marginTop: 10 }}>Signaler un contenu potentiellement illicite</h1>
     <p style={{ marginTop: 12, color: "#6c6c7d", lineHeight: 1.7 }}>Ce formulaire est distinct d’un simple signalement communautaire. Il peut être utilisé sans compte et donne une référence de suivi.</p>

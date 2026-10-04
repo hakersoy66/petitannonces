@@ -33,7 +33,7 @@ export default function WithdrawalPage(){
     finally{setBusy(false)}
   }
 
-  return <main className="shell" style={{maxWidth:820,paddingBlock:52}}>
+  return <main className="shell" style={{maxWidth:1380,paddingBlock:52}}>
     <p style={{color:"#5b4cf0",fontWeight:900,textTransform:"uppercase",fontSize:12}}>Droit de la consommation</p>
     <h1 style={{margin:"9px 0 8px"}}>Se rétracter en ligne</h1>
     <p style={{color:"#696779",lineHeight:1.7}}>Cette fonctionnalité permet de notifier en ligne une demande de rétractation concernant un service acheté directement auprès de Petit Annonces. Son enregistrement ne préjuge pas de l’applicabilité du droit de rétractation ni d’une éventuelle exception légale.</p>

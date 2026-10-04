@@ -998,7 +998,7 @@
 
 /* 2026-09-12 tablet responsive layer */
 @media (min-width:721px) and (max-width:1100px){
-  .home-body-shell{width:calc(100% - 32px)!important;max-width:1100px!important}
+  .home-body-shell{width:calc(100% - 32px)!important;max-width:1380px!important}
   .desktop-market-home{display:block!important}
   .mobile-legacy-home{display:none!important}
   .market-home-featured{padding-top:16px!important}

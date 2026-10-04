@@ -1,5 +1,5 @@
 .page{overflow:hidden;background:#f9fafc;color:#111827;min-height:100vh}
-.shell{max-width:1270px;margin:0 auto;padding:0 26px}
+.shell{max-width:1380px;margin:0 auto;padding:0 26px}
 .hero{background:radial-gradient(ellipse 65% 100% at 94% 15%,rgba(108,83,243,.26),transparent 75%),linear-gradient(135deg,#10172b,#221b52 67%,#393176);color:#fff;position:relative;isolation:isolate}
 .hero:before{content:"";position:absolute;inset:0;opacity:.12;background-image:radial-gradient(#eeeaff 1px,transparent 1px);background-size:19px 19px;pointer-events:none}
 .eyebrow{display:inline-flex;gap:12px;padding:34px 0 0;text-decoration:none;color:#e1deff;font-size:13px;font-weight:650;position:relative}.eyebrow span{color:#aca2ff}
