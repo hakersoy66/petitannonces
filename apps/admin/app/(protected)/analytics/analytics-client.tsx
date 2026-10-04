@@ -13,6 +13,7 @@ type Row = {
   revenueMinor: number;
 };
 
+type AnonymousAudience={today:{estimatedEntries:number;pageViews:number};period:{days:number;estimatedEntries:number;pageViews:number;daily:Array<{day:string;entries:number;views:number}>};live:{onlineTabsApprox:number};firstMeasuredAt:string|null};
 type Audience = {
   visitors: number;
   sessions: number;
@@ -137,6 +138,7 @@ const GA4_KEY_EVENT_PLAN=[
 export default function AnalyticsClient() {
   const [days, setDays] = useState(30);
   const [data, setData] = useState<Data | null>(null);
+  const [aggregate,setAggregate]=useState<AnonymousAudience|null>(null);
   const [recovery,setRecovery]=useState<CheckoutRecovery|null>(null);
   const [recoveryBusy,setRecoveryBusy]=useState(false);
   const [loading, setLoading] = useState(false);
@@ -147,6 +149,10 @@ export default function AnalyticsClient() {
     let active = true;
     setLoading(true);
     setError(null);
+    fetch(`/api/admin/analytics/anonymous-audience?days=${days}`,{credentials:"include",cache:"no-store"})
+      .then(async r=>r.ok?(await r.json()) as AnonymousAudience:null)
+      .then(v=>{if(active)setAggregate(v)})
+      .catch(()=>{if(active)setAggregate(null)});
     fetch(`/api/admin/checkout-recovery?days=${Math.min(days,90)}`, { credentials: "include", cache: "no-store" }).then(async r=>r.ok?(await r.json()) as CheckoutRecovery:null).then(payload=>{if(active)setRecovery(payload)}).catch(()=>{if(active)setRecovery(null)});
     fetch(`/api/admin/analytics/overview?days=${days}`, { credentials: "include", cache: "no-store" })
       .then(async (r) => {
@@ -217,6 +223,17 @@ export default function AnalyticsClient() {
     {error && <div className="admin-flash err admin-analytics-error"><strong>Données Analytics indisponibles.</strong><span>{error}</span><button type="button" className="admin-btn" onClick={() => setReloadKey((v) => v + 1)}>Réessayer</button></div>}
 
     <section className="admin-card admin-section">
+      <div className="admin-section-head"><div><h2>Fréquentation globale agrégée</h2><p>Sans identifiant ni cookie de suivi. Inclus les visiteurs refusant la mesure facultative, sauf opposition spécifique. Ce ne sont pas des personnes uniques.</p></div><span className="admin-badge green">Source interne</span></div>
+      <div className="admin-grid admin-kpis">
+       <article className="admin-card admin-kpi"><small>Entrées estimées · {days} jours</small><strong>{aggregate?n(aggregate.period.estimatedEntries):"—"}</strong><p>Chargements initiaux détectés depuis la mise en service</p></article>
+       <article className="admin-card admin-kpi"><small>Pages vues · {days} jours</small><strong>{aggregate?n(aggregate.period.pageViews):"—"}</strong><p>Comptage agrégé, sans parcours individuel</p></article>
+       <article className="admin-card admin-kpi"><small>Entrées estimées aujourd’hui</small><strong>{aggregate?n(aggregate.today.estimatedEntries):"—"}</strong><p>Heure de Paris</p></article>
+       <article className="admin-card admin-kpi"><small>Onglets actifs · approximation</small><strong>{aggregate?"~"+n(aggregate.live.onlineTabsApprox):"—"}</strong><p>Basé sur les signaux des dernières minutes</p></article>
+      </div>
+      {aggregate?.firstMeasuredAt&&<p style={{fontSize:12,color:"#777",marginTop:10}}>Mesure démarrée le {new Date(aggregate.firstMeasuredAt).toLocaleString("fr-FR",{timeZone:"Europe/Paris"})} ; historique antérieur indisponible.</p>}
+    </section>
+
+    <section className="admin-card admin-section" style={{marginTop:16}}>
       <div className="admin-section-head">
         <div>
           <h2>Audience consentie · Petit Annonces</h2>

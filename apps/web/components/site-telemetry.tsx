@@ -50,6 +50,24 @@ export function trackSiteConversion(event:SiteAnalyticsEvent,gaEvent:string,para
 export function trackSiteConversionOnce(event:SiteAnalyticsEvent,gaEvent:string,dedupeKey:string,params:Record<string,unknown>={}){const safe=dedupeKey.replace(/[^a-zA-Z0-9:_-]/g,"_").slice(0,180);const key=`pa_conversion_once_analytics:${event}:${safe}`;if(!localStorage.getItem(key)){dispatchAnalytics(event,gaEvent,params);localStorage.setItem(key,String(Date.now()))}if(advertisingAllowed()){const adKey=`pa_conversion_once_ads:${event}:${safe}`;if(!localStorage.getItem(adKey)){dispatchAdvertising(event,params);localStorage.setItem(adKey,String(Date.now()))}}}
 export function SiteTelemetry(){
  const pathname=usePathname();const standaloneSent=useRef(false);
+ const aggregateStarted=useRef(false);
+ const anonymousAudience=(event:"entry"|"view"|"pulse")=>{
+  try{
+   if(window.localStorage.getItem("pa_audience_optout_v1")==="1"||document.visibilityState!=="visible")return;
+   void fetch("/api/audience/aggregate",{method:"POST",credentials:"omit",cache:"no-store",keepalive:true,headers:{"content-type":"application/json"},body:JSON.stringify({event})}).catch(()=>{});
+  }catch{}
+ };
+ useEffect(()=>{
+  if(aggregateStarted.current)anonymousAudience("view");
+  else{aggregateStarted.current=true;anonymousAudience("entry")}
+ },[pathname]);
+ useEffect(()=>{
+  anonymousAudience("pulse");
+  const pulse=window.setInterval(()=>anonymousAudience("pulse"),60000);
+  const visible=()=>{if(document.visibilityState==="visible")anonymousAudience("pulse")};
+  document.addEventListener("visibilitychange",visible);
+  return()=>{window.clearInterval(pulse);document.removeEventListener("visibilitychange",visible)};
+ },[]);
  useEffect(()=>{void sendSiteAnalyticsEvent("PAGE_VIEW",pathname||"/")},[pathname]);
  // A visitor who opts in after the initial render would otherwise remain invisible
  // until the first 60-second heartbeat or another navigation.

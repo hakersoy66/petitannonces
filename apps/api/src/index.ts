@@ -78,6 +78,7 @@ import { ensureSupplierCatalogSchema, registerSupplierCatalogRoutes } from "./su
 import { ensureSupplierFulfillmentSchema, startSupplierFulfillmentWorker } from "./supplier-fulfillment.js";
 import { registerSeoPublicRoutes } from "./seo-public.js";
 import { registerSiteAnalyticsRoutes } from "./site-analytics.js";
+import { registerAnonymousAudienceRoutes } from "./anonymous-audience.js";
 import { registerMetaConversionRoutes } from "./meta-conversions.js";
 import { registerSecurityRoutes } from "./security.js";
 import { registerRiskRoutes, startRiskSweepWorker } from "./risk-engine.js";
@@ -181,6 +182,7 @@ await registerSearchRoutes(app);
 await registerSupplierCatalogRoutes(app);
 await registerSeoPublicRoutes(app);
 await registerSiteAnalyticsRoutes(app);
+await registerAnonymousAudienceRoutes(app);
 await registerMetaConversionRoutes(app);
 await registerMessagingRoutes(app);
 await registerProfessionalRoutes(app);
