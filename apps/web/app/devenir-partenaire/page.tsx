@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import PartnerApplicationForm from './partner-form';
+import PricingGuide from './pricing-guide';
 import styles from './page.module.css';
 
 export const metadata:Metadata={
@@ -23,7 +24,7 @@ export default function PartnerPage(){return <main className={styles.page}>
         <h1>Votre communauté.<br/><em>De belles opportunités.</em></h1>
         <p className={styles.lead}>Vous créez des Reels, des Stories ou des vidéos qui inspirent les Français ? Faisons découvrir ensemble une nouvelle façon d'acheter et de vendre près de chez soi.</p>
         <a className={styles.heroButton} href="#candidature">Proposer une collaboration <span aria-hidden="true">↗</span></a>
-        <p className={styles.fine}>Instagram · TikTok · YouTube · Facebook</p>
+        <p className={styles.fine}>Instagram · TikTok · YouTube · Facebook · <a href="#tarifs" style={{color:'#fff',textUnderlineOffset:4}}>Voir les rémunérations ↗</a></p>
        </div>
        <div className={styles.visual} aria-hidden="true">
          <div className={styles.visualGlow}/>
@@ -36,6 +37,7 @@ export default function PartnerPage(){return <main className={styles.page}>
   </section>
   <div className={styles.shell}>
    <section className={styles.steps} aria-label="Comment ça marche ?">{steps.map(item=><article key={item.n}><span>{item.n}</span><h2>{item.title}</h2><p>{item.description}</p></article>)}</section>
+   <PricingGuide/>
    <section className={styles.application} id="candidature">
     <div className={styles.left}>
       <span className={styles.kicker}>REJOIGNEZ LE PROGRAMME</span>

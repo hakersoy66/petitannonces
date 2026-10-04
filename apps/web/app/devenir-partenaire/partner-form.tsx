@@ -1,6 +1,7 @@
 'use client';
 import { useState, type FormEvent } from 'react';
 import styles from './page.module.css';
+import { partnerBudgetBand } from './pricing-guide';
 
 type Form={platform:string;handle:string;email:string;followers:string;averageViews:string;franceAudiencePercent:string;requestedFee:string;mediaKitUrl:string;message:string;consent:boolean;website:string};
 const blank:Form={platform:'instagram',handle:'',email:'',followers:'',averageViews:'',franceAudiencePercent:'',requestedFee:'',mediaKitUrl:'',message:'',consent:false,website:''};
@@ -35,6 +36,7 @@ export default function PartnerApplicationForm(){
     <label>Audience basée en France (%)<input min={0} max={100} step="0.1" type="number" placeholder="Facultatif" value={form.franceAudiencePercent} onChange={e=>set('franceAudiencePercent',e.target.value)}/></label>
     <label>Tarif proposé (€)<input min={0} max={1000000} step="0.01" type="number" placeholder="Ex. 150" value={form.requestedFee} onChange={e=>set('requestedFee',e.target.value)}/></label>
    </div>
+   <div className={styles.formPriceHint} role="status">{(()=>{const band=partnerBudgetBand(Number(form.followers||0));return <><strong>Repère Petit Annonces : {band.min===null||band.max===null?'étude individuelle':new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR',maximumFractionDigits:0}).format(band.min)+' – '+new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR',maximumFractionDigits:0}).format(band.max)}</strong><br/>Budget indicatif pour un Reel + une Story, soumis à vérification et accord. Vous pouvez proposer votre propre tarif ci-dessus.</>})()}</div>
    <label>Lien vers votre media kit ou des statistiques (facultatif)<input type="url" maxLength={900} placeholder="https://..." value={form.mediaKitUrl} onChange={e=>set('mediaKitUrl',e.target.value)}/><span className={styles.hint}>Un lien HTTPS accessible à notre équipe, sans informations sensibles.</span></label>
    <label>Votre proposition<textarea rows={3} maxLength={1800} placeholder="Parlez-nous de vos formats (Reels, Stories, vidéo) et de votre idée de collaboration…" value={form.message} onChange={e=>set('message',e.target.value)}/></label>
    <div className={styles.trap} aria-hidden="true"><label>Votre site web<input tabIndex={-1} autoComplete="off" value={form.website} onChange={e=>set('website',e.target.value)}/></label></div>

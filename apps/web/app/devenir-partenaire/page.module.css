@@ -33,3 +33,53 @@
 .done{padding:64px 40px;text-align:center}.doneIcon{display:grid;place-items:center;background:#e5f8ed;color:#198357;border-radius:50%;height:74px;width:74px;margin:0 auto 22px;font-size:36px;font-weight:800}.done h2{font-size:28px;letter-spacing:-.04em}.done p{font-size:15px;line-height:1.7;color:#647084}.reset{margin-top:20px;padding:11px 17px;border:1px solid #aea5f8;border-radius:11px;color:#4b39b6;background:#fff;cursor:pointer;font-weight:700}
 @media(max-width:950px){.heroGrid{grid-template-columns:1fr;padding:56px 0 80px;gap:10px}.visual{min-height:270px}.visualCard{min-height:270px;transform:rotate(-3deg);padding:25px}.visualCard strong{font-size:33px;margin:27px 0 14px}.bubbleOne{right:12px}.application{grid-template-columns:1fr;gap:20px}.left{padding-top:0}.left .privacy{margin-top:24px}}
 @media(max-width:640px){.shell{padding:0 17px}.eyebrow{padding-top:23px}.heroGrid{padding:47px 0 62px}.hero h1{font-size:43px}.heroButton{width:100%;min-width:0}.visual{display:none}.steps{grid-template-columns:1fr;margin:-20px auto 45px;gap:9px}.steps article{padding:19px}.steps h2{margin:7px 0;font-size:17px}.application{padding-bottom:65px}.left h2{font-size:35px}.form{padding:23px 18px}.two{grid-template-columns:1fr;gap:17px}.formCard{border-radius:17px}.formHead strong{font-size:22px}}
+
+/* Second step: evidence-based remuneration comparison */
+.pricingSection{padding:0 0 85px;display:grid;gap:22px;scroll-margin-top:84px}
+.pricingHeader{display:flex;justify-content:space-between;align-items:end;gap:16px;flex-wrap:wrap}
+.pricingHeader h2{font-size:clamp(30px,3.5vw,48px);line-height:1.14;letter-spacing:-.052em;margin:10px 0}
+.pricingHeader p{max-width:730px;font-size:15px;color:#626e81;line-height:1.65;margin:0}
+.pricingLink{display:inline-flex;gap:24px;align-items:center;border:1px solid #c9c3fa;background:#f2efff;color:#493ab0;padding:12px 18px;border-radius:11px;text-decoration:none;font-weight:800;white-space:nowrap}
+.comparisonGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.compareCard,.compareOurs{min-height:255px;padding:25px;display:flex;flex-direction:column;gap:16px;border-radius:20px;border:1px solid #dce0ef;background:#fff}
+.compareOurs{background:linear-gradient(145deg,#4033ac,#6053d7);border-color:#6053d7;color:#fff;position:relative}
+.ownTag{position:absolute;right:14px;top:12px;font-size:9px;letter-spacing:.12em;font-weight:850;background:#ffffff32;border:1px solid #ffffff44;border-radius:99px;padding:6px 9px}
+.compareBrand{display:flex;align-items:center;gap:11px}
+.compareSymbol{display:grid;place-items:center;height:42px;width:42px;flex:0 0 42px;border-radius:13px;background:#f0edff;color:#5b4cf0;font-size:26px;font-weight:850}
+.compareOurs .compareSymbol{background:#ffffff23;color:white;font-size:22px}
+.compareBrand strong{display:block;font-size:19px;letter-spacing:-.03em}
+.compareBrand small{display:block;color:#788399;font-size:12px;margin-top:4px}
+.compareOurs .compareBrand small{color:#e0dcff}
+.comparePrice{font-size:clamp(25px,2.8vw,35px);font-weight:850;letter-spacing:-.04em;margin:5px 0 0}
+.compareCard p,.compareOurs p{font-size:13px;line-height:1.7;color:#69758b;margin:auto 0 0}
+.compareOurs p{color:#eceaff}
+.comparisonCaution{border-left:3px solid #786ae9;background:#f0f0ff;padding:12px 17px;border-radius:0 11px 11px 0;color:#525b77;font-size:12px;line-height:1.75;margin:0}
+.budgetGuide{background:white;border:1px solid #dfe4ef;border-radius:20px;padding:28px}
+.guideHead{display:flex;justify-content:space-between;align-items:start;gap:18px}
+.guideHead h3,.pricingSimulator h3{font-size:26px;letter-spacing:-.045em;margin:8px 0 7px;color:#171d30}
+.guideHead p,.pricingSimulator p{font-size:13px;color:#657084;line-height:1.65;margin:0}
+.guideDisclosure{font-size:11px;color:#6352bd;background:#f1efff;padding:8px 10px;border-radius:100px;white-space:nowrap}
+.budgetList{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-top:24px}
+.budgetItem{padding:18px 15px;border:1px solid #e1e5ed;border-radius:14px;background:#fbfcff;display:grid;gap:16px}
+.budgetItem strong{font-size:13px;display:block;color:#293345}
+.budgetItem small{font-size:11px;display:block;color:#788395;margin-top:5px}
+.budgetItem b{font-size:22px;color:#5b4cf0;letter-spacing:-.05em}
+.pricingSimulator{display:grid;grid-template-columns:.9fr 1.3fr;gap:30px;background:#edf0ff;border:1px solid #dddaf9;padding:28px;border-radius:20px;align-items:start}
+.simulatorBody{display:grid;grid-template-columns:1fr 1fr;gap:16px;min-width:0}
+.simulatorInputs{display:grid;gap:11px}
+.simulatorInputs label{display:grid;gap:5px;font-size:12px;color:#3e4663;font-weight:700}
+.simulatorInputs input{width:100%;min-width:0;padding:10px 12px;border:1px solid #c9cde6;border-radius:10px;background:#fff;color:#17213b;font:inherit}
+.simulatorInputs input:focus-visible{outline:3px solid #b5aaff}
+.simulatorResult{display:flex;flex-direction:column;align-items:start;justify-content:center;gap:11px;background:white;padding:20px;border:1px solid #dcdff3;border-radius:15px}
+.simulatorResult small{font-size:12px;color:#718099}
+.simulatorResult strong{font-size:clamp(22px,2.6vw,30px);letter-spacing:-.04em;color:#4f3ec2}
+.simulatorResult span{font-size:11px;line-height:1.5;color:#718099}
+.simulatorResult a{margin-top:5px;color:white;background:#5b4cf0;padding:10px 12px;border-radius:9px;font-weight:800;text-decoration:none;font-size:12px}
+.pricingSources{background:#fff;padding:15px 20px;border-radius:12px;border:1px solid #e1e5ed;color:#566174;font-size:12px;line-height:1.65}
+.pricingSources summary{cursor:pointer;color:#493c94;font-weight:750}
+.pricingSources p{margin:10px 0 0}
+.pricingSources a{color:#4938bc;text-decoration:underline;text-underline-offset:2px}
+.formPriceHint{font-size:12px;line-height:1.65;padding:11px 14px;background:#f0edff;border:1px solid #d8d1fa;border-radius:11px;color:#5142a8}
+.formPriceHint strong{font-weight:850}
+@media(max-width:950px){.pricingSection{padding-bottom:60px}.comparisonGrid{grid-template-columns:repeat(2,minmax(0,1fr))}.compareOurs{grid-column:1/-1;min-height:180px}.budgetList{grid-template-columns:repeat(2,minmax(0,1fr))}.pricingSimulator{grid-template-columns:1fr}.compareOurs .compareBrand{margin-right:126px}}
+@media(max-width:640px){.pricingHeader{align-items:start}.pricingHeader h2{font-size:34px}.pricingLink{width:100%;justify-content:space-between}.comparisonGrid{grid-template-columns:1fr}.compareCard,.compareOurs{grid-column:auto;min-height:190px;padding:20px}.compareOurs .compareBrand{margin-right:0;padding-top:18px}.ownTag{right:12px;top:10px}.budgetGuide,.pricingSimulator{padding:20px 16px}.guideHead{flex-direction:column;gap:10px}.budgetList{grid-template-columns:1fr 1fr;gap:9px}.budgetItem{padding:13px;gap:12px}.budgetItem b{font-size:19px}.budgetItem strong{font-size:12px}.simulatorBody{grid-template-columns:1fr}.simulatorResult{min-height:154px}}

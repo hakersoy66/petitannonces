@@ -4,6 +4,8 @@ type Application={id:string;platform:string;handle:string;email:string;followers
 type Campaign={id:string;title:string;partnerHandle:string;platform:string;feeMinor:number;clickCount:number;visitorsConsented:number;registrationsEstimated:number;publishedListingsEstimated:number;reportedViews:number;reportedLikes:number;status:string};
 const euro=(n:number)=>new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR',maximumFractionDigits:2}).format(n/100);
 const num=(n:number)=>Number(n||0).toLocaleString('fr-FR');
+function paReference(followers:number):{min:number;max:number}|null {if(followers<1000)return null;if(followers<10000)return{min:50,max:130};if(followers<50000)return{min:150,max:400};if(followers<100000)return{min:400,max:850};return null;}
+function paRange(followers:number){const x=paReference(followers);return x?`${euro(x.min*100)} – ${euro(x.max*100)}`:'Sur étude / devis';}
 const base:CSSProperties={padding:'10px 15px',fontWeight:750,borderRadius:10,border:'1px solid #d4d9e6',background:'white',color:'#273449',cursor:'pointer'};
 const action:CSSProperties={...base,color:'#fff',background:'#5b4cf0',borderColor:'#5b4cf0'};
 const box:CSSProperties={padding:22,display:'grid',gap:16};
@@ -53,8 +55,9 @@ export default function ApplicationsPanel(){
       <span style={{padding:'6px 12px',borderRadius:999,fontSize:12,background:colors[a.status],color:'#273449',fontWeight:750}}>{badge[a.status]}</span>
     </div>
     <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(120px,1fr))',gap:10}}>
-     {[['Abonnés',num(a.followers)],['Vues moyennes',num(a.averageViews)],['France',a.franceAudiencePercent===null?'Non indiqué':String(a.franceAudiencePercent)+' %'],['Tarif demandé',euro(a.requestedFeeMinor)]].map(([k,v])=><div key={k} style={{padding:12,borderRadius:10,background:'#f7f8fc'}}><small style={{display:'block',color:'#64748b'}}>{k}</small><strong>{v}</strong></div>)}
+     {[['Abonnés',num(a.followers)],['Vues moyennes',num(a.averageViews)],['France',a.franceAudiencePercent===null?'Non indiqué':String(a.franceAudiencePercent)+' %'],['Tarif demandé',euro(a.requestedFeeMinor)],['Référence Petit Annonces',paRange(a.followers)]].map(([k,v])=><div key={k} style={{padding:12,borderRadius:10,background:'#f7f8fc'}}><small style={{display:'block',color:'#64748b'}}>{k}</small><strong>{v}</strong></div>)}
     </div>
+    {a.requestedFeeMinor>0&&paReference(a.followers)&&<p style={{fontSize:12,color:'#4c4a77',background:'#f1efff',padding:'10px 13px',borderRadius:9,margin:0}}>Comparaison indicative : <strong>{a.requestedFeeMinor>paReference(a.followers)!.max*100?'tarif demandé supérieur à notre enveloppe':a.requestedFeeMinor<paReference(a.followers)!.min*100?'tarif demandé inférieur à notre enveloppe':'tarif demandé dans notre enveloppe'}</strong>. À valider selon les vues, la part d'audience en France et les justificatifs.</p>}
     {a.message&&<p style={{fontSize:13,whiteSpace:'pre-wrap',margin:0}}>{a.message}</p>}
     {safeLink(a.mediaKitUrl)&&<a rel="noopener noreferrer" target="_blank" href={safeLink(a.mediaKitUrl)!} style={{fontSize:13}}>Consulter le media kit (lien fourni par le créateur) ↗</a>}
     {a.status==='PENDING'?<div style={{display:'grid',gap:10}}>

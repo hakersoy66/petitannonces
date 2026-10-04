@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { prisma } from '@pa/database';
 import { z } from 'zod';
 import { requireAdminRoles } from './rbac.js';
+import { queueAdminRoleEmail } from './transactional-email.js';
 
 type Row = Record<string, unknown>;
 const admin = requireAdminRoles(['SUPER_ADMIN','ADMIN','MARKETING']);
@@ -53,6 +54,15 @@ export async function registerInfluencerApplicationRoutes(app:FastifyInstance){
         ("platform","handle","email","followers","averageViews","franceAudiencePercent","requestedFeeMinor","mediaKitUrl","message")
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING "id"`,
         x.platform,handle,x.email,x.followers,x.averageViews,x.franceAudiencePercent,x.requestedFeeMinor,x.mediaKitUrl||null,x.message||null);
+      try {
+        await queueAdminRoleEmail({
+          roles:['SUPER_ADMIN','ADMIN','MARKETING'],eventKind:'INFLUENCER_APPLICATION_RECEIVED',
+          title:'Nouvelle candidature influenceur',
+          body:`Une nouvelle candidature ${x.platform} (@${handle}) est en attente. Consultez les audiences déclarées et la proposition de rémunération dans le panneau marketing avant de prendre une décision.`,
+          actionUrl:'https://admin.petitannonces.fr/influenceurs',
+          metadata:{applicationId:String(inserted[0]?.id??''),type:'influencer_application'}
+        });
+      } catch(error) {request.log.error({err:error},'influencer_application_admin_notification_failed');}
       return reply.code(201).send({ok:true,reference:String(inserted[0]?.id??'')});
     }catch(error){
       if((error as {code?:string}).code==='P2010')return reply.code(409).send({error:'candidature_deja_recue'});
