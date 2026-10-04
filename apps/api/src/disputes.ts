@@ -5,7 +5,7 @@ import { z } from "zod";
 import { deliverUserEvent } from "./notification-delivery.js";
 import { issueMarketplaceRefund, retryMarketplaceRefund } from "./payments.js";
 import { ensureReturnWorkflowSchema } from "./return-workflow.js";
-import { createPresignedDownload, makeStoredObjectPrivate, storageConfigured, uploadPrivateStoredObject } from "./storage.js";
+import { saveSensitiveEvidence, downloadSensitiveEvidence } from "./private-evidence.js";
 
 const SESSION_COOKIE = "pa_session";
 function sha256(value: string) { return createHash("sha256").update(value).digest("hex"); }
@@ -101,7 +101,7 @@ export async function registerDisputeRoutes(app: FastifyInstance) {
     if (!order || (order.buyerId !== user.id && order.sellerId !== user.id && !isDisputeStaff(user))) return reply.code(403).send({ error: "forbidden" });
     const messages = await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(`SELECT * FROM "DisputeMessage" WHERE "disputeId"=$1 ORDER BY "createdAt" ASC`, dispute.id);
     const evidence = await prisma.$queryRawUnsafe<Array<Record<string, any>>>(`SELECT * FROM "DisputeEvidence" WHERE "disputeId"=$1 ORDER BY "createdAt" ASC`, dispute.id);
-    for(const ev of evidence){if(!ev.objectKey){const key=evidenceObjectKeyFromLegacyUrl(ev.fileUrl);if(key){ev.objectKey=key;await prisma.$executeRawUnsafe(`UPDATE "DisputeEvidence" SET "objectKey"=$1 WHERE "id"=$2 AND "objectKey" IS NULL`,key,ev.id).catch(()=>undefined);await makeStoredObjectPrivate(key).catch(()=>undefined)}}}
+    for(const ev of evidence){if(!ev.objectKey){const key=evidenceObjectKeyFromLegacyUrl(ev.fileUrl);if(key){ev.objectKey=key;await prisma.$executeRawUnsafe(`UPDATE "DisputeEvidence" SET "objectKey"=$1 WHERE "id"=$2 AND "objectKey" IS NULL`,key,ev.id).catch(()=>undefined);void key}}}
     return reply.send({ dispute, messages, evidence:evidence.map(evidencePublicShape) });
   });
 
@@ -123,7 +123,7 @@ export async function registerDisputeRoutes(app: FastifyInstance) {
 
   app.post("/disputes/:id/evidence/upload-direct", { bodyLimit: MAX_EVIDENCE_BYTES }, async (request, reply) => {
     const user=await requireUser(request,reply);if(!user)return;
-    if(!storageConfigured())return reply.code(503).send({error:"object_storage_not_configured"});
+
     const params=z.object({id:z.string().min(1)}).safeParse(request.params);if(!params.success)return reply.code(400).send({error:"invalid_request"});
     const dispute=await getDispute(params.data.id);if(!dispute)return reply.code(404).send({error:"dispute_not_found"});
     const order=await getOrder(String(dispute.orderId));if(!order||(order.buyerId!==user.id&&order.sellerId!==user.id))return reply.code(403).send({error:"forbidden"});
@@ -132,7 +132,7 @@ export async function registerDisputeRoutes(app: FastifyInstance) {
     const data=request.body;if(!Buffer.isBuffer(data)||data.length<1)return reply.code(400).send({error:"empty_evidence"});if(data.length>MAX_EVIDENCE_BYTES)return reply.code(413).send({error:"evidence_too_large",maxBytes:MAX_EVIDENCE_BYTES});
     const count=await prisma.$queryRawUnsafe<Array<{count:bigint}>>(`SELECT COUNT(*)::bigint AS count FROM "DisputeEvidence" WHERE "disputeId"=$1`,dispute.id);if(Number(count[0]?.count??0n)>=12)return reply.code(409).send({error:"evidence_limit_reached",limit:12});
     const rawName=String(request.headers["x-file-name"]??"justificatif");let fileName=rawName.slice(0,180);try{fileName=decodeURIComponent(rawName).slice(0,180)}catch{}
-    const evidenceId=randomUUID();const objectKey=`private/disputes/${dispute.id}/${evidenceId}.${evidenceExtension(mimeType)}`;await uploadPrivateStoredObject(objectKey,mimeType,data);
+    const evidenceId=randomUUID();const objectKey=`private/disputes/${dispute.id}/${evidenceId}.${evidenceExtension(mimeType)}`;await saveSensitiveEvidence(objectKey,data);
     await prisma.$executeRawUnsafe(`INSERT INTO "DisputeEvidence" ("id","disputeId","uploadedById","fileUrl","objectKey","fileName","mimeType","sizeBytes") VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,evidenceId,dispute.id,user.id,"private://evidence",objectKey,fileName,mimeType,data.length);
     await prisma.$executeRawUnsafe(`INSERT INTO "DisputeMessage" ("id","disputeId","authorId","kind","body") VALUES ($1,$2,$3,'EVIDENCE',$4)`,randomUUID(),dispute.id,user.id,`${fileName} ajouté`);
     const otherPartyId=String(user.id===order.buyerId?order.sellerId:order.buyerId);
@@ -146,9 +146,9 @@ export async function registerDisputeRoutes(app: FastifyInstance) {
     const dispute=await getDispute(params.data.id);if(!dispute)return reply.code(404).send({error:"dispute_not_found"});
     const order=await getOrder(String(dispute.orderId));if(!order||(order.buyerId!==user.id&&order.sellerId!==user.id&&!isDisputeStaff(user)))return reply.code(403).send({error:"forbidden"});
     const rows=await prisma.$queryRawUnsafe<Array<Record<string,any>>>(`SELECT * FROM "DisputeEvidence" WHERE "id"=$1 AND "disputeId"=$2 LIMIT 1`,params.data.evidenceId,dispute.id);const ev=rows[0];if(!ev)return reply.code(404).send({error:"evidence_not_found"});
-    let objectKey=ev.objectKey as string|null;if(!objectKey){objectKey=evidenceObjectKeyFromLegacyUrl(ev.fileUrl);if(objectKey){await prisma.$executeRawUnsafe(`UPDATE "DisputeEvidence" SET "objectKey"=$1 WHERE "id"=$2`,objectKey,ev.id);await makeStoredObjectPrivate(objectKey).catch(()=>undefined)}}
+    let objectKey=ev.objectKey as string|null;if(!objectKey){objectKey=evidenceObjectKeyFromLegacyUrl(ev.fileUrl);if(objectKey){await prisma.$executeRawUnsafe(`UPDATE "DisputeEvidence" SET "objectKey"=$1 WHERE "id"=$2`,objectKey,ev.id);void objectKey}}
     if(!objectKey)return reply.code(410).send({error:"legacy_evidence_unavailable"});
-    const url=await createPresignedDownload(objectKey,ev.fileName,90);return reply.redirect(url);
+    return downloadSensitiveEvidence(reply,objectKey,ev.fileName);
   });
 
   app.post("/disputes/:id/evidence", async (request, reply) => {

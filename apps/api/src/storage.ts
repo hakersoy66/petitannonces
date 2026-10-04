@@ -69,14 +69,9 @@ export function publicObjectUrl(objectKey: string) {
   return `${required("OBJECT_STORAGE_PUBLIC_BASE_URL").replace(/\/$/, "")}/${objectKey.split("/").map(encodeURIComponent).join("/")}`;
 }
 
-export async function createPresignedDownload(objectKey: string, fileName?: string | null, expiresIn = 120) {
-  const safeName=(fileName ?? "justificatif").replace(/[\r\n"]/g,"_").slice(0,180);
-  const command=new GetObjectCommand({
-    Bucket: required("OBJECT_STORAGE_BUCKET"),
-    Key: objectKey,
-    ResponseContentDisposition: `attachment; filename*=UTF-8''${encodeURIComponent(safeName)}`,
-  });
-  return getSignedUrl(client(),command,{expiresIn:Math.max(30,Math.min(300,expiresIn))});
+// Disabled: the public media domain serves these keys even when their object ACL is private.
+export async function createPresignedDownload(_objectKey: string, _fileName?: string | null, _expiresIn = 120): Promise<string> {
+  throw new Error("private_objects_must_not_use_public_media_bucket");
 }
 
 export async function makeStoredObjectPrivate(objectKey:string){
@@ -109,16 +104,9 @@ export async function uploadStoredObject(objectKey: string, mimeType: string, bo
   return publicObjectUrl(objectKey);
 }
 
-export async function uploadPrivateStoredObject(objectKey:string,mimeType:string,body:Uint8Array){
-  await client().send(new PutObjectCommand({
-    Bucket:required("OBJECT_STORAGE_BUCKET"),
-    Key:objectKey,
-    Body:body,
-    ContentType:mimeType,
-    CacheControl:"private, no-store",
-    ...(objectAclEnabled()?{ACL:"private" as const}:{}),
-  }));
-  return objectKey;
+// Fail closed: use private-evidence.ts or protected influencer portal storage instead.
+export async function uploadPrivateStoredObject(_objectKey:string,_mimeType:string,_body:Uint8Array):Promise<string>{
+  throw new Error("private_objects_must_not_use_public_media_bucket");
 }
 
 export async function deleteStoredObject(objectKey: string) {
