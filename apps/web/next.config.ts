@@ -3,7 +3,7 @@ import type { NextConfig } from "next";
 const privateSeoHeaders = [
   "/mon-compte/:path*", "/espace-pro/:path*", "/commandes/:path*", "/messages/:path*", "/notifications/:path*",
   "/checkout/:path*", "/connexion", "/inscription/:path*", "/mot-de-passe-oublie", "/reinitialiser-mot-de-passe",
-  "/verifier-email", "/verifiez-votre-email", "/deposer-une-annonce", "/importer-une-annonce"
+  "/verifier-email", "/verifiez-votre-email", "/deposer-une-annonce", "/importer-une-annonce", "/espace-partenaire"
 ];
 
 const nextConfig: NextConfig = {

@@ -1,0 +1,67 @@
+'use client';
+import {useCallback,useEffect,useMemo,useState,type FormEvent,type CSSProperties} from 'react';
+type Partner={id:string;handle:string;platform:string;email:string|null};
+type Campaign={id:string;partnerId:string;title:string;status:string;feeMinor:number;paymentStatus:string;financeStatus:string;contentUrl:string|null;clickCount:number;reportedViews:number};
+type Proposal={id:string;campaignId:string;campaignTitle:string;revision:number;feeMinor:number;terms:string;deliverables:string;status:string;counterFeeMinor:number|null;counterMessage:string|null;legalStatus:string;consentDigest:string|null;identityName:string|null;identityAddress:string|null;taxResidence:string|null;verifiedAt:string|null;financeStatus:string;campaignStatus:string;handle:string;email:string|null};
+type Evidence={id:string;campaignId:string;kind:string;originalName:string;createdAt:string;sizeBytes:number};
+type Event={campaignId:string;action:string;actorKind:string;createdAt:string};
+type Repo={partners:Partner[];campaigns:Campaign[]};
+type Workflow={proposals:Proposal[];evidence:Evidence[];events:Event[]};
+const button:CSSProperties={padding:'10px 15px',fontWeight:800,border:'1px solid #d2d5ea',background:'#fff',color:'#4b4391',borderRadius:9,cursor:'pointer'};
+const primary:CSSProperties={...button,background:'#5b4cf0',borderColor:'#5b4cf0',color:'#fff'};
+const area:CSSProperties={width:'100%',padding:'10px 12px',border:'1px solid #d3d7e7',borderRadius:8,color:'#1b2440',background:'#fff',minWidth:0};
+const eur=(n:number)=>new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR'}).format(Number(n||0)/100);
+const DEFAULT_TERMS=`ANNONCEUR : Hakan ERSOY EI, éditeur de PetitAnnonces.fr, 16 rue de la Libération, 42150 La Ricamarie, France. SIREN 813 061 256. Contact : info@petitannonces.fr. Résidence fiscale : France.
+CRÉATEUR : le titulaire du compte partenaire identifié par son nom légal, son adresse postale, son pays de résidence fiscale et son adresse électronique, renseignés et confirmés lors de son acceptation.
+OBJET : prestation de communication commerciale pour promouvoir le service petitannonces.fr auprès d'un public en France, selon les contenus précisément décrits dans l'offre et la période validée avec l'annonceur.
+TRANSPARENCE : chaque contenu promotionnel rémunéré doit afficher clairement « Publicité » ou « Collaboration commerciale » en français, et utiliser les outils de partenariat fournis par la plateforme sociale quand ils existent.
+RÉMUNÉRATION : montant négocié indiqué dans cette proposition; facturation et TVA selon le statut fiscal du créateur. Paiement manuel sur facture conforme, après publication et validation des livrables, sous trente jours après réception de la facture validée. Aucun versement automatique depuis ce portail.
+DROITS : le créateur garantit disposer des autorisations sur textes, musiques, images et personnes apparaissant à l'écran. Aucun droit de réutilisation payante ou d'exclusivité n'est transféré à l'annonceur sans accord écrit supplémentaire.
+OBLIGATIONS : ne pas publier de fausses promesses de gains ou de résultats, respecter les règles de la plateforme et le droit français. Fournir lien du contenu et captures de statistiques à la fin de la campagne. L'annonceur conserve le droit de vérifier la conformité des contenus avant validation.
+RÈGLEMENT DES DIFFÉRENDS : échange amiable prioritaire. Droit français applicable pour les campagnes visant le public français. Toute obligation légale supplémentaire, notamment lorsqu'un accord formel signé est requis, reste conditionnée à une vérification juridique indépendante.
+`;
+async function api<T>(path:string,body?:unknown,method='GET'):Promise<T>{const r=await fetch(path,{method,credentials:'include',cache:'no-store',headers:body!==undefined?{'content-type':'application/json'}:undefined,body:body===undefined?undefined:JSON.stringify(body)});const j=await r.json().catch(()=>({})) as T&{error?:string};if(!r.ok)throw new Error(j.error??`Erreur ${r.status}`);return j;}
+export default function WorkflowPanel(){
+ const [repo,setRepo]=useState<Repo>({partners:[],campaigns:[]}),[workflow,setWorkflow]=useState<Workflow>({proposals:[],evidence:[],events:[]});
+ const [chosen,setChosen]=useState(''),[fee,setFee]=useState('150'),[deliverables,setDeliverables]=useState('1 Reel / vidéo verticale + 1 Story, avec mention Publicité.'),[terms,setTerms]=useState(DEFAULT_TERMS),[busy,setBusy]=useState(false),[message,setMessage]=useState(''),[error,setError]=useState(''),[reference,setReference]=useState<Record<string,string>>({});
+ const refresh=useCallback(async()=>{try{const [a,b]=await Promise.all([api<Repo>('/api/admin/influencers'),api<Workflow>('/api/admin/influencer-workflow')]);setRepo(a);setWorkflow(b);setError('');}catch(e){setError(e instanceof Error?e.message:'Données indisponibles')}},[]);
+ useEffect(()=>{void refresh()},[refresh]);
+ const selected=useMemo(()=>repo.campaigns.find(c=>c.id===chosen),[repo.campaigns,chosen]);
+ const candidate=useMemo(()=>repo.partners.find(p=>p.id===selected?.partnerId),[repo.partners,selected?.partnerId]);
+ const latest=useMemo(()=>{const map=new Map<string,Proposal>();for(const p of workflow.proposals){if(!map.has(p.campaignId))map.set(p.campaignId,p)}return [...map.values()]},[workflow.proposals]);
+ async function task(action:()=>Promise<void>){setBusy(true);setMessage('');setError('');try{await action();await refresh()}catch(e){setError(e instanceof Error?e.message:'Erreur')}finally{setBusy(false)}}
+ async function sendOffer(e:FormEvent){e.preventDefault();if(!selected)return;await task(async()=>{const reply=await api<{emailSent:boolean}>('/api/admin/influencer-campaigns/'+selected.id+'/offer',{feeMinor:Math.round(Number(fee)*100),deliverables,terms,expiresDays:14},'POST');setMessage(reply.emailSent?'Offre enregistrée et e-mail accepté par le serveur de messagerie.':'Offre enregistrée, mais e-mail indisponible : contactez le créateur.');});}
+ async function verify(p:Proposal){if(!confirm('Avez-vous vérifié l’identité et, si requis, le document signé ?'))return;await task(async()=>{await api('/api/admin/influencer-proposals/'+p.id+'/verify-contract',{attestation:true},'POST');setMessage('Accord vérifié par un administrateur.');});}
+ async function activate(p:Proposal){if(!confirm('Activer la campagne et son lien public ?'))return;await task(async()=>{await api('/api/admin/influencer-campaigns/'+p.campaignId+'/activate',{},'POST');setMessage('Campagne activée.');});}
+ async function financial(campaignId:string,action:'APPROVE'|'MARK_PAID'){if(!confirm(action==='APPROVE'?'Approuver le paiement après vérification du contenu et de la facture ?':'Confirmer qu’un versement externe a réellement été effectué ?'))return;await task(async()=>{const result=await api<{emailSent?:boolean}>('/api/admin/influencer-campaigns/'+campaignId+'/finance',action==='APPROVE'?{action,confirmed:true}:{action,confirmed:true,reference:reference[campaignId]??''},'POST');setMessage((action==='APPROVE'?'Paiement approuvé administrativement; aucun transfert bancaire déclenché.':'Paiement externe enregistré avec référence.')+(result.emailSent===false?' L’e-mail au partenaire a échoué.':''));});}
+ function download(id:string){window.open('/api/admin/influencer-evidence/'+encodeURIComponent(id)+'/download','_blank','noopener,noreferrer')}
+ return <section className="admin-card admin-section" style={{display:'grid',gap:19,padding:22,marginBottom:20}}>
+  <div className="admin-section-head"><div><h2>Cycle complet · offres, contrats, justificatifs et finances</h2><p>Accès créateur : <a href="https://petitannonces.fr/espace-partenaire" target="_blank" rel="noopener noreferrer">petitannonces.fr/espace-partenaire ↗</a>. Les paiements et la vérification formelle sont des opérations administratives, non des virements automatisés.</p></div><button type="button" onClick={()=>void refresh()} style={button}>Actualiser</button></div>
+  {error&&<div className="admin-flash err" role="alert">{error}</div>}{message&&<div className="admin-flash" role="status">{message}</div>}
+  <details open={repo.campaigns.length>0&&latest.length===0} style={{border:'1px solid #dedff0',background:'#fafaff',padding:17,borderRadius:12}}><summary style={{cursor:'pointer',fontWeight:800}}>Créer / renégocier une proposition</summary>
+   <form onSubmit={sendOffer} style={{display:'grid',gap:13,paddingTop:15}}>
+    <label style={{display:'grid',gap:5}}>Campagne<select required style={area} value={chosen} onChange={e=>{setChosen(e.target.value);const c=repo.campaigns.find(v=>v.id===e.target.value);if(c)setFee(String((c.feeMinor||0)/100))}}><option value="">Choisir la campagne…</option>{repo.campaigns.map(c=><option key={c.id} value={c.id}>{c.title} – {repo.partners.find(p=>p.id===c.partnerId)?.handle??'Partenaire'}</option>)}</select></label>
+    {selected&&<div style={{fontSize:12,color:'#5b647a'}}>E-mail partenaire : {candidate?.email??'À compléter avant l’envoi'}</div>}
+    <label style={{display:'grid',gap:5}}>Montant négocié (€)<input required type="number" min={0} max={1000000} step=".01" style={area} value={fee} onChange={e=>setFee(e.target.value)}/></label>
+    <label style={{display:'grid',gap:5}}>Prestations exactes<textarea required minLength={10} maxLength={1500} rows={2} style={area} value={deliverables} onChange={e=>setDeliverables(e.target.value)}/></label>
+    <label style={{display:'grid',gap:5}}>Clauses contractuelles à vérifier<textarea required minLength={40} maxLength={5000} rows={12} style={area} value={terms} onChange={e=>setTerms(e.target.value)}/></label>
+    <small>Une contre-proposition génère une nouvelle version sans effacer l’ancienne. La signature formelle reste obligatoire lorsque la réglementation l’exige.</small>
+    <div><button disabled={busy||!selected||!candidate?.email} style={primary}>Envoyer la proposition au partenaire</button></div>
+   </form>
+  </details>
+  <div style={{display:'grid',gap:12}}>{latest.map(p=>{
+   const proofs=workflow.evidence.filter(e=>e.campaignId===p.campaignId);
+   const campaign=repo.campaigns.find(c=>c.id===p.campaignId);
+   return <article key={p.id} style={{border:'1px solid #e0e3ee',borderRadius:12,padding:16,display:'grid',gap:11}}>
+    <div style={{display:'flex',justifyContent:'space-between',alignItems:'start',gap:12,flexWrap:'wrap'}}><div><strong>{p.campaignTitle}</strong><small style={{color:'#758098',display:'block'}}>@{p.handle} · v{p.revision} · {eur(p.feeMinor)}</small></div><span style={{fontSize:12,color:'#5b4cf0',fontWeight:800}}>{p.status} / {p.legalStatus}</span></div>
+    {p.status==='COUNTERED'&&<p style={{color:'#654fb6',fontSize:13}}>Contre-proposition : <strong>{eur(p.counterFeeMinor??0)}</strong> — {p.counterMessage}. Utilisez le formulaire ci-dessus pour envoyer une nouvelle offre.</p>}
+    {p.status==='ACCEPTED'&&<div style={{fontSize:12,color:'#586377',lineHeight:1.6}}><div>Identité déclarée : <strong>{p.identityName}</strong>, {p.identityAddress}; résidence fiscale : {p.taxResidence}</div><div>Empreinte d’acceptation : <code>{p.consentDigest?.slice(0,16)}…</code> · <a href={'/api/admin/influencer-proposals/'+p.id+'/receipt'} target='_blank' rel='noopener noreferrer'>Télécharger l’attestation ↗</a></div><div>Revue juridique : <b>{p.legalStatus}</b>{p.legalStatus==='NEEDS_FORMAL_SIGNATURE'?' — document formel signé nécessaire, avec contrôle manuel.':''}</div></div>}
+    <div style={{display:'grid',gap:6}}>{proofs.map(e=><button type="button" key={e.id} onClick={()=>void download(e.id)} style={{...button,textAlign:'left',fontSize:12,padding:'8px 11px'}}>🔒 {e.kind} : {e.originalName} ↗</button>)}{!proofs.length&&<small style={{color:'#758098'}}>Aucun justificatif transmis.</small>}</div>
+    <div style={{display:'flex',gap:9,flexWrap:'wrap'}}>{p.status==='ACCEPTED'&&p.legalStatus!=='VERIFIED'&&<button style={button} onClick={()=>void verify(p)} disabled={busy}>Vérifier l’accord</button>}{p.legalStatus==='VERIFIED'&&['SCHEDULED','NEGOTIATING'].includes(p.campaignStatus)&&<button style={primary} onClick={()=>void activate(p)} disabled={busy}>Activer la campagne</button>}{campaign?.status==='COMPLETED'&&(campaign.financeStatus==='NOT_REQUESTED'||!campaign.financeStatus)&&<button style={button} disabled={busy} onClick={()=>void financial(p.campaignId,'APPROVE')}>Approuver paiement</button>}</div>
+    {campaign?.financeStatus==='APPROVED'&&<div style={{display:'flex',gap:8,flexWrap:'wrap'}}><input aria-label="Référence de virement réel" placeholder="Référence du virement externe" style={{...area,maxWidth:300}} value={reference[p.campaignId]??''} onChange={e=>setReference(x=>({...x,[p.campaignId]:e.target.value}))}/><button style={button} onClick={()=>void financial(p.campaignId,'MARK_PAID')} disabled={busy||!reference[p.campaignId]?.trim()}>Marquer payé après virement externe</button></div>}
+    {campaign?.financeStatus==='PAID'&&<div style={{fontSize:12,color:'#17764e'}}>Paiement externe marqué effectué · {campaign.paymentStatus}</div>}
+    <details><summary style={{fontSize:12,cursor:'pointer'}}>Historique d’audit</summary>{workflow.events.filter(e=>e.campaignId===p.campaignId).map((e,i)=><div style={{fontSize:11,color:'#5b647a'}} key={i}>{new Date(e.createdAt).toLocaleString('fr-FR')} · {e.actorKind} · {e.action}</div>)}</details>
+   </article>;
+  })}{!latest.length&&<p style={{color:'#64748b'}}>Aucune offre envoyée. Créez d’abord une campagne pour un partenaire approuvé.</p>}</div>
+ </section>;
+}

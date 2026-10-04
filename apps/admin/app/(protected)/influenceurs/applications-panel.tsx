@@ -34,7 +34,8 @@ export default function ApplicationsPanel(){
   try{
    const r=await fetch('/api/admin/influencer-applications/'+encodeURIComponent(item.id),{method:'PATCH',credentials:'include',headers:{'content-type':'application/json'},body:JSON.stringify({status,note:notes[item.id]??''})});
    if(!r.ok)throw new Error('Cette candidature a peut-être déjà été traitée. Actualisez la page.');
-   setMessage(status==='APPROVED'?'Candidature acceptée : prospect ajouté aux influenceurs. Aucun contrat ni paiement créé.':'Candidature refusée. Aucune notification automatique envoyée.');
+   const response=await r.json() as{emailSent?:boolean};
+   setMessage(status==='APPROVED'?response.emailSent?'Candidature acceptée : invitation e-mail acceptée par le serveur SMTP. Aucun paiement créé.':'Candidature acceptée mais invitation e-mail échouée : contactez le créateur.':'Candidature refusée. Aucune notification automatique envoyée.');
    await refresh();
   }catch(e){setError(e instanceof Error?e.message:'Erreur');}finally{setBusy(false);}
  }

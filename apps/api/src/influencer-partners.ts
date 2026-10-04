@@ -147,6 +147,19 @@ export async function registerInfluencerPartnerRoutes(app: FastifyInstance) {
   app.patch('/admin/influencer-campaigns/:id', { preHandler: access }, async (request, reply) => {
     const params = idSchema.safeParse(request.params), body = campaignFields.safeParse(request.body);
     if (!params.success || !body.success) return reply.code(400).send({ error: 'invalid_campaign' });
+    if (body.data.paymentStatus !== undefined || body.data.status === 'ACTIVE' || body.data.status === 'SCHEDULED') {
+      return reply.code(409).send({ error: 'use_partner_workflow_for_payment_or_activation' });
+    }
+    if (body.data.status === 'COMPLETED') {
+      const prepared = await prisma.$queryRawUnsafe<Row[]>(`SELECT c."status",c."contentUrl",c."publishedAt",
+         EXISTS(SELECT 1 FROM "InfluencerProposal" o WHERE o."campaignId"=c."id" AND o."status"='ACCEPTED' AND o."legalStatus"='VERIFIED') AS "contractOk"
+         FROM "InfluencerCampaign" c WHERE c."id"=$1 LIMIT 1`,params.data.id);
+      if(!prepared.length || prepared[0]?.status!=='ACTIVE' || !prepared[0]?.contentUrl || !prepared[0]?.publishedAt || !prepared[0]?.contractOk) return reply.code(409).send({error:'campaign_not_ready_for_completion'});
+    }
+    if (body.data.feeMinor !== undefined) {
+      const accepted=await prisma.$queryRawUnsafe<Row[]>(`SELECT 1 FROM "InfluencerProposal" WHERE "campaignId"=$1 AND "status"='ACCEPTED' LIMIT 1`,params.data.id);
+      if (accepted.length) return reply.code(409).send({error:'accepted_offer_amount_locked'});
+    }
     const change = updateSql('InfluencerCampaign', campaignColumns, params.data.id, body.data);
     if (!change) return reply.code(400).send({ error: 'no_changes' });
     const rows = await prisma.$queryRawUnsafe<Row[]>(change.sql, ...change.params);

@@ -3,6 +3,7 @@ import { prisma } from '@pa/database';
 import { z } from 'zod';
 import { requireAdminRoles } from './rbac.js';
 import { queueAdminRoleEmail } from './transactional-email.js';
+import { sendHostingerSmtpOnly } from './email-provider.js';
 
 type Row = Record<string, unknown>;
 const admin = requireAdminRoles(['SUPER_ADMIN','ADMIN','MARKETING']);
@@ -99,6 +100,16 @@ export async function registerInfluencerApplicationRoutes(app:FastifyInstance){
       return row;
     });
     if(!changed)return reply.code(409).send({error:'already_reviewed_or_missing'});
-    return {ok:true,status};
+    let emailSent=true;
+    if(status==='APPROVED'){
+      const destination=String(changed.email??'');
+      try {
+        await sendHostingerSmtpOnly({to:destination,
+          subject:'Bienvenue dans le programme partenaires Petit Annonces',
+          text:'Votre candidature a été acceptée. Vous pouvez consulter les propositions dans votre espace privé : https://petitannonces.fr/espace-partenaire . Utilisez votre e-mail pour recevoir un code de connexion unique.',
+          html:'<p>Votre candidature au programme partenaires <strong>Petit Annonces</strong> a été acceptée.</p><p><a href="https://petitannonces.fr/espace-partenaire">Ouvrir mon espace partenaire</a></p><p>Connectez-vous avec votre adresse e-mail et un code unique.</p>'});
+      }catch(error){emailSent=false;request.log.error({err:error},'influencer_approval_email_failed')}
+    }
+    return {ok:true,status,emailSent};
   });
 }
