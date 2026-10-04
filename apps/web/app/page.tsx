@@ -5,6 +5,7 @@ import { AppIcon, type AppIconName } from "../components/app-icon";
 import { HomeMobileCategories } from "../components/home-mobile-categories";
 import { HomeFranceHero } from "../components/home-france-hero";
 import { HomeFranceMobileMap } from "../components/home-france-mobile-map";
+import { HomeFranceTravailJobs, type HomeFranceTravailJob } from "../components/home-france-travail-jobs";
 import { FavoriteButton } from "../components/favorite-button";
 import { ListingCategoryPlaceholder } from "../components/listing-category-placeholder";
 import { formatListingPrice } from "../lib/listing-price";
@@ -72,6 +73,23 @@ async function fetchPopularCities():Promise<Array<{city:string;slug:string;count
   try{const r=await fetch(`${base.replace(/\/$/,"")}/seo/cities/popular`,{next:{revalidate:900}});if(!r.ok)return[];const p=await r.json() as{cities?:Array<{city:string;slug:string;count:number}>};return p.cities??[]}catch{return[]}
 }
 
+
+async function fetchHomeFranceTravailJobs():Promise<HomeFranceTravailJob[]>{
+  const base=process.env.API_INTERNAL_URL??process.env.NEXT_PUBLIC_API_URL??"http://127.0.0.1:4000";
+  try{
+    const response=await fetch(`${(base.endsWith("/")?base.slice(0,-1):base)}/public/emploi/france-travail`,{next:{revalidate:300},signal:AbortSignal.timeout(10000)});
+    if(!response.ok)return[];
+    const payload=await response.json() as{enabled?:boolean;items?:HomeFranceTravailJob[]};
+    if(!payload.enabled||!Array.isArray(payload.items))return[];
+    const seen=new Set<string>();
+    return payload.items.filter(job=>{
+      if(!job||job.source!=="FRANCE_TRAVAIL"||typeof job.id!=="string"||!job.title||typeof job.applyUrl!=="string")return false;
+      if(!/^https:\/\/candidat\.francetravail\.fr\/offres\/recherche\/detail\/[a-zA-Z0-9]+$/.test(job.applyUrl)||seen.has(job.id))return false;
+      seen.add(job.id);
+      return true;
+    }).slice(0,6);
+  }catch{return[]}
+}
 
 async function fetchHomeSiteConfig(): Promise<HomeSiteConfig> {
   const fallback:HomeSiteConfig={logoUrl:null,heroTitleLine1:"Vendez gratuitement.",heroTitleLine2:"Achetez en confiance.",heroLead:"Publiez gratuitement, achetez plus sereinement et ouvrez votre boutique Pro sans frais.",homeSections:[{key:"hero",enabled:true,order:10},{key:"latest",enabled:true,order:20},{key:"categoryFeeds",enabled:true,order:30},{key:"trust",enabled:true,order:40},{key:"pro",enabled:true,order:50},{key:"cta",enabled:true,order:60}]};
@@ -275,7 +293,7 @@ function HomeHbxHotelCard({hotel,mobile=false}:{hotel:HomeHbxHotel;mobile?:boole
 }
 
 export default async function HomePage() {
-  const [recentListings, randomListings, vacationListings, roots, site, topBanners, afterLatestBanners, stores, pwaUi, popularCities, hbxHotels] = await Promise.all([fetchListings("limit=16&sort=recent"), fetchRandomListings("",50), fetchRandomListings("category=vacances",20), fetchRootCategories(), fetchHomeSiteConfig(), fetchBanners("HOME_TOP"), fetchBanners("HOME_AFTER_LATEST"), fetchPublicStores(), fetchPwaUiConfig(), fetchPopularCities(), fetchHomeHbxHotels()]);
+  const [recentListings, randomListings, vacationListings, roots, site, topBanners, afterLatestBanners, stores, pwaUi, popularCities, hbxHotels, homeJobs] = await Promise.all([fetchListings("limit=16&sort=recent"), fetchRandomListings("",50), fetchRandomListings("category=vacances",20), fetchRootCategories(), fetchHomeSiteConfig(), fetchBanners("HOME_TOP"), fetchBanners("HOME_AFTER_LATEST"), fetchPublicStores(), fetchPwaUiConfig(), fetchPopularCities(), fetchHomeHbxHotels(), fetchHomeFranceTravailJobs()]);
   const homeCategoryRank=new Map<string,number>(HOME_CATEGORY_PRIORITY.map((slug,index)=>[slug,index]));
   const desktopRoots=[...roots].sort((a,b)=>(homeCategoryRank.get(a.slug)??999)-(homeCategoryRank.get(b.slug)??999)||a.name.localeCompare(b.name,"fr"));
   const mobileLatestListings=recentListings.slice(0,10);
@@ -319,6 +337,7 @@ export default async function HomePage() {
             <section className="market-home-rail"><div className="market-home-section-head"><div><span className="market-home-section-icon recent"><AppIcon name="clock"/></span><div><h2>Dernières annonces</h2><p>Les publications les plus récentes</p></div></div><a href="/recherche?sort=recent">Voir les nouveautés <AppIcon name="arrow-right"/></a></div>{latestMarketListings.length?<div className="market-home-grid market-home-grid-five">{latestMarketListings.map(item=><MarketplaceCard key={item.id} listing={item}/>)}</div>:<div className="market-home-empty-state">Aucune nouveauté pour le moment.</div>}</section>
             <section className="market-home-rail"><div className="market-home-section-head"><div><span className="market-home-section-icon location"><AppIcon name="location"/></span><div><h2>Près de chez vous</h2><p>Choisissez une ville pour découvrir les annonces locales</p></div></div><div className="market-home-city-chips">{cityShortcuts.map(city=><a key={city.slug} href={`/ville/${city.slug}`}>{city.city}</a>)}</div></div>{nearListings.length?<div className="market-home-grid market-home-grid-six">{nearListings.map(item=><MarketplaceCard key={item.id} listing={item}/>)}</div>:<div className="market-home-empty-state">Les annonces locales apparaîtront ici.</div>}</section>
             <section className="market-home-rail"><div className="market-home-section-head"><div><span className="market-home-section-icon deal"><AppIcon name="bolt"/></span><div><h2>Bonnes affaires</h2><p>Une sélection d’annonces à prix accessibles</p></div></div><a href="/recherche?sort=price_asc">Voir les petits prix <AppIcon name="arrow-right"/></a></div>{dealListings.length?<div className="market-home-grid market-home-grid-six">{dealListings.map(item=><MarketplaceCard key={item.id} listing={item}/>)}</div>:<div className="market-home-empty-state">Les bonnes affaires arrivent bientôt.</div>}</section>
+            <HomeFranceTravailJobs jobs={homeJobs}/>
           </div>
         </div></section>}
         <div className="home-pro-vacation-stack desktop-market-home" style={{order:order("pro")}}>
@@ -329,6 +348,7 @@ export default async function HomePage() {
         {pwaEnabled("latest")&&<section className="mobile-legacy-home mobile-market-section mobile-market-latest" style={{order:pwaOrder("latest")}}><div className="shell home-body-shell"><div className="mobile-market-heading"><h2>{pwaBlock("latest")?.title||"Dernières annonces"}</h2><a href="/recherche?sort=recent">Voir tout</a></div>{mobileLatestListings.length?<div className="mobile-market-grid">{mobileLatestListings.map(item=><MobileMarketplaceCard listing={item} key={item.id}/>)}</div>:<div className="live-listings-empty"><AppIcon name="list"/><div><strong>Aucune annonce publiée pour le moment.</strong></div></div>}</div></section>}
         {pwaEnabled("map")&&<div className="mobile-france-map-order" style={{order:pwaOrder("map")}}><HomeFranceMobileMap logoUrl={site.logoUrl}/></div>}
         {pwaEnabled("discover")&&mobileDiscoverListings.length>0&&<section className="mobile-legacy-home mobile-market-section mobile-market-discover" style={{order:pwaOrder("discover")}}><div className="shell home-body-shell"><div className="mobile-market-heading"><h2>{pwaBlock("discover")?.title||"À découvrir"}</h2><a href="/recherche">Voir plus</a></div><div className="mobile-market-grid">{mobileDiscoverListings.map(item=><MobileMarketplaceCard listing={item} key={item.id}/>)}</div></div></section>}
+        <section className="mobile-legacy-home home-ft-mobile-outer" style={{order:pwaOrder("discover")+1}}><div className="shell home-body-shell"><HomeFranceTravailJobs jobs={homeJobs} mobile/></div></section>
         <div className="mobile-legacy-home home-pro-vacation-stack-mobile" style={{order:pwaOrder("pro_banner")}}>
         {pwaEnabled("pro_banner")&&<section className="mobile-market-pro"><div className="shell home-body-shell"><a className="mobile-market-pro-banner" href="/inscription/pro"><span><AppIcon name="store"/></span><div><strong>{pwaBlock("pro_banner")?.title||"Vous êtes professionnel ?"}</strong><small>{pwaBlock("pro_banner")?.subtitle||"Ouvrez votre boutique gratuitement"}</small></div><AppIcon name="chevron-right"/></a></div></section>}
         </div>
