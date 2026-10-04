@@ -49,3 +49,9 @@
   .hero{order:3!important;margin-top:14px}
   .info{order:4}
 }
+
+/* 2026-10-04: keep the desktop URL import action level with the URL input (not its helper text). */
+@media (min-width:921px){
+ .smartImport>label>span{line-height:20px}
+ .smartImport>.primary{align-self:start;margin-top:28px;min-height:54px}
+}
