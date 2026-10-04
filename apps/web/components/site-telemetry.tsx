@@ -51,6 +51,15 @@ export function trackSiteConversionOnce(event:SiteAnalyticsEvent,gaEvent:string,
 export function SiteTelemetry(){
  const pathname=usePathname();const standaloneSent=useRef(false);
  useEffect(()=>{void sendSiteAnalyticsEvent("PAGE_VIEW",pathname||"/")},[pathname]);
+ // A visitor who opts in after the initial render would otherwise remain invisible
+ // until the first 60-second heartbeat or another navigation.
+ useEffect(()=>{
+  const onConsentChanged=()=>{
+   if(analyticsAllowed())void sendSiteAnalyticsEvent("PAGE_VIEW",window.location.pathname+window.location.search);
+  };
+  window.addEventListener("pa:consent-changed",onConsentChanged);
+  return()=>window.removeEventListener("pa:consent-changed",onConsentChanged);
+ },[]);
  useEffect(()=>{const path=()=>window.location.pathname+window.location.search;if(standalone()&&!standaloneSent.current){standaloneSent.current=true;void sendSiteAnalyticsEvent("PWA_STANDALONE",path())}const onInstalled=()=>void sendSiteAnalyticsEvent("PWA_INSTALLED",path());window.addEventListener("appinstalled",onInstalled);const timer=window.setInterval(()=>{if(document.visibilityState==="visible")void sendSiteAnalyticsEvent("HEARTBEAT",path())},60_000);void sendSiteAnalyticsEvent("HEARTBEAT",path());return()=>{window.removeEventListener("appinstalled",onInstalled);window.clearInterval(timer)}},[]);
  return null;
 }
