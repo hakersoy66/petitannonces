@@ -37,7 +37,7 @@ export default async function AdminHome(){
   {href:"/blocked-users",icon:"users" as AdminIconName,label:"Utilisateurs bloqués",value:policy?.summary?.blocked??0,detail:forbiddenWordUsers>0?`${forbiddenWordUsers} utilisateur(s) via mots interdits`:"Aucun blocage par mot interdit",tone:(policy?.summary?.blocked??0)>0?"red":"green",className:"priority-blocked"},
  ];
  const kpis:Array<[AdminIconName,string,string,string]>=[
-  ["chart","Visites aujourd’hui",n(k.visitsToday),`${n(k.visitorsToday)} visiteur(s) unique(s) · heure de Paris`],
+  ["chart","Visites aujourd’hui",n(aggregate?.today.estimatedEntries??0),`${n(aggregate?.today.pageViews??0)} page(s) vue(s) · mesure Petit Annonces`],
   ["users","En ligne maintenant",n(k.onlineVisitors),`${n(k.onlineMembers)} membre(s) connecté(s) · 5 min`],
   ["users","Utilisateurs",n(k.usersTotal),`+${n(k.usersToday)} aujourd’hui`],
   ["list","Annonces en ligne",n(k.listingsPublished),`${n(k.listingsTotal)} au total`],
