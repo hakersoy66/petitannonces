@@ -61,10 +61,12 @@ export function SiteTelemetry(){
   if(aggregateStarted.current){anonymousAudience("view");return}
   aggregateStarted.current=true;
   try{
-   const visitKey="pa_audience_visit_v1";
-   if(sessionStorage.getItem(visitKey)==="1")anonymousAudience("view");
-   else{sessionStorage.setItem(visitKey,"1");anonymousAudience("entry")}
-  }catch{anonymousAudience("entry")}
+   const now=new Date();
+   const parisDay=new Intl.DateTimeFormat("en-CA",{timeZone:"Europe/Paris",year:"numeric",month:"2-digit",day:"2-digit"}).format(now);
+   const visitKey="pa_audience_daily_visit_v1";
+   if(localStorage.getItem(visitKey)===parisDay)anonymousAudience("view");
+   else{localStorage.setItem(visitKey,parisDay);anonymousAudience("entry")}
+  }catch{anonymousAudience("view")}
  },[pathname]);
  useEffect(()=>{
   anonymousAudience("pulse");
