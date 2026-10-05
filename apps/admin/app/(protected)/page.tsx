@@ -1,6 +1,6 @@
 import { adminServerFetch } from "../../lib/server-api";
 import { AdminIcon, type AdminIconName } from "../../components/admin-icon";
-import { AnonymousAudiencePanel, LiveVisitorsPanel, type AnonymousAudience } from "./live-visitors-panel";
+import { LiveVisitorsPanel, type AnonymousAudience } from "./live-visitors-panel";
 import { UserAttentionPanel, type UserAttention } from "./user-attention-panel";
 
 type Dashboard={kpis:{usersTotal:number;usersToday:number;listingsTotal:number;listingsPublished:number;ordersTotal:number;ordersActive:number;supportOpen:number;moderationOpen:number;disputesOpen:number;gmvMinor:number;platformCommissionMinor:number;visitsToday:number;visitorsToday:number;onlineVisitors:number;onlineMembers:number}};
@@ -57,7 +57,6 @@ export default async function AdminHome(){
 
   <div className="admin-grid admin-kpis admin-home-main-kpis">{kpis.map(([icon,label,value,hint])=><article className="admin-card admin-kpi admin-home-kpi" key={label}><div className="admin-kpi-top"><small>{label}</small><span className="admin-kpi-icon"><AdminIcon name={icon}/></span></div><strong>{value}</strong><p>{hint}</p></article>)}</div>
 
-  <AnonymousAudiencePanel initialData={aggregate}/>
   <LiveVisitorsPanel initialData={live}/>
 
   <section className="admin-card admin-section admin-home-focus" style={{marginTop:16}}><div className="admin-section-head"><div><h2>À traiter en priorité</h2><p>Les actions qui demandent votre attention maintenant.</p></div></div><div className="admin-home-focus-grid">{priorities.map(item=><a href={item.href} key={item.label} className={(item.value>0?"needs-action "+item.tone:"is-clear")+(item.className?" "+item.className:"")}><span><AdminIcon name={item.icon}/></span><div><strong>{item.label}</strong><small>{item.detail}</small></div><b>{n(item.value)}</b><em>{item.value>0?"Ouvrir":"OK"}</em></a>)}</div></section>
