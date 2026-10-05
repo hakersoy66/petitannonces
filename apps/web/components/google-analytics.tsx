@@ -23,8 +23,17 @@ function ensureGtag(measurementId:string){
   window.dataLayer=window.dataLayer??[];
   window.gtag=window.gtag??function(..._args:unknown[]){window.dataLayer!.push(arguments)};
   window.__paGaInitialized=window.__paGaInitialized??{};
-  if(!window.__paGtagJsInitialized){window.gtag("js",new Date());window.__paGtagJsInitialized=true}
-  window.gtag("consent","update",{analytics_storage:"granted"});
+  if(!window.__paGtagJsInitialized){
+    window.gtag("consent","default",{
+      analytics_storage:"denied",
+      ad_storage:"denied",
+      ad_user_data:"denied",
+      ad_personalization:"denied",
+      wait_for_update:500
+    });
+    window.gtag("js",new Date());
+    window.__paGtagJsInitialized=true;
+  }
   if(!document.querySelector("script[data-pa-ga]")&&!document.querySelector("script[data-pa-google-ads]")){
     const script=document.createElement("script");
     script.async=true;
@@ -62,7 +71,8 @@ export function GoogleAnalytics({measurementId}:{measurementId?:string|null}){
     const apply=()=>{
       const allowed=analyticsAllowed();
       setEnabled(allowed);
-      if(allowed)ensureGtag(id);else revokeAnalytics();
+      ensureGtag(id);
+      window.gtag?.("consent","update",{analytics_storage:allowed?"granted":"denied"});
     };
     apply();
     window.addEventListener("pa:consent-changed",apply);
@@ -83,7 +93,7 @@ export function GoogleAnalytics({measurementId}:{measurementId?:string|null}){
   },[id,enabled]);
 
   useEffect(()=>{
-    if(!id||!enabled||!analyticsAllowed())return;
+    if(!id)return;
     ensureGtag(id);
     const pagePath=`${pathname}${query?`?${query}`:""}`;
     if(lastPage.current===pagePath)return;
