@@ -58,8 +58,13 @@ export function SiteTelemetry(){
   }catch{}
  };
  useEffect(()=>{
-  if(aggregateStarted.current)anonymousAudience("view");
-  else{aggregateStarted.current=true;anonymousAudience("entry")}
+  if(aggregateStarted.current){anonymousAudience("view");return}
+  aggregateStarted.current=true;
+  try{
+   const visitKey="pa_audience_visit_v1";
+   if(sessionStorage.getItem(visitKey)==="1")anonymousAudience("view");
+   else{sessionStorage.setItem(visitKey,"1");anonymousAudience("entry")}
+  }catch{anonymousAudience("entry")}
  },[pathname]);
  useEffect(()=>{
   anonymousAudience("pulse");
