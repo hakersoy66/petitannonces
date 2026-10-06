@@ -138,10 +138,13 @@ export async function generateMetadata({params}:Props):Promise<Metadata>{
   const baseDescription=listing.description?.replace(/\s+/g," ").trim()??"";
   const context=[listing.category.name,listing.city].filter(Boolean).join(" à ");
   const description=(baseDescription.length>=105?baseDescription:`${baseDescription}${baseDescription?" ":""}Découvrez cette annonce ${context?context.toLowerCase():listing.category.name.toLowerCase()} sur Petit Annonces et contactez le vendeur en toute simplicité.`).slice(0,155);
+  const socialTransactionType=typeof listing.property?.transactionType==="string"?listing.property.transactionType:null;
+  const socialPrice=listing.priceMinor!=null?formatListingPrice(listing.priceMinor,listing.currency,{domain:listing.category.domain,transactionType:socialTransactionType},""):"";
+  const socialDescription=[socialPrice,listing.city,description].filter(Boolean).join(" · ").slice(0,220);
   const coverMedia=listing.media.find(m=>m.isCover)??listing.media[0]??null;
   const image=coverMedia?.id?protectedMediaAbsolute(coverMedia.id):undefined;
   const indexable=listing.status==="PUBLISHED";
-  return{title:{absolute:`${title} | Petit Annonces`},description,alternates:{canonical:`/annonce/${slug}`},robots:{index:indexable,follow:true,...(indexable?{googleBot:{index:true,follow:true,"max-image-preview":"large","max-snippet":-1,"max-video-preview":-1}}:{})},openGraph:{type:"website",url:`/annonce/${slug}`,title:rawTitle,description,...(image?{images:[{url:image,alt:coverMedia?.altText??rawTitle,...(coverMedia?.width?{width:coverMedia.width}:{}),...(coverMedia?.height?{height:coverMedia.height}:{})}]}:{})},twitter:{card:image?"summary_large_image":"summary",title:rawTitle,description,...(image?{images:[{url:image,alt:coverMedia?.altText??rawTitle}]}:{})}};
+  return{title:{absolute:`${title} | Petit Annonces`},description,alternates:{canonical:`/annonce/${slug}`},robots:{index:indexable,follow:true,...(indexable?{googleBot:{index:true,follow:true,"max-image-preview":"large","max-snippet":-1,"max-video-preview":-1}}:{})},openGraph:{type:"website",url:`/annonce/${slug}`,title:rawTitle,description:socialDescription,...(image?{images:[{url:image,alt:coverMedia?.altText??rawTitle,...(coverMedia?.width?{width:coverMedia.width}:{}),...(coverMedia?.height?{height:coverMedia.height}:{})}]}:{})},twitter:{card:image?"summary_large_image":"summary",title:rawTitle,description:socialDescription,...(image?{images:[{url:image,alt:coverMedia?.altText??rawTitle}]}:{})}};
  }catch{return{title:"Petit Annonces"}}
 }
 

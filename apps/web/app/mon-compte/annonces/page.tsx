@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { AccountSidebar } from "../../../components/account-sidebar";
+import { ShareListingButton } from "../../../components/share-listing-button";
 import styles from "./page.module.css";
 import { formatListingPrice } from "../../../lib/listing-price";
 
@@ -187,6 +188,7 @@ export default function MyListingsPage() {
                   </div>
                   <div className={`${styles.actions} ${styles.desktopActions}`}>
                     {item.status === "PUBLISHED" && item.slug && <a href={`/annonce/${item.slug}`}>Voir</a>}
+                    {item.status === "PUBLISHED" && item.slug && <ShareListingButton title={item.title??"Annonce"} listingId={item.id} shareUrl={`/annonce/${item.slug}`} mode="facebook-group"/>}
                     {item.status === "DRAFT" && <a href={`/deposer-une-annonce?listingId=${encodeURIComponent(item.id)}`}>Continuer</a>}
                     {item.status === "SUSPENDED" && <a className={styles.correct} href={`/deposer-une-annonce?listingId=${encodeURIComponent(item.id)}`}>Corriger mon annonce</a>}
                     {item.status === "PUBLISHED" && <a className={styles.optimize} href={`/deposer-une-annonce?listingId=${encodeURIComponent(item.id)}&resumeStep=4&mode=edit`}>Optimiser mon annonce</a>}
@@ -207,6 +209,7 @@ export default function MyListingsPage() {
                     {item.status === "PENDING" && <span className={styles.mobileState}>En cours de vérification</span>}
                     {item.status === "SOLD" && <span className={styles.mobileState}>Annonce vendue</span>}
                     <details className={styles.mobileMore}><summary>Autres actions</summary><div>
+                      {item.status === "PUBLISHED" && item.slug && <ShareListingButton title={item.title??"Annonce"} listingId={item.id} shareUrl={`/annonce/${item.slug}`} mode="facebook-group"/>}
                       {item.status === "PUBLISHED" && <a href={`/deposer-une-annonce?listingId=${encodeURIComponent(item.id)}&resumeStep=0&mode=edit`}>Modifier</a>}
                       {item.status === "PUBLISHED" && <a href={`/mon-compte/visibilite?listingId=${encodeURIComponent(item.id)}`}>Booster</a>}
                       {item.status === "PUBLISHED" && <button type="button" onClick={() => void changeStatus(item.id, "SUSPENDED")}>Mettre en pause</button>}
