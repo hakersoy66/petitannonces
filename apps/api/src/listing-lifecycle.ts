@@ -74,6 +74,6 @@ export async function renewExpiredListingInTransaction(tx:any,listingId:string,u
 
 export function startListingExpiryWorker(log?:{info:(value:unknown,message?:string)=>void;error:(value:unknown,message?:string)=>void}){
  const intervalMs=Math.max(Number(process.env.LISTING_EXPIRY_WORKER_INTERVAL_MS??15*60*1000),60_000);let running=false;
- const tick=async()=>{if(running)return;running=true;try{const autoRenewed=await autoRenewProfessionalListings();const warnings=await notifyUpcomingListingExpirations();const processed=await expireDueListings();if(autoRenewed)log?.info({autoRenewed},"automatically renewed Pro listings");if(warnings)log?.info({warnings},"queued listing expiry warnings");if(processed)log?.info({processed},"expired published listings")}catch(error){log?.error(error,"listing expiry worker failed")}finally{running=false}};
+ const tick=async()=>{if(running)return;running=true;try{const warnings=await notifyUpcomingListingExpirations();const processed=await expireDueListings();if(warnings)log?.info({warnings},"queued listing expiry warnings");if(processed)log?.info({processed},"expired published listings")}catch(error){log?.error(error,"listing expiry worker failed")}finally{running=false}};
  void tick();const timer=setInterval(()=>void tick(),intervalMs);timer.unref();return timer;
 }

@@ -2,7 +2,7 @@ import { prisma } from "@pa/database";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { z } from "zod";
 import { requireListingUser } from "./listing-auth.js";
-import { getListingLifecycles, LISTING_LIFETIME_DAYS, LISTING_RENEWAL_COST_MINOR, LISTING_RENEWAL_CURRENCY, renewExpiredListing } from "./listing-lifecycle.js";
+import { expireDueListings, getListingLifecycles, LISTING_LIFETIME_DAYS, LISTING_RENEWAL_COST_MINOR, LISTING_RENEWAL_CURRENCY, renewExpiredListing } from "./listing-lifecycle.js";
 import { hiddenEditWorkingIds } from "./listing-edit-session.js";
 import { resolveProfessionalContext } from "./pro-suite.js";
 import { deleteStoredObject } from "./storage.js";
@@ -65,6 +65,7 @@ export async function registerAccountListingRoutes(app: FastifyInstance) {
     if (!user) return;
     const sellerId=await resolveListingSellerId(user.id,reply);
     if(!sellerId)return;
+    await expireDueListings();
 
     const query = z.object({ status: statusSchema.optional(), q: z.string().trim().max(100).optional() }).safeParse(request.query);
     if (!query.success) return reply.code(400).send({ error: "invalid_request" });
