@@ -168,7 +168,7 @@ export async function registerOperationsRoutes(app: FastifyInstance) {
   app.get("/admin/dashboard", async (request, reply) => {
     const admin = await requireAdmin(request, reply); if (!admin) return;
     const [users, listings, orders, support, moderation, disputes, finance, audience] = await Promise.all([
-      prisma.$queryRawUnsafe<Array<any>>(`SELECT COUNT(*)::int AS total, COUNT(*) FILTER (WHERE "createdAt" >= CURRENT_DATE)::int AS today FROM "User"`),
+      prisma.$queryRawUnsafe<Array<any>>(`SELECT COUNT(*)::int AS total, COUNT(*) FILTER (WHERE "createdAt" >= (date_trunc('day',NOW() AT TIME ZONE 'Europe/Paris') AT TIME ZONE 'Europe/Paris'))::int AS today FROM "User"`),
       prisma.$queryRawUnsafe<Array<any>>(`SELECT COUNT(*)::int AS total, COUNT(*) FILTER (WHERE "status"='PUBLISHED')::int AS published FROM "Listing"`),
       prisma.$queryRawUnsafe<Array<any>>(`SELECT COUNT(*)::int AS total, COUNT(*) FILTER (WHERE "status" IN ('PAID','PROCESSING','SHIPPED','DELIVERED','COMPLETED'))::int AS active FROM "MarketplaceOrder"`),
       prisma.$queryRawUnsafe<Array<any>>(`SELECT COUNT(*) FILTER (WHERE "status" NOT IN ('RESOLVED','CLOSED'))::int AS open FROM "SupportTicket"`),
