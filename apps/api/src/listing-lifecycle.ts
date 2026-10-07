@@ -8,7 +8,7 @@ export const LISTING_RENEWAL_CURRENCY = "EUR";
 const LIFETIME_MS = LISTING_LIFETIME_DAYS * 24 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-export type ListingLifecycleRow = { listingId:string; expiresAt:Date; freeRenewalUsed:boolean; renewalCount:number; lastRenewedAt:Date|null };
+export type ListingLifecycleRow = { listingId:string; expiresAt:Date; freeRenewalUsed:boolean; renewalCount:number; lastRenewedAt:Date|null; isExpired:boolean };
 type ExpiryEventRow = { listingId:string; sellerId:string; title:string|null; expiresAt:Date; freeRenewalUsed:boolean };
 
 export async function ensureListingLifecycleSchema(){
@@ -19,7 +19,7 @@ export async function ensureListingLifecycleSchema(){
 
 export function listingExpiryFrom(base=new Date()){return new Date(base.getTime()+LIFETIME_MS)}
 export async function activateListingLifetime(listingId:string,base=new Date(),resetExisting=false){const expiresAt=listingExpiryFrom(base);if(resetExisting)await prisma.$executeRawUnsafe(`INSERT INTO "ListingLifecycle" ("listingId","expiresAt") VALUES ($1,$2) ON CONFLICT ("listingId") DO UPDATE SET "expiresAt"=EXCLUDED."expiresAt","updatedAt"=CURRENT_TIMESTAMP`,listingId,expiresAt);else await prisma.$executeRawUnsafe(`INSERT INTO "ListingLifecycle" ("listingId","expiresAt") VALUES ($1,$2) ON CONFLICT ("listingId") DO NOTHING`,listingId,expiresAt);const rows=await prisma.$queryRawUnsafe<Array<{expiresAt:Date}>>(`SELECT "expiresAt" FROM "ListingLifecycle" WHERE "listingId"=$1 LIMIT 1`,listingId);return rows[0]?.expiresAt??expiresAt}
-export async function getListingLifecycles(ids:string[]){if(!ids.length)return[] as ListingLifecycleRow[];return prisma.$queryRawUnsafe<ListingLifecycleRow[]>(`SELECT "listingId","expiresAt","freeRenewalUsed","renewalCount","lastRenewedAt" FROM "ListingLifecycle" WHERE "listingId"=ANY($1::text[])`,ids)}
+export async function getListingLifecycles(ids:string[]){if(!ids.length)return[] as ListingLifecycleRow[];return prisma.$queryRawUnsafe<ListingLifecycleRow[]>(`SELECT "listingId","expiresAt","freeRenewalUsed","renewalCount","lastRenewedAt",("expiresAt"<=CURRENT_TIMESTAMP) AS "isExpired" FROM "ListingLifecycle" WHERE "listingId"=ANY($1::text[])`,ids)}
 
 function expiryCycleKey(row:ExpiryEventRow){return row.expiresAt.toISOString()}
 
@@ -63,7 +63,7 @@ export async function expireDueListings(limit=500){
 
 async function renewLocked(tx:any,listingId:string,userId:string,paid:boolean){
  const ls=await tx.$queryRawUnsafe(`SELECT "id","sellerId","status"::text FROM "Listing" WHERE "id"=$1 FOR UPDATE`,listingId) as Array<{id:string;sellerId:string;status:string}>;const l=ls[0];if(!l||l.sellerId!==userId)throw new Error("listing_not_found");
- const rs=await tx.$queryRawUnsafe(`SELECT "listingId","expiresAt","freeRenewalUsed","renewalCount","lastRenewedAt" FROM "ListingLifecycle" WHERE "listingId"=$1 FOR UPDATE`,listingId) as ListingLifecycleRow[];let lc=rs[0];if(!lc)throw new Error("listing_lifecycle_not_found");if(!["EXPIRED","DRAFT"].includes(l.status)||lc.expiresAt.getTime()>Date.now())throw new Error("listing_not_expired");
+ const rs=await tx.$queryRawUnsafe(`SELECT "listingId","expiresAt","freeRenewalUsed","renewalCount","lastRenewedAt",("expiresAt"<=CURRENT_TIMESTAMP) AS "isExpired" FROM "ListingLifecycle" WHERE "listingId"=$1 FOR UPDATE`,listingId) as ListingLifecycleRow[];let lc=rs[0];if(!lc)throw new Error("listing_lifecycle_not_found");if(!["EXPIRED","DRAFT"].includes(l.status)||!lc.isExpired)throw new Error("listing_not_expired");
  if(!paid&&lc.freeRenewalUsed)throw new Error("listing_renewal_payment_required");if(paid&&!lc.freeRenewalUsed)throw new Error("free_renewal_available");
  const now=new Date(),expiresAt=listingExpiryFrom(now);await tx.$executeRawUnsafe(`UPDATE "ListingLifecycle" SET "expiresAt"=$2,"freeRenewalUsed"=TRUE,"renewalCount"="renewalCount"+1,"lastRenewedAt"=$3,"updatedAt"=CURRENT_TIMESTAMP WHERE "listingId"=$1`,listingId,expiresAt,now);const nextStatus=l.status==="DRAFT"?"DRAFT":"PUBLISHED";await tx.$executeRawUnsafe(`UPDATE "Listing" SET "status"=$2::"ListingStatus","publishedAt"=$3,"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$1`,listingId,nextStatus,now);return{listingId,expiresAt,status:nextStatus,requiresReview:nextStatus==="DRAFT",chargedMinor:paid?LISTING_RENEWAL_COST_MINOR:0,currency:LISTING_RENEWAL_CURRENCY,freeRenewalUsed:true,renewalCount:lc.renewalCount+1}
 }

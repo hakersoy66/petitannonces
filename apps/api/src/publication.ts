@@ -242,7 +242,7 @@ export async function registerPublicationRoutes(app: FastifyInstance) {
     ]);
     const lifecycleId=editSession?.originalListingId??params.data.id;
     const lifecycle=(await getListingLifecycles([lifecycleId]))[0]??null;
-    const renewalRequired=Boolean(lifecycle&&lifecycle.expiresAt.getTime()<=Date.now());
+    const renewalRequired=Boolean(lifecycle&&lifecycle.isExpired);
     const issues=issueDetails(result.errors,result.warnings);
     return reply.send({ ready: result.ready&&!renewalRequired&&!duplicate, phoneVerified, phoneVerificationRequired:false, manualModerationRequired:!phoneVerified, sellerKind:user.kind, compliance:{productSafety:safetyRows[0]??null,consumerDisclosure:disclosureRows[0]??null}, errors: result.errors, warnings: result.warnings, issues, quality: result.quality, summary: result.summary, duplicate:duplicate?duplicatePayload(duplicate):null, renewalRequired, renewal:lifecycle?{expiresAt:lifecycle.expiresAt,freeRenewalAvailable:!lifecycle.freeRenewalUsed,costMinor:lifecycle.freeRenewalUsed?LISTING_RENEWAL_COST_MINOR:0,currency:LISTING_RENEWAL_CURRENCY}:null, edit:editSession?{isolated:true,originalListingId:editSession.originalListingId,previousStatus:editSession.previousStatus}:null });
   });
@@ -275,7 +275,7 @@ export async function registerPublicationRoutes(app: FastifyInstance) {
     }
     const lifecycleId=editSession?.originalListingId??params.data.id;
     const lifecycle=(await getListingLifecycles([lifecycleId]))[0]??null;
-    if(lifecycle&&lifecycle.expiresAt.getTime()<=Date.now())return reply.code(409).send({error:"listing_renewal_required",freeRenewalAvailable:!lifecycle.freeRenewalUsed,amountMinor:lifecycle.freeRenewalUsed?LISTING_RENEWAL_COST_MINOR:0,currency:LISTING_RENEWAL_CURRENCY,expiresAt:lifecycle.expiresAt});
+    if(lifecycle&&lifecycle.isExpired)return reply.code(409).send({error:"listing_renewal_required",freeRenewalAvailable:!lifecycle.freeRenewalUsed,amountMinor:lifecycle.freeRenewalUsed?LISTING_RENEWAL_COST_MINOR:0,currency:LISTING_RENEWAL_CURRENCY,expiresAt:lifecycle.expiresAt});
 
     const originalForEdit=editSession?await prisma.listing.findFirst({where:{id:editSession.originalListingId,sellerId:user.id},select:{id:true,slug:true,publishedAt:true}}):null;
     if(editSession&&!originalForEdit)return reply.code(404).send({error:"edit_original_missing"});

@@ -141,7 +141,7 @@ export async function registerAccountListingRoutes(app: FastifyInstance) {
           promotions:(promotionsByListing.get(listing.id)??[]).map(p=>({id:p.id,code:p.code,type:p.type,name:p.name,startsAt:p.startsAt,endsAt:p.endsAt,status:p.status})),
           lifecycle: lifecycle ? {
             expiresAt: lifecycle.expiresAt,
-            renewalRequired: lifecycle.expiresAt.getTime()<=Date.now() && ["DRAFT","EXPIRED"].includes(listing.status),
+            renewalRequired: lifecycle.isExpired && ["DRAFT","EXPIRED"].includes(listing.status),
             freeRenewalAvailable: !lifecycle.freeRenewalUsed,
             renewalCount: lifecycle.renewalCount,
             renewalCostMinor: lifecycle.freeRenewalUsed ? LISTING_RENEWAL_COST_MINOR : 0,
