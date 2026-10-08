@@ -175,7 +175,7 @@ export async function registerListingRoutes(app: FastifyInstance) {
     };
     const openai = await getRuntimeIntegration("openai");
     const apiKey = (openai?.enabled ? openai.secrets.apiKey : process.env.OPENAI_API_KEY)?.trim();
-    const model = String(openai?.enabled ? (openai.config.descriptionModel ?? openai.config.model ?? "") : (process.env.AI_DESCRIPTION_MODEL?.trim() || process.env.OPENAI_MODEL?.trim() || "")).trim();
+    const model = String(openai?.enabled ? (openai.config.descriptionModel || openai.config.model || "gpt-4.1-mini") : (process.env.AI_DESCRIPTION_MODEL?.trim() || process.env.OPENAI_MODEL?.trim() || "gpt-4.1-mini")).trim();
     if (!apiKey || !model) return reply.send({ mode: "assistant", description: fallback() });
     try {
       const source = JSON.stringify({categorie:category.name,domaine:category.domain,titre:body.data.title,caracteristiques:facts});
