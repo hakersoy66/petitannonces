@@ -1455,3 +1455,15 @@
  .home-ft-job-attribution{font-size:9px}
 }
 @media(max-width:360px){.home-ft-jobs-grid{grid-template-columns:1fr}.home-ft-job-card{min-height:194px}}
+
+/* 2026-10 PWA/mobile: the homepage's own compact listing cards do not use
+   marketplace-listing-card.module.css, so enlarge their heart target separately. */
+@media (max-width:700px) {
+  .mobile-market-card-favorite button {
+    width:44px!important;
+    min-width:44px!important;
+    height:44px!important;
+    min-height:44px!important;
+    touch-action:manipulation;
+  }
+}
