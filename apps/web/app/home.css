@@ -1467,3 +1467,84 @@
     touch-action:manipulation;
   }
 }
+
+/* 2026-10 homepage SEO discovery: editorial clarity without the giant chip wall. */
+.home-page-shell .home-seo-hub{
+  padding:32px 0 36px;
+  border-top:1px solid #e9e5f6;
+  background:linear-gradient(180deg,#faf9fe 0%,#f7f7fc 100%);
+}
+.home-page-shell .home-seo-hub-shell{
+  display:flex;
+  flex-direction:column;
+  gap:20px;
+  width:min(1380px,calc(100% - 40px));
+  max-width:none;
+}
+.home-seo-hub-intro{display:flex;justify-content:space-between;align-items:end;gap:32px}
+.home-seo-hub-intro-text{min-width:0;max-width:810px}
+.home-seo-hub-eyebrow{display:block;margin:0 0 8px;color:#6656d3;font-size:10px;letter-spacing:.1em;text-transform:uppercase;font-weight:950}
+.home-seo-hub-intro h2{margin:0;color:#242137;font-size:clamp(24px,2.4vw,32px);font-weight:950;letter-spacing:-.038em;line-height:1.16;text-wrap:balance}
+.home-seo-hub-intro p{margin:9px 0 0;max-width:730px;color:#696577;line-height:1.58;font-size:13px}
+.home-seo-hub-actions{flex:0 0 auto;display:flex;align-items:center;gap:9px;padding-bottom:2px}
+.home-seo-hub-actions a{display:inline-flex;justify-content:center;align-items:center;gap:9px;min-height:42px;padding:9px 14px;border-radius:11px;font-size:11px;font-weight:900;text-decoration:none;white-space:nowrap;transition:background .15s,transform .15s}
+.home-seo-hub-actions a:hover{transform:translateY(-1px)}
+.home-seo-hub-primary{color:#fff;background:#5b4cf0;border:1px solid #5b4cf0;box-shadow:0 5px 14px rgba(91,76,240,.15)}
+.home-seo-hub-secondary{color:#4e45a1;border:1px solid #ded9f3;background:#fff}
+.home-seo-hub-explore{min-width:0}
+.home-seo-hub-toggle{display:none}
+.home-seo-hub-navigation{display:grid;grid-template-columns:minmax(0,1.17fr) minmax(0,.83fr);gap:16px;align-items:stretch}
+.home-seo-hub-card{min-width:0;padding:19px 20px 20px;border:1px solid #e8e6f1;border-radius:19px;background:#fff;box-shadow:0 6px 20px rgba(54,48,95,.035)}
+.home-seo-hub-card-head{display:flex;align-items:center;gap:11px;margin-bottom:16px}
+.home-seo-hub-card-symbol{display:grid;place-items:center;width:37px;height:37px;flex:0 0 37px;border-radius:12px;color:#5b4cf0;background:#f0edff;font-size:22px;font-weight:800}
+.home-seo-hub-card-symbol.city{color:#1c8c83;background:#e6f7f3}
+.home-seo-hub-card-head h3{margin:0;color:#29253f;font-size:14px;font-weight:900;letter-spacing:-.018em}
+.home-seo-hub-card-head p{margin:3px 0 0;color:#858093;font-size:11px}
+.home-seo-hub-link-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+.home-seo-hub-link-grid.city{grid-template-columns:repeat(2,minmax(0,1fr))}
+.home-seo-hub-link-grid a{min-width:0;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 10px;min-height:39px;border:1px solid #eeecf4;border-radius:10px;background:#f9f9fc;color:#4b465b;text-decoration:none;font-size:11px;font-weight:800;line-height:1.35;overflow-wrap:anywhere;transition:background .15s,border-color .15s,color .15s}
+.home-seo-hub-link-grid a span{flex:0 0 auto;color:#ada7bb;opacity:.7;font-size:12px}
+.home-seo-hub-link-grid a:hover{color:#5445d2;border-color:#d4ceff;background:#f3f0ff}
+.home-seo-hub .home-seo-faq{margin-top:0;padding-top:18px;border-top:1px solid #e7e5ef}
+.home-seo-hub .home-seo-faq-head h3{font-size:20px;margin-bottom:12px}
+.home-seo-hub :is(a,button,summary):focus-visible{outline:3px solid #a59bfc;outline-offset:2px}
+@media(min-width:761px) and (max-width:1200px){
+ .home-seo-hub-intro{align-items:start;flex-wrap:wrap;gap:14px}
+ .home-seo-hub-navigation{grid-template-columns:minmax(0,1fr) minmax(0,.92fr)}
+ .home-seo-hub-link-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:760px){
+ .home-page-shell .home-seo-hub{padding:19px 0 24px}
+ .home-page-shell .home-seo-hub-shell{width:calc(100% - 24px);gap:13px}
+ .home-seo-hub-intro{display:block}
+ .home-seo-hub-eyebrow{font-size:9px;margin-bottom:6px}
+ .home-seo-hub-intro h2{font-size:22px;line-height:1.18;letter-spacing:-.035em}
+ .home-seo-hub-intro p{font-size:11.5px;line-height:1.55;margin-top:7px}
+ .home-seo-hub-actions{gap:7px;margin-top:13px}
+ .home-seo-hub-actions a{flex:1;min-width:0;min-height:42px;padding:9px 7px;gap:5px;font-size:10.5px;white-space:normal;line-height:1.25;text-align:center}
+ .home-seo-hub-toggle{width:100%;display:flex;align-items:center;gap:11px;min-height:60px;padding:11px 13px;border:1px solid #e5e0f5;border-radius:14px;background:#fff;text-align:left;box-shadow:0 3px 12px rgba(40,30,91,.04);cursor:pointer;color:#36304a}
+ .home-seo-hub-toggle-icon{flex:0 0 34px;width:34px;height:34px;border-radius:10px;background:#efecff;color:#5b4cf0;font-size:24px;line-height:34px;text-align:center}
+ .home-seo-hub-toggle-copy{flex:1;display:grid;gap:3px;min-width:0}
+ .home-seo-hub-toggle-copy strong{font-size:12px;font-weight:900;line-height:1.25}
+ .home-seo-hub-toggle-copy small{font-size:10px;line-height:1.35;color:#858093}
+ .home-seo-hub-toggle-arrow{flex:0 0 26px;width:26px;height:26px;text-align:center;line-height:23px;color:#5b4cf0;background:#f2efff;border-radius:8px;font-size:19px}
+ .home-seo-hub-navigation{display:none}
+ .home-seo-hub-navigation.is-expanded{display:grid;grid-template-columns:1fr;gap:9px;margin-top:9px}
+ .home-seo-hub-card{padding:13px;border-radius:14px}
+ .home-seo-hub-card-head{margin-bottom:10px}
+ .home-seo-hub-card-symbol{width:30px;height:30px;flex-basis:30px;font-size:17px;border-radius:9px}
+ .home-seo-hub-card-head h3{font-size:12.5px}
+ .home-seo-hub-card-head p{font-size:10px}
+ .home-seo-hub-link-grid,.home-seo-hub-link-grid.city{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+ .home-seo-hub-link-grid a{font-size:10.5px;min-height:37px;padding:8px}
+ .home-seo-hub .home-seo-faq{padding-top:15px}
+ .home-seo-hub .home-seo-faq-head h3{font-size:17px;margin-bottom:10px}
+}
+@media(max-width:340px){
+ .home-seo-hub-intro h2{font-size:20px}
+ .home-seo-hub-actions a{font-size:10px}
+ .home-seo-hub-toggle{padding:10px;gap:8px}
+ .home-seo-hub-toggle-copy strong{font-size:11px}
+ .home-seo-hub-toggle-copy small{font-size:9px}
+}
+@media(prefers-reduced-motion:reduce){.home-seo-hub-actions a,.home-seo-hub-link-grid a{transition:none}}

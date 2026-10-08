@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import { AppIcon, type AppIconName } from "../components/app-icon";
 import { HomeMobileCategories } from "../components/home-mobile-categories";
+import { HomeSeoExplore } from "../components/home-seo-explore";
 import { HomeFranceHero } from "../components/home-france-hero";
 import { HomeFranceMobileMap } from "../components/home-france-mobile-map";
 import { HomeFranceTravailJobs, type HomeFranceTravailJob } from "../components/home-france-travail-jobs";
@@ -354,7 +355,22 @@ export default async function HomePage() {
         </div>
         {pwaEnabled("more")&&mobileMoreListings.length>0&&<section className="mobile-legacy-home mobile-market-section mobile-market-more" style={{order:pwaOrder("more")}}><div className="shell home-body-shell"><div className="mobile-market-heading"><h2>{pwaBlock("more")?.title||"Plus d’annonces"}</h2><a href="/recherche">Voir tout</a></div><div className="mobile-market-grid">{mobileMoreListings.map(item=><MobileMarketplaceCard listing={item} key={item.id}/>)}</div></div></section>}
         <section className="mobile-legacy-home mobile-vacation-showcase" style={{order:pwaOrder("vacation")}}><div className="shell home-body-shell"><a className="mobile-vacation-banner" href="/vacances"><span><AppIcon name="calendar"/></span><div><small>{pwaBlock("vacation")?.title||"Vacances Petit Annonces"}</small><strong>{pwaBlock("vacation")?.subtitle||"Partez moins cher, profitez plus."}</strong></div><AppIcon name="chevron-right"/></a>{vacationListings.length>0&&<div className="mobile-market-grid mobile-vacation-grid">{vacationListings.slice(0,5).map(item=><MobileMarketplaceCard listing={item} key={item.id}/>)}</div>}{hbxHotels.length>0&&<div className="mobile-hbx-hotels"><div className="mobile-hbx-hotels-head"><div><small>Hôtels partenaires</small><strong>Hôtels disponibles</strong></div><a href="/vacances?city=Paris">Voir tout</a></div><div className="mobile-hbx-hotel-scroll">{hbxHotels.map(hotel=><HomeHbxHotelCard key={hotel.code} hotel={hotel} mobile/>)}</div></div>}</div></section>
-        <section className="home-seo-intro" style={{order:90}} aria-labelledby="home-seo-title"><div className="shell home-body-shell"><div className="home-seo-intro-copy"><span>Petites annonces gratuites en France</span><h2 id="home-seo-title">Rechercher, acheter et vendre avec les petites annonces en France</h2><p>PetitAnnonces.fr est un site de petites annonces gratuites en France pour acheter et vendre entre particuliers ou auprès de professionnels. Publiez gratuitement une petite annonce, recherchez des annonces d’occasion par catégorie ou par ville et contactez directement les vendeurs depuis la plateforme.</p></div><nav className="home-seo-links" aria-label="Catégories populaires"><a href="/deposer-annonce-gratuite">Publier une petite annonce gratuite</a><a href="/recherche">Rechercher des petites annonces</a><a href="/categorie/vehicules">Petites annonces véhicules d’occasion</a><a href="/categorie/immobilier">Annonces immobilières</a><a href="/categorie/high-tech">Petites annonces high-tech</a><a href="/categorie/maison-jardin">Petites annonces maison & jardin</a><a href="/categorie/collection">Petites annonces de collection</a><a href="/categorie/services">Petites annonces de services</a><a href="/categorie/decoration">Petites annonces décoration</a><a href="/categorie/chats">Petites annonces chats</a><a href="/categorie/aspirateurs">Petites annonces aspirateurs</a><a href="/vacances">Locations de vacances</a><a href="/professionnels">Boutiques & professionnels</a></nav>{cityShortcuts.length>0&&<nav className="home-seo-links" aria-label="Villes populaires">{cityShortcuts.map(city=><a key={`seo-${city.slug}`} href={`/ville/${city.slug}`}>Petites annonces à {city.city}</a>)}</nav>}<div className="home-seo-faq"><div className="home-seo-faq-head"><span>Questions fréquentes</span><h3>Tout savoir sur les petites annonces gratuites</h3></div><div className="home-seo-faq-grid">{HOME_SEO_FAQ.map(item=><details key={item.q}><summary>{item.q}</summary><p>{item.a}</p></details>)}</div></div><script type="application/ld+json" dangerouslySetInnerHTML={{__html:JSON.stringify({"@context":"https://schema.org","@type":"FAQPage",mainEntity:HOME_SEO_FAQ.map(item=>({"@type":"Question",name:item.q,acceptedAnswer:{"@type":"Answer",text:item.a}}))}).replace(/</g,"\\u003c")}}/></div></section>
+        <section className="home-seo-hub" style={{order:90}} aria-labelledby="home-seo-title">
+         <div className="shell home-seo-hub-shell">
+          <div className="home-seo-hub-intro">
+           <div className="home-seo-hub-intro-text">
+            <span className="home-seo-hub-eyebrow">Petites annonces gratuites en France</span>
+            <h2 id="home-seo-title">Trouvez la bonne annonce, partout en France.</h2>
+            <p>Sur PetitAnnonces.fr, achetez et vendez gratuitement entre particuliers ou professionnels. Retrouvez des annonces d’occasion par catégorie ou près de chez vous.</p>
+           </div>
+           <div className="home-seo-hub-actions">
+            <a className="home-seo-hub-primary" href="/deposer-annonce-gratuite">Déposer une annonce <span aria-hidden="true">↗</span></a>
+            <a className="home-seo-hub-secondary" href="/recherche">Voir les annonces <span aria-hidden="true">→</span></a>
+           </div>
+          </div>
+          <HomeSeoExplore cities={cityShortcuts}/>
+          <div className="home-seo-faq"><div className="home-seo-faq-head"><span>Questions fréquentes</span><h3>Tout savoir sur les petites annonces gratuites</h3></div><div className="home-seo-faq-grid">{HOME_SEO_FAQ.map(item=><details key={item.q}><summary>{item.q}</summary><p>{item.a}</p></details>)}</div></div><script type="application/ld+json" dangerouslySetInnerHTML={{__html:JSON.stringify({"@context":"https://schema.org","@type":"FAQPage",mainEntity:HOME_SEO_FAQ.map(item=>({"@type":"Question",name:item.q,acceptedAnswer:{"@type":"Answer",text:item.a}}))}).replace(/</g,"\\u003c")}}/></div>
+        </section>
 
       </main>
     </div>
