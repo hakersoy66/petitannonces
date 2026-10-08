@@ -4,7 +4,7 @@ import {CampaignLink} from "../../components/campaign-link";
 import styles from "./page.module.css";
 
 export const metadata:Metadata={
- title:"Vendre sa voiture gratuitement | Petit Annonces",
+ title:{absolute:"Vendre sa voiture gratuitement | Petit Annonces"},
  description:"Publiez votre annonce automobile sur Petit Annonces. Sélectionnez votre véhicule, utilisez votre plaque pour préremplir les informations disponibles et publiez gratuitement.",
  alternates:{canonical:"https://petitannonces.fr/vendre-voiture"},
  openGraph:{title:"Vendez votre voiture facilement | Petit Annonces",description:"Créez votre annonce auto en quelques minutes et publiez gratuitement.",url:"https://petitannonces.fr/vendre-voiture",type:"website"}

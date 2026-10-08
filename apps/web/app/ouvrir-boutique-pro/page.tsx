@@ -3,7 +3,7 @@ import {AppIcon} from "../../components/app-icon";
 import {CampaignLink} from "../../components/campaign-link";
 import styles from "../campaign-landing.module.css";
 
-export const metadata:Metadata={title:"90 jours Pro offerts | Ouvrir une boutique Petit Annonces",description:"Créez votre compte professionnel et profitez de 90 jours de la formule Professionnel offerts, avec boutique publique et import CSV jusqu’à 200 annonces par lot.",alternates:{canonical:"https://petitannonces.fr/ouvrir-boutique-pro"},openGraph:{title:"90 jours Pro offerts | Petit Annonces",description:"SIRET vérifié, boutique publique et import CSV : démarrez 90 jours gratuitement, sans carte bancaire ni prélèvement automatique.",url:"https://petitannonces.fr/ouvrir-boutique-pro",type:"website"}};
+export const metadata:Metadata={title:{absolute:"90 jours Pro offerts | Ouvrir une boutique Petit Annonces"},description:"Créez votre compte professionnel et profitez de 90 jours de la formule Professionnel offerts, avec boutique publique et import CSV jusqu’à 200 annonces par lot.",alternates:{canonical:"https://petitannonces.fr/ouvrir-boutique-pro"},openGraph:{title:"90 jours Pro offerts | Petit Annonces",description:"SIRET vérifié, boutique publique et import CSV : démarrez 90 jours gratuitement, sans carte bancaire ni prélèvement automatique.",url:"https://petitannonces.fr/ouvrir-boutique-pro",type:"website"}};
 type Params=Record<string,string|string[]|undefined>;type Props={searchParams:Promise<Params>};
 const TRACKING_KEYS=["utm_source","utm_medium","utm_campaign","utm_content","utm_term","fbclid","gclid","gbraid","wbraid","msclkid"] as const;
 function first(value:string|string[]|undefined){return Array.isArray(value)?value[0]:value}

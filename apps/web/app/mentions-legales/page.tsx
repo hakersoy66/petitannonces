@@ -1,5 +1,5 @@
 import {LegalPage} from "../../components/legal-page";
-export const metadata={title:"Mentions légales | Petit Annonces",alternates:{canonical:"/mentions-legales"}};
+export const metadata={title:{absolute:"Mentions légales | Petit Annonces"},alternates:{canonical:"/mentions-legales"}};
 export default function Page(){const sections=[
 {id:"editeur",title:"Éditeur du service",body:"Le site et l'application PetitAnnonces.fr sont édités par Hakan ERSOY, entrepreneur individuel (Hakan ERSOY EI), 16 rue de la Libération, 42150 La Ricamarie, France.",bullets:["SIREN : 813 061 256.","SIRET : 813 061 256 00042.","TVA intracommunautaire : FR52 813 061 256.","Téléphone : +33 7 66 17 75 75.","E-mail de l’éditeur : info@getsy.fr.","Support Petit Annonces : info@petitannonces.fr."]},
 {id:"publication",title:"Direction de la publication",body:"Directeur de la publication : Hakan ERSOY, en qualité d’entrepreneur individuel exploitant Petit Annonces."},

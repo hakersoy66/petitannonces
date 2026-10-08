@@ -1,4 +1,4 @@
-const CACHE = "pa-shell-v49";
+const CACHE = "pa-shell-v50";
 const OFFLINE_URL = "/offline";
 const CORE = [
   OFFLINE_URL,

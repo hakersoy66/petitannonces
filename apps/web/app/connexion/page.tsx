@@ -3,7 +3,7 @@ import { LoginForm } from "../../components/login-form";
 import { AppIcon, type AppIconName } from "../../components/app-icon";
 import styles from "../auth.module.css";
 
-export const metadata:Metadata={title:"Connexion | Petit Annonces",description:"Connectez-vous à votre compte Petit Annonces."};
+export const metadata:Metadata={title:{absolute:"Connexion | Petit Annonces"},description:"Connectez-vous à votre compte Petit Annonces."};
 
 type Props={searchParams:Promise<{next?:string;oauth?:string;oauth_error?:string}>};
 type HeaderCategory={id:string;name:string;slug:string;domain:string;children?:HeaderCategory[]};

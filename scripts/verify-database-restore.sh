@@ -2,6 +2,12 @@
 set -euo pipefail
 LATEST=$(find /var/www/petitannonces/backups -maxdepth 1 -type f -name 'petitannonces-*.dump' -printf '%T@ %p\n' | sort -nr | sed -n '1s/^[^ ]* //p')
 [ -n "$LATEST" ] || { echo "restore_drill_failed no_backup_found" >&2; exit 1; }
+# The drill must verify recent recovery readiness, not succeed using an obsolete archive.
+BACKUP_AGE_SECONDS=$(( $(date +%s) - $(stat -c %Y "$LATEST") ))
+if (( BACKUP_AGE_SECONDS > 36 * 3600 )); then
+  echo "restore_drill_failed stale_backup age_hours=$(( BACKUP_AGE_SECONDS / 3600 ))" >&2
+  exit 1
+fi
 TMP=/tmp/pa-restore-drill-$$.dump
 TESTDB="petitannonces_restore_drill_$(date +%s)"
 cleanup(){ rm -f "$TMP"; sudo -u postgres dropdb --if-exists "$TESTDB" >/dev/null 2>&1 || true; }

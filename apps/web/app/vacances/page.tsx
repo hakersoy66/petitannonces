@@ -3,7 +3,7 @@ import {AppIcon} from "../../components/app-icon";
 import {VacationMap} from "../../components/vacation-map";
 import styles from "./page.module.css";
 
-export const metadata:Metadata={title:"Petit Annonces Vacances | Locations de vacances en France",description:"Trouvez hôtels, chambres, appartements, maisons, villas, gîtes et campings. Vérifiez les disponibilités selon vos dates sur Petit Annonces Vacances.",alternates:{canonical:"/vacances"}};
+export const metadata:Metadata={title:{absolute:"Petit Annonces Vacances | Locations de vacances en France"},description:"Trouvez hôtels, chambres, appartements, maisons, villas, gîtes et campings. Vérifiez les disponibilités selon vos dates sur Petit Annonces Vacances.",alternates:{canonical:"/vacances"}};
 
 type Category={id:string;name:string;slug:string;children?:Category[]};
 type VacationMeta={capacity?:number;bedrooms?:number;beds?:number;bathrooms?:number;minimumNights?:number;amenities?:string[];petsAllowed?:boolean};

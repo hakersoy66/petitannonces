@@ -38,7 +38,7 @@ export function ListingCreateEntry({initialListingId,initialMode,initialResumeSt
  return <section className={styles.card}>
   <div className={styles.icon}><AppIcon name="sparkles"/></div>
   <span className={styles.kicker}>Déposer une annonce</span>
-  <h2>Comment souhaitez-vous commencer ?</h2>
+  <h1>Comment souhaitez-vous commencer ?</h1>
   <p>Choisissez simplement entre créer une nouvelle annonce ou importer une annonce que vous avez déjà publiée ailleurs.</p>
   {navigationError&&<div className={styles.helper} role="alert"><AppIcon name="info"/><span>{navigationError}</span></div>}
   <div className={styles.choiceGrid}>

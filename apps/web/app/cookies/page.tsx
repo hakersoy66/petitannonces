@@ -1,7 +1,7 @@
 import {LegalPage} from "../../components/legal-page";
 import {CookiePreferencesButton} from "./preferences-button";
 import {AnonymousAudienceOptOut} from "./anonymous-audience-opt-out";
-export const metadata={title:"Politique de cookies | Petit Annonces",alternates:{canonical:"/cookies"}};
+export const metadata={title:{absolute:"Politique de cookies | Petit Annonces"},alternates:{canonical:"/cookies"}};
 export default function Page(){const sections=[
 {id:"definition",title:"Cookies, stockage local et traceurs",body:"Petit Annonces utilise des cookies, le stockage local du navigateur et des technologies comparables. Certains éléments sont strictement nécessaires au fonctionnement ou à la sécurité ; d’autres ne sont activés qu’après votre choix."},
 {id:"necessaires",title:"Fonctionnement strictement nécessaire",body:"Les éléments nécessaires peuvent être utilisés sans consentement lorsqu’ils sont indispensables au service demandé, à l’authentification, à la sécurité ou à la mémorisation de votre choix de confidentialité.",bullets:["Session et authentification sécurisée.","Prévention des abus, protection du compte et continuité de navigation.","Mémorisation du choix de consentement et de certains réglages nécessaires à l’interface.","Stockage local strictement nécessaire à l’application/PWA lorsque la fonctionnalité le requiert."]},

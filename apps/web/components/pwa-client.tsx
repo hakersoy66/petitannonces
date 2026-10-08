@@ -153,7 +153,7 @@ export function PwaClient({initialPwaIconUrl="/icons/icon-192.png",initialAppLog
       }catch{}
     };
     if("serviceWorker" in navigator){
-      const swReloadKey="pa_sw_reloaded_v46";
+      const swReloadKey="pa_sw_reloaded_v50";
       const onControllerChange=()=>{
         try{
           if(sessionStorage.getItem(swReloadKey)==="1")return;
@@ -163,7 +163,7 @@ export function PwaClient({initialPwaIconUrl="/icons/icon-192.png",initialAppLog
         if(!sensitivePath)window.location.reload();
       };
       navigator.serviceWorker.addEventListener("controllerchange",onControllerChange);
-      navigator.serviceWorker.register("/sw.js?v=46",{scope:"/",updateViaCache:"none"}).then(reg=>{const update=()=>void reg.update().catch(()=>undefined);if(typeof window.requestIdleCallback==="function")window.requestIdleCallback(update,{timeout:3000});else window.setTimeout(update,1400)}).catch(()=>undefined);
+      navigator.serviceWorker.register("/sw.js?v=50",{scope:"/",updateViaCache:"none"}).then(reg=>{const update=()=>void reg.update().catch(()=>undefined);if(typeof window.requestIdleCallback==="function")window.requestIdleCallback(update,{timeout:3000});else window.setTimeout(update,1400)}).catch(()=>undefined);
       navigator.serviceWorker.addEventListener("message",onServiceWorkerMessage);
     }
     let disposed=false;

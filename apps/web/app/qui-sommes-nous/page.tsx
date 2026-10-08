@@ -3,7 +3,7 @@ import {AboutExperience} from "./about-experience";
 import styles from "./page.module.css";
 
 export const metadata:Metadata={
- title:"Qui sommes-nous ? | Petit Annonces",
+ title:{absolute:"Qui sommes-nous ? | Petit Annonces"},
  description:"Découvrez Petit Annonces, une marketplace française pensée pour publier plus simplement, acheter avec davantage de confiance et profiter d’outils modernes assistés par l’intelligence artificielle.",
  alternates:{canonical:"https://petitannonces.fr/qui-sommes-nous"},
  openGraph:{title:"Qui sommes-nous ? | Petit Annonces",description:"Une marketplace française construite autour de la simplicité, de la confiance et d’outils intelligents.",url:"https://petitannonces.fr/qui-sommes-nous",type:"website"},

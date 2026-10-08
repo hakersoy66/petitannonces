@@ -1314,3 +1314,29 @@ input,select,textarea,button{max-width:100%}
  .site-header .brand-modern:has(.header-category-brand) .brand-logo-img{max-width:39vw!important}
  .site-header .header-category-brand{font-size:12px;gap:6px;margin-left:7px}
 }
+
+/* 2026-10-08 desktop navigation audit: keep the "Autres" menu visible at
+   1024/1280/1440px without creating horizontal page overflow. */
+@layer components {
+  @media (min-width:761px) {
+    .category-nav {
+      overflow-x:auto!important;
+      overflow-y:hidden!important;
+    }
+    .category-nav>button {
+      min-width:0!important;
+      flex:1 1 auto!important;
+      font-size:clamp(11px,.87vw,12px)!important;
+      padding-inline:clamp(4px,.55vw,9px)!important;
+      gap:4px!important;
+    }
+    .category-more-trigger {
+      position:sticky!important;
+      right:0!important;
+      z-index:2!important;
+      flex:0 0 90px!important;
+      min-width:90px!important;
+      box-shadow:-4px 0 12px rgba(0,0,0,.035)!important;
+    }
+  }
+}
