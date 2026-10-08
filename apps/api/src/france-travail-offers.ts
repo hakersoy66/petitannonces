@@ -124,7 +124,7 @@ export async function registerFranceTravailRoutes(app:FastifyInstance){
   const products=[
    {id:"rome-metiers",scope:"api_rome-metiersv1 nomenclatureRome"},
    {id:"rome-fiches",scope:"api_rome-fiches-metiersv1 nomenclatureRome"},
-   {id:"bonne-boite",scope:"api_labonneboitev2"},
+   {id:"bonne-boite",scope:"api_labonneboitev2 search office"},
   ];
   const results: Array<{id:string;status:"authorized_scope"|"subscription_required"|"credentials_invalid"|"unavailable"|"data_access_pending"|"documentation_required"}>=[];
   for(const product of products){
