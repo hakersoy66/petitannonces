@@ -127,8 +127,8 @@ export async function evaluateListing(listingId: string, userId: string) {
   if (listing.category.domain === "VEHICLE" && !listing.vehicle) errors.push("vehicle_details_required");
   if (listing.category.domain === "REAL_ESTATE") {
     if (!listing.property) errors.push("property_details_required");
-    if (!listing.energy) errors.push("energy_performance_required");
-    else if (!listing.energy.isExempt) {
+    if (!["Terrain","Parking","Garage"].includes(listing.property?.propertyType??"") && !listing.energy) errors.push("energy_performance_required");
+    else if (!["Terrain","Parking","Garage"].includes(listing.property?.propertyType??"") && listing.energy && !listing.energy.isExempt) {
       if (!listing.energy.dpeNumber) errors.push("dpe_number_required");
       if (!listing.energy.dpeDate || listing.energy.dpeDate < new Date("2021-07-01T00:00:00.000Z") || listing.energy.dpeDate > new Date()) errors.push("valid_dpe_date_required");
       if (!listing.energy.energyClass) errors.push("energy_class_required");
@@ -136,7 +136,7 @@ export async function evaluateListing(listingId: string, userId: string) {
       if (listing.energy.annualCostMinMinor === null || listing.energy.annualCostMaxMinor === null) errors.push("annual_energy_cost_required");
       if (!listing.energy.energyPriceReferenceYears) errors.push("energy_price_reference_years_required");
       if (listing.property?.transactionType === "RENTAL" && listing.energy.energyClass === "G") warnings.push("rental_dpe_g_requires_eligibility_review");
-    } else if (!listing.energy.exemptionReason) errors.push("dpe_exemption_reason_required");
+    } else if (!["Terrain","Parking","Garage"].includes(listing.property?.propertyType??"") && listing.energy && !listing.energy.exemptionReason) errors.push("dpe_exemption_reason_required");
   }
 
   const mediaRows = await prisma.$queryRawUnsafe<Array<{ count: bigint; coverUrl:string|null }>>(
