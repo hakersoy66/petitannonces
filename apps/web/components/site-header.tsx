@@ -249,7 +249,6 @@ export function SiteHeader({initialBrand,initialCategories}:{initialBrand?:Publi
       key={category.id}
       className={activeCategoryId===category.id?"is-active":""}
       onMouseEnter={()=>scheduleCategoryOpen(category.id)}
-      onFocus={()=>openCategory(category.id)}
       onClick={()=>{if(openTimer.current)clearTimeout(openTimer.current);if(category.slug==="vacances"){setActiveCategoryId(null);navigateApp(router,"/vacances");return}setActiveCategoryId(current=>current===category.id?null:category.id)}}
       aria-expanded={activeCategoryId===category.id}
     ><AppIcon name={categoryIcon(category)}/><span>{category.name}</span><AppIcon name="chevron-down"/></button>)}
@@ -257,7 +256,6 @@ export function SiteHeader({initialBrand,initialCategories}:{initialBrand?:Publi
       type="button"
       className={`category-more-trigger ${moreOpen?"is-active":""}`}
       onMouseEnter={()=>scheduleCategoryOpen("__more__")}
-      onFocus={()=>openCategory("__more__")}
       onClick={()=>{if(openTimer.current)clearTimeout(openTimer.current);setActiveCategoryId(current=>current==="__more__"?null:"__more__")}}
       aria-expanded={moreOpen}
     ><AppIcon name="list"/><span>Autres</span><AppIcon name="chevron-down"/></button>}
