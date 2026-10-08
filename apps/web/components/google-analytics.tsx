@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
+import {cookieDecisionValid} from "../lib/cookie-consent-policy";
 
 const CONSENT_KEY="pa_cookie_consent_v1";
 type AnalyticsEvent = { name?: string; params?: Record<string, unknown> };
@@ -16,7 +17,7 @@ declare global {
 }
 
 function analyticsAllowed(){
-  try{return Boolean(JSON.parse(localStorage.getItem(CONSENT_KEY)||"null")?.analytics)}catch{return false}
+  try{const saved=JSON.parse(localStorage.getItem(CONSENT_KEY)||"null");return cookieDecisionValid(saved)&&saved.analytics}catch{return false}
 }
 
 function ensureGtag(measurementId:string){
@@ -71,7 +72,8 @@ export function GoogleAnalytics({measurementId}:{measurementId?:string|null}){
     const apply=()=>{
       const allowed=analyticsAllowed();
       setEnabled(allowed);
-      ensureGtag(id);
+      if(allowed)ensureGtag(id);
+      else lastPage.current="";
       window.gtag?.("consent","update",{analytics_storage:allowed?"granted":"denied"});
     };
     apply();
@@ -93,7 +95,7 @@ export function GoogleAnalytics({measurementId}:{measurementId?:string|null}){
   },[id,enabled]);
 
   useEffect(()=>{
-    if(!id)return;
+    if(!id||!enabled||!analyticsAllowed())return;
     ensureGtag(id);
     const pagePath=`${pathname}${query?`?${query}`:""}`;
     if(lastPage.current===pagePath)return;

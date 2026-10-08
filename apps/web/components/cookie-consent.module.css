@@ -1,0 +1,52 @@
+.backdrop{position:fixed;inset:0;z-index:1100;background:rgba(19,17,37,.66);backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);display:flex;align-items:center;justify-content:center;padding:max(18px,env(safe-area-inset-top)) max(14px,env(safe-area-inset-right)) max(18px,env(safe-area-inset-bottom));overflow-y:auto;overscroll-behavior:contain}
+.modal{width:min(100%,610px);max-height:min(94dvh,790px);background:#fff;border:1px solid rgba(227,223,246,.8);border-radius:26px;box-shadow:0 35px 110px rgba(8,8,28,.32);overflow-y:auto;overscroll-behavior:contain;color:#25223d;font-family:inherit;animation:cookieAppear .26s cubic-bezier(.2,.75,.2,1) both}
+.hero{position:relative;padding:20px 29px 26px;background:radial-gradient(circle at 87% 20%,rgba(190,170,255,.34),transparent 34%),linear-gradient(125deg,#f1edff 0%,#fbf9ff 65%,#eaf5ff 110%);border-bottom:1px solid #ece6ff}
+.heroTop{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:19px}
+.brand{display:flex;align-items:center;gap:9px;font-size:14px;font-weight:950;letter-spacing:-.3px}
+.brandMark{display:grid;place-items:center;width:32px;height:32px;border-radius:10px;color:#fff;background:#5b4cf0;font-size:13px;font-weight:950}
+.close{width:36px;height:36px;display:grid;place-items:center;background:rgba(255,255,255,.76);border:1px solid #e2ddf7;border-radius:11px;color:#524d6a;font-size:26px;line-height:1;cursor:pointer}
+.close:hover{background:#fff;color:#241f4e}
+.heroContent{display:flex;gap:16px;align-items:center}
+.cookieIcon{display:grid;place-items:center;width:66px;height:66px;flex:0 0 66px;background:#fff;border-radius:22px;color:#5b4cf0;border:1px solid #e9e2ff;box-shadow:0 8px 24px rgba(91,76,240,.11)}
+.cookieIcon svg{width:35px;height:35px}
+.kicker{display:block;margin-bottom:7px;font-size:10px;font-weight:950;letter-spacing:1.2px;color:#695acb}
+.hero h2{margin:0;font-size:clamp(23px,3vw,30px);letter-spacing:-.8px;line-height:1.18;font-weight:950;color:#252040}
+.body{padding:24px 29px 27px}
+.intro{font-size:14px;line-height:1.75;color:#5c5b70;margin:0}
+.purposeGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:21px}
+.purposeGrid>div{display:grid;justify-items:start;gap:5px;padding:13px 14px;border:1px solid #edebf5;background:#faf9fd;border-radius:16px;min-width:0}
+.purposeGrid strong{font-size:12px;color:#32304c;font-weight:850}
+.purposeGrid small{color:#827f92;font-size:11px}
+.miniIcon{display:grid;place-items:center;flex:0 0 34px;width:34px;height:34px;border-radius:10px;background:#eeeaff;color:#6251df}
+.miniIcon svg{width:19px;height:19px}
+.details{font-size:11.5px;line-height:1.7;color:#777484;margin:18px 0 0}
+.details strong{color:#48445c}
+.details a{color:#5946c9;text-decoration:underline;text-underline-offset:2px;font-weight:750}
+.actions{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;margin-top:22px}
+.actions button{min-height:50px;padding:12px 14px;border-radius:13px;font:inherit;font-size:13px;font-weight:900;cursor:pointer;transition:filter .15s ease,transform .15s ease}
+.actions button:hover{filter:brightness(1.08)}
+.actions button:active{transform:scale(.98)}
+.reject,.accept{color:white;border:1px solid transparent;box-shadow:0 6px 14px rgba(34,30,70,.1)}
+.reject{background:#2b2944}
+.accept{background:#5b4cf0}
+.customize{grid-column:1/-1;background:#fff;border:1px solid #e5e1f1!important;color:#5143b2;min-height:43px!important}
+.customize span{padding-left:4px}
+.preferences{margin-top:19px;display:grid;gap:9px}
+.essential,.preference{display:flex;align-items:center;gap:11px;padding:13px 12px;border:1px solid #e9e7f2;background:#fff;border-radius:14px;min-width:0;position:relative}
+.essential{background:#f9f8fe}
+.purposeText{display:grid;gap:3px;flex:1;min-width:0}
+.purposeText strong{font-size:12.5px;font-weight:900;color:#2b2842}
+.purposeText small{font-size:11px;line-height:1.4;color:#777483}
+.alwaysOn{font-size:10px;font-weight:800;color:#327d62;white-space:nowrap;background:#e7f7ef;padding:5px 8px;border-radius:999px}
+.preference{cursor:pointer}
+.preference input{position:absolute;right:15px;width:42px;height:24px;margin:0;cursor:pointer;opacity:0;z-index:1}
+.switch{position:relative;flex:0 0 42px;width:42px;height:24px;background:#d9d6e5;border-radius:99px;transition:background .2s}
+.switch:before{content:"";position:absolute;width:18px;height:18px;top:3px;left:3px;background:#fff;border-radius:99px;box-shadow:0 2px 4px rgba(0,0,0,.16);transition:transform .2s}
+.preference input:checked+.switch{background:#5b4cf0}
+.preference input:checked+.switch:before{transform:translateX(18px)}
+.preference input:focus-visible+.switch{outline:3px solid #aaa0ff;outline-offset:3px}
+.close:focus-visible,.actions button:focus-visible,.details a:focus-visible{outline:3px solid #9889ff;outline-offset:3px}
+@keyframes cookieAppear{from{opacity:0;transform:translateY(15px) scale(.985)}to{opacity:1;transform:translateY(0) scale(1)}}
+@media(max-width:640px){.backdrop{align-items:flex-end;padding:12px 0 0}.modal{width:100%;max-height:min(94dvh,850px);border-radius:25px 25px 0 0;border-bottom:0}.hero{padding:17px 20px 21px}.heroTop{margin-bottom:15px}.heroContent{gap:12px}.cookieIcon{width:55px;height:55px;flex-basis:55px;border-radius:18px}.cookieIcon svg{width:29px;height:29px}.body{padding:20px 20px calc(24px + env(safe-area-inset-bottom,0px))}.intro{font-size:13px;line-height:1.65}.purposeGrid{margin-top:16px;gap:7px}.purposeGrid>div{padding:10px;gap:4px}.purposeGrid strong{font-size:11px}.purposeGrid small{font-size:10px}.miniIcon{width:31px;height:31px;flex-basis:31px}.actions{margin-top:17px;gap:8px}.actions button{font-size:12.5px;min-height:50px}.preferences{margin-top:14px}.essential,.preference{padding:11px 10px}.alwaysOn{font-size:9px}.details{font-size:11px;margin-top:13px}}
+@media(max-width:360px){.hero{padding-left:16px;padding-right:16px}.body{padding-left:15px;padding-right:15px}.hero h2{font-size:22px}.purposeGrid>div{padding:8px}.purposeGrid strong{font-size:10.3px}.actions button{padding:12px 7px;font-size:12px}}
+@media(prefers-reduced-motion:reduce){.modal{animation:none}.actions button,.switch,.switch:before{transition:none}}

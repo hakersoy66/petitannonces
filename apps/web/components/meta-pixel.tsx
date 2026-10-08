@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
+import {cookieDecisionValid} from "../lib/cookie-consent-policy";
 
 const CONSENT_KEY="pa_cookie_consent_v1";
 type Consent={advertising?:boolean};
@@ -10,7 +11,7 @@ type MetaEventDetail={name?:MetaEventName;eventId?:string;params?:Record<string,
 type Fbq=(command:string,...args:unknown[])=>void;
 
 declare global{interface Window{fbq?:Fbq;_fbq?:Fbq}}
-function advertisingAllowed(){try{const raw=localStorage.getItem(CONSENT_KEY);return Boolean(raw&&((JSON.parse(raw) as Consent).advertising===true))}catch{return false}}
+function advertisingAllowed(){try{const saved=JSON.parse(localStorage.getItem(CONSENT_KEY)||"null");return cookieDecisionValid(saved)&&saved.advertising}catch{return false}}
 function cookie(name:string){const match=document.cookie.match(new RegExp(`(?:^|; )${name.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")}=([^;]*)`));return match?decodeURIComponent(match[1]!):undefined}
 function eventId(prefix:string){return `${prefix}-${typeof crypto!=="undefined"&&crypto.randomUUID?crypto.randomUUID():`${Date.now()}-${Math.random().toString(36).slice(2)}`}`}
 

@@ -1340,3 +1340,9 @@ input,select,textarea,button{max-width:100%}
     }
   }
 }
+
+/* Cookie preferences remain available in the footer without a floating button. */
+.site-footer .footer-cookie-preferences{border:0;background:transparent;color:#aaa9b7;font:inherit;font-size:inherit;line-height:inherit;padding:0;text-align:left;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+.site-footer .footer-cookie-preferences:hover{color:#fff}
+.site-footer .footer-cookie-preferences:focus-visible{outline:2px solid #c5bcff;outline-offset:4px;border-radius:3px}
+@media(max-width:760px){.site-footer .footer-cookie-preferences{font-size:10.5px!important}}

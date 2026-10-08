@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import {cookieDecisionValid} from "../lib/cookie-consent-policy";
 
 const CONSENT_KEY="pa_cookie_consent_v1";
 const ADS_ID="AW-18454504179";
@@ -15,7 +16,7 @@ type AnalyticsDetail={name?:string;params?:Record<string,unknown>};
 declare global{interface Window{dataLayer?:unknown[];gtag?:(...args:unknown[])=>void;__paGtagJsInitialized?:boolean;__paGoogleAdsInitialized?:boolean}}
 
 function advertisingAllowed(){
- try{return Boolean(JSON.parse(localStorage.getItem(CONSENT_KEY)||"null")?.advertising)}catch{return false}
+ try{const saved=JSON.parse(localStorage.getItem(CONSENT_KEY)||"null");return cookieDecisionValid(saved)&&saved.advertising}catch{return false}
 }
 
 function ensureGtag(loadScript=false){

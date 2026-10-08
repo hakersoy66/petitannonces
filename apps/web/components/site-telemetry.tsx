@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
+import {cookieDecisionValid} from "../lib/cookie-consent-policy";
 
 const CONSENT_KEY="pa_cookie_consent_v1";
 export type SiteAnalyticsEvent=
@@ -10,8 +11,8 @@ export type SiteAnalyticsEvent=
  | "SIGN_UP_COMPLETED" | "PHONE_VERIFIED" | "LISTING_SUBMITTED" | "MESSAGE_SENT"
  | "CHECKOUT_STARTED" | "PURCHASE_COMPLETED" | "PRO_TRIAL_STARTED" | "LANDING_CTA_CLICKED" | "JOB_SEARCHED" | "JOB_APPLY_CLICKED" | "JOB_RESOURCE_CLICKED"
  | "PHOTO_UPLOAD_FAILED" | "LISTING_PUBLISH_CLICKED" | "LISTING_PUBLISH_SUCCEEDED" | "LISTING_PUBLISH_FAILED" | "CHECKOUT_FAILED";
-export function analyticsAllowed(){try{const raw=localStorage.getItem(CONSENT_KEY);if(!raw)return false;return Boolean(JSON.parse(raw)?.analytics)}catch{return false}}
-function advertisingAllowed(){try{const raw=localStorage.getItem(CONSENT_KEY);if(!raw)return false;return Boolean(JSON.parse(raw)?.advertising)}catch{return false}}
+export function analyticsAllowed(){try{const saved=JSON.parse(localStorage.getItem(CONSENT_KEY)||"null");return cookieDecisionValid(saved)&&saved.analytics}catch{return false}}
+function advertisingAllowed(){try{const saved=JSON.parse(localStorage.getItem(CONSENT_KEY)||"null");return cookieDecisionValid(saved)&&saved.advertising}catch{return false}}
 function id(storage:Storage,key:string){const old=storage.getItem(key);if(old)return old;const v=typeof crypto!=="undefined"&&crypto.randomUUID?crypto.randomUUID():`${Date.now()}-${Math.random().toString(36).slice(2)}`;storage.setItem(key,v);return v}
 function standalone(){return window.matchMedia?.("(display-mode: standalone)").matches||Boolean((navigator as Navigator&{standalone?:boolean}).standalone)}
 function eventId(prefix:string){return `${prefix}-${typeof crypto!=="undefined"&&crypto.randomUUID?crypto.randomUUID():`${Date.now()}-${Math.random().toString(36).slice(2)}`}`}
