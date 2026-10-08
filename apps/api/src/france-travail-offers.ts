@@ -121,6 +121,7 @@ export async function registerFranceTravailRoutes(app:FastifyInstance){
  app.post("/admin/integrations/france-travail/check-apis",{preHandler:requireAdminRoles(["SUPER_ADMIN","ADMIN"])},async (_request,reply)=>{
   const conf=await credentials();
   if(!conf.id||!conf.secret)return reply.code(409).send({error:"france_travail_credentials_missing"});
+  const integration=await getRuntimeIntegration("france-travail");
   const products=[
    {id:"rome-metiers",scope:"api_rome-metiersv1 nomenclatureRome"},
    {id:"rome-fiches",scope:"api_rome-fiches-metiersv1 nomenclatureRome"},
@@ -138,7 +139,10 @@ export async function registerFranceTravailRoutes(app:FastifyInstance){
     let dataHttpStatus:number|undefined;
     if(product.id==="bonne-boite"&&status==="authorized_scope"&&body?.access_token){
      try{
-      const probe=await fetch("https://api.francetravail.io/partenaire/labonneboite/v2/entreprises?rome=M1607&latitude=48.8566&longitude=2.3522",{headers:{authorization:"Bearer "+body.access_token,accept:"application/json"},signal:AbortSignal.timeout(9000)});
+      const configured=String(integration?.config["bonneBoiteProbeUrl"]??"").trim();
+      const url=new URL(configured||"https://api.francetravail.io/partenaire/labonneboite/v2/entreprises?rome=M1607&latitude=48.8566&longitude=2.3522");
+      if(url.protocol!=="https:"||url.hostname!=="api.francetravail.io"||url.port||url.username||url.password||!url.pathname.startsWith("/partenaire/labonneboite/"))throw new Error("invalid_endpoint");
+      const probe=await fetch(url,{method:"GET",redirect:"error",headers:{authorization:"Bearer "+body.access_token,accept:"application/json"},signal:AbortSignal.timeout(9000)});
       dataHttpStatus=probe.status;
       status=probe.ok?"authorized_scope":probe.status===401||probe.status===403?"data_access_pending":"documentation_required";
      }catch{status="unavailable"}
@@ -148,7 +152,6 @@ export async function registerFranceTravailRoutes(app:FastifyInstance){
   }
   // These APIs use product-specific OAuth scopes and endpoints from the official Swagger.
   // Never invent them. An admin may configure the verified values under France Travail.
-  const integration=await getRuntimeIntegration("france-travail");
   for(const item of [
    {id:"events",scopeKey:"eventsScope",urlKey:"eventsProbeUrl"},
    {id:"market",scopeKey:"marketScope",urlKey:"marketProbeUrl"},
