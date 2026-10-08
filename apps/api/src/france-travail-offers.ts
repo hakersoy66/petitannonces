@@ -126,7 +126,7 @@ export async function registerFranceTravailRoutes(app:FastifyInstance){
    {id:"rome-fiches",scope:"api_rome-fiches-metiersv1 nomenclatureRome"},
    {id:"bonne-boite",scope:"api_labonneboitev2 search office"},
   ];
-  const results: Array<{id:string;status:"authorized_scope"|"subscription_required"|"credentials_invalid"|"unavailable"|"data_access_pending"|"documentation_required"}>=[];
+  const results: Array<{id:string;status:"authorized_scope"|"subscription_required"|"credentials_invalid"|"unavailable"|"data_access_pending"|"documentation_required";httpStatus?:number;checkedAt?:string}>=[];
   for(const product of products){
    try{
     const params=new URLSearchParams({grant_type:"client_credentials",client_id:conf.id,client_secret:conf.secret,scope:product.scope});
@@ -141,7 +141,7 @@ export async function registerFranceTravailRoutes(app:FastifyInstance){
       status=probe.ok?"authorized_scope":probe.status===403?"data_access_pending":"documentation_required";
      }catch{status="unavailable"}
     }
-    results.push({id:product.id,status});
+    results.push({id:product.id,status,httpStatus:response.status,checkedAt:new Date().toISOString()});
    }catch{results.push({id:product.id,status:"unavailable"})}
   }
   results.push({id:"events",status:"documentation_required"});
