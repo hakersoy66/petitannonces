@@ -10,6 +10,8 @@ const BRAND_SUBCATEGORIES:Record<string,string>={
  "apple-iphone":"Apple","samsung-galaxy":"Samsung","google-pixel":"Google",
  "xiaomi-redmi-poco":"Xiaomi","oneplus-smartphones":"OnePlus","honor-smartphones":"Honor",
  "macbook":"Apple",
+ "huawei-smartphones":"Huawei","sony-smartphones":"Sony","oppo-smartphones":"Oppo",
+ "motorola-smartphones":"Motorola","nothing-smartphones":"Nothing",
 };
 const APPLIANCE_SUBCATEGORIES=new Set([
  "aspirateurs","fours-plaques","lave-linge","lave-vaisselle",
@@ -26,6 +28,21 @@ function chosen(s:Selection,key:string):string{
 
 export function fixedListingFieldValue(slug:string,key:string):string|null{
  if(key==="brand"&&BRAND_SUBCATEGORIES[slug])return BRAND_SUBCATEGORIES[slug];
+ const fixedForCategory:Record<string,Record<string,string>>={
+  "appareils-photo":{imageSoundProduct:"Appareil photo"},
+  "videoprojecteurs":{imageSoundProduct:"Vidéoprojecteur"},
+  "objectifs-photo":{imageSoundProduct:"Objectif / Lentille"},
+  "ecouteurs":{imageSoundProduct:"Écouteurs"},
+  "cd-musique":{mediaType:"CD"},
+  "dvd-films":{mediaType:"DVD"},
+  "vinyles":{mediaType:"Vinyle"},
+  "micro-ondes":{appliance:"Micro-ondes"},
+  "plantes-jardin":{gardenType:"Plantes"},
+ };
+ if(fixedForCategory[slug]?.[key])return fixedForCategory[slug][key];
+ if(key==="deviceType"&&["apple-iphone","samsung-galaxy","google-pixel","xiaomi-redmi-poco",
+ "oneplus-smartphones","honor-smartphones","huawei-smartphones","sony-smartphones","oppo-smartphones",
+ "motorola-smartphones","nothing-smartphones"].includes(slug))return "Smartphone";
  if(key==="fuel"&&slug==="voitures-electriques")return "Électrique";
  if(key==="appliance"&&slug==="aspirateurs")return "Aspirateur";
  if(key==="appliance"&&slug==="lave-linge")return "Lave-linge";
@@ -49,8 +66,9 @@ export function listingFieldRelevant(s:Selection,field:Field):boolean{
   if(["Téléphone fixe","Objet connecté","Autre"].includes(kind)&&["ram","storage","dualSim","network","screenSize"].includes(key))return false;
   if(["Montre connectée","Bracelet connecté"].includes(kind)&&["ram","dualSim"].includes(key))return false;
  }
- if(slug==="photo-video"){
-  const kind=chosen(s,"imageSoundProduct");
+ if(["velos-enfant","velos-ville","velos-vtc"].includes(slug)&&key==="discipline")return false;
+ if(["photo-video","appareils-photo","videoprojecteurs","objectifs-photo","ecouteurs"].includes(slug)){
+  const kind=fixedListingFieldValue(slug,"imageSoundProduct")??chosen(s,"imageSoundProduct");
   if(kind&&!LARGE_SCREEN_MEDIA.has(kind)&&!CAMERA_MEDIA.has(kind)&&["screenSize","resolution","cameraType"].includes(key))return false;
   if(LARGE_SCREEN_MEDIA.has(kind)&&key==="cameraType")return false;
   if(CAMERA_MEDIA.has(kind)&&key==="screenSize")return false;

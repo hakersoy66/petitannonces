@@ -60,3 +60,23 @@ test("console platform choices reflect the selected brand",()=>{
  assert.deepEqual(forBrand("Microsoft"),["Xbox Series X","Autre"]);
  assert.deepEqual(forBrand("Valve"),["Steam Deck","Autre"]);
 });
+
+test("new category leaves automatically prefill inherited required fields",()=>{
+ assert.equal(fixedListingFieldValue("appareils-photo","imageSoundProduct"),"Appareil photo");
+ assert.equal(fixedListingFieldValue("videoprojecteurs","imageSoundProduct"),"Vidéoprojecteur");
+ assert.equal(fixedListingFieldValue("objectifs-photo","imageSoundProduct"),"Objectif / Lentille");
+ assert.equal(fixedListingFieldValue("cd-musique","mediaType"),"CD");
+ assert.equal(fixedListingFieldValue("vinyles","mediaType"),"Vinyle");
+ assert.equal(fixedListingFieldValue("huawei-smartphones","brand"),"Huawei");
+ assert.equal(fixedListingFieldValue("huawei-smartphones","deviceType"),"Smartphone");
+ assert.equal(fixedListingFieldValue("micro-ondes","appliance"),"Micro-ondes");
+ assert.equal(fixedListingFieldValue("plantes-jardin","gardenType"),"Plantes");
+});
+test("dedicated photo and cycling subcategories do not inherit irrelevant questions",()=>{
+ assert.equal(relevant("appareils-photo","screenSize"),false);
+ assert.equal(relevant("appareils-photo","cameraType"),true);
+ assert.equal(relevant("videoprojecteurs","cameraType"),false);
+ assert.equal(relevant("videoprojecteurs","resolution"),true);
+ assert.equal(relevant("ecouteurs","screenSize"),false);
+ assert.equal(relevant("velos-enfant","discipline"),false);
+});

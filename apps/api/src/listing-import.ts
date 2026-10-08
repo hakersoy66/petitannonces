@@ -526,6 +526,39 @@ function sourceCategorySlug(url:string,title:string|null,description:string|null
   let source="";try{source=new URL(url).pathname.toLowerCase().match(/\/ad\/([^/]+)/)?.[1]??""}catch{return null}
   const titleText=normalizeMatch(title??"");const text=normalizeMatch(`${title??""} ${description??""}`);const has=(...terms:string[])=>terms.some(t=>text.includes(normalizeMatch(t)));const titleHas=(...terms:string[])=>terms.some(t=>titleText.includes(normalizeMatch(t)));
   const direct:Record<string,string>={tablettes_liseuses:"tablettes-liseuses",consoles:"consoles",jeux_video:"jeux-video",ameublement:"meubles",arts_de_la_table:"arts-de-la-table",decoration:"decoration",linge_de_maison:"linge-de-maison",papeterie_fournitures_scolaires:"papeterie-fournitures-scolaires",bricolage:"bricolage",jardinage:"jardin-exterieur",jardin_plantes:"jardin-exterieur",electromenager:"electromenager",informatique:"accessoires-informatique",accessoires_informatique:"accessoires-informatique",ordinateurs:"ordinateurs",telephones_objets_connectes:"telephones-smartphones",accessoires_telephone_objets_connectes:"accessoires-telephone-objets-connectes",photo_audio_video:"photo-video",livres:"livres-bd",cd_musique:"films-musique",dvd_films:"films-musique",instruments_de_musique:"instruments-musique",jeux_jouets:"jouets-jeux",collection:"collection",antiquites:"antiquites",modelisme:"modelisme",vins_gastronomie:"vins-gastronomie",equipement_bebe:"equipement-bebe",mobilier_enfant:"mobilier-enfant",chaussures:"chaussures",montres_bijoux:"montres-bijoux",sacs_accessoires:"sacs-accessoires",velos:"velos",nautisme:"nautisme",pieces_auto:"pieces-accessoires-auto",equipement_auto:"pieces-accessoires-auto",animaux:"animaux",chiens_chats:"animaux",emploi:"emploi",services:"services",baby_sitting:"baby-sitting",covoiturage:"covoiturage",cours_particuliers:"cours-particuliers",services_aux_animaux:"services-animaux",reparations_electroniques:"reparations-electroniques",reparations_mecaniques:"reparations-mecaniques"};
+  // Prefer the most specific compatible Petitannonces category for Leboncoin imports.
+  const additionalSource:Record<string,string>={
+    equipement_moto:"equipement-moto",equipement_caravaning:"equipement-caravaning",
+    equipement_nautisme:"equipement-nautisme",equipement_velos:"equipements-velos",
+    equipements_velos:"equipements-velos",remorques:"remorques",
+  };
+  if(additionalSource[source])return additionalSource[source];
+  if(source==="cd_musique")return titleHas("vinyle","33 tours","45 tours")?"vinyles":"cd-musique";
+  if(source==="dvd_films")return "dvd-films";
+  if(source==="ameublement"){
+    if(titleHas("canapé","canape","sofa"))return "canapes";
+    if(titleHas("lit ","sommier","matelas"))return "lits";
+    if(titleHas("table ","table à"))return "tables-mobilier";
+    if(titleHas("chaise","tabouret"))return "chaises";
+    if(titleHas("armoire","dressing"))return "armoires";
+    if(titleHas("commode"))return "commodes";
+  }
+  if(source==="photo_audio_video"){
+    if(titleHas("appareil photo","reflex","hybride photo"))return "appareils-photo";
+    if(titleHas("vidéoprojecteur","videoprojecteur","projecteur vidéo"))return "videoprojecteurs";
+    if(titleHas("objectif photo","objectif canon","objectif nikon","objectif sony"))return "objectifs-photo";
+    if(titleHas("écouteurs","ecouteurs","airpods"))return "ecouteurs";
+  }
+  if(source==="telephones_objets_connectes"){
+    if(titleHas("iphone"))return "apple-iphone";
+    if(titleHas("galaxy"))return "samsung-galaxy";
+    if(titleHas("pixel"))return "google-pixel";
+    if(titleHas("huawei"))return "huawei-smartphones";
+    if(titleHas("oppo"))return "oppo-smartphones";
+    if(titleHas("motorola"))return "motorola-smartphones";
+    if(titleHas("nothing phone"))return "nothing-smartphones";
+  }
+  if(source==="locations_gites"&&titleHas("yourte","tiny house","cabane perchée","roulotte","bulle transparente","tipi"))return "hebergements-insolites";
   if(direct[source])return direct[source];
   if(source==="sport_plein_air"){
     if(titleHas("chaussure","chaussures","basket","baskets","botte","bottes"))return "chaussures";
@@ -533,6 +566,7 @@ function sourceCategorySlug(url:string,title:string|null,description:string|null
   }
   if(source==="antiquites")return titleHas("chaise","chaises","table","commode","armoire","buffet","fauteuil","meuble","meubles")?"meubles":"collection";
   if(source==="vetements"){
+    if(titleHas("maternité","maternite","grossesse","femme enceinte"))return "vetements-maternite";
     if(titleHas("enfant","bébé","bebe","garçon","garcon","fille"))return "vetements-enfant";
     if(titleHas("homme","costume","chemise homme","pantalon homme"))return "vetements-homme";
     if(titleHas("femme","robe","jupe","soutien gorge","soutien-gorge"))return "vetements-femme";

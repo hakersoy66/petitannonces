@@ -328,7 +328,7 @@ export function ListingWizard({initialListingId,initialResumeStep,initialCategor
    const relevantOptions=relevantListingOptions(fieldRuleContext,a.key,a.options);
    return <label className={`${styles.field} ${invalid?styles.validationError:""}`} data-validation-error={invalid?"true":undefined} key={a.id}><span>{a.label}{a.required?" *":""}{importedBadge(a.id)}</span><select value={relevantOptions.some(o=>o.value===String(v??""))?String(v??""):""} onChange={e=>updateAttr(a.id,e.target.value)}><option value="">Sélectionner</option>{relevantOptions.map(o=><option key={o.id} value={o.value}>{o.label}</option>)}</select>{help}</label>;
   }
-  return <label className={`${styles.field} ${invalid?styles.validationError:""}`} data-validation-error={invalid?"true":undefined} key={a.id}><span>{a.label}{a.required?" *":""}{importedBadge(a.id)}</span><input type={a.type==="NUMBER"?"number":a.type==="DATE"?"date":"text"} value={String(v??"")} onChange={e=>updateAttr(a.id,a.type==="NUMBER"?(e.target.value===""?"":Number(e.target.value)):e.target.value)}/>{help}</label>;
+  return <label className={`${styles.field} ${invalid?styles.validationError:""}`} data-validation-error={invalid?"true":undefined} key={a.id}><span>{a.label}{a.unit?" ("+a.unit+")":""}{a.required?" *":""}{importedBadge(a.id)}</span><input type={a.type==="NUMBER"?"number":a.type==="DATE"?"date":"text"} value={String(v??"")} onChange={e=>updateAttr(a.id,a.type==="NUMBER"?(e.target.value===""?"":Number(e.target.value)):e.target.value)}/>{help}</label>;
  }
 
  return <div className={styles.wrapper}>
