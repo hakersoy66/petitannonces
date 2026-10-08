@@ -6,7 +6,7 @@ export default function robots(): MetadataRoute.Robots {
       userAgent: "*",
       allow: "/",
       disallow: [
-        "/api/", "/mon-compte/", "/espace-pro/", "/commandes/", "/messages",
+        "/api/", "/mon-compte", "/espace-pro", "/commandes", "/messages",
         "/notifications", "/checkout", "/connexion", "/inscription", "/mot-de-passe-oublie",
         "/reinitialiser-mot-de-passe", "/verifier-email", "/verifiez-votre-email",
         "/deposer-une-annonce", "/importer-une-annonce", "/espace-partenaire"

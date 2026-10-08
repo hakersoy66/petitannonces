@@ -153,8 +153,15 @@ export function PwaClient({initialPwaIconUrl="/icons/icon-192.png",initialAppLog
       }catch{}
     };
     if("serviceWorker" in navigator){
-      const swReloadKey="pa_sw_reloaded_v50";
+      const swReloadKey="pa_sw_reloaded_v51";
+      // The very first controller is normal during initial PWA installation.
+      // Reloading the page in response loses focus, scroll, and pending input.
+      // Only perform one guarded reload when an existing worker is replaced.
+      let previouslyControlled=Boolean(navigator.serviceWorker.controller);
       const onControllerChange=()=>{
+        const wasControlled=previouslyControlled;
+        previouslyControlled=true;
+        if(!wasControlled)return;
         try{
           if(sessionStorage.getItem(swReloadKey)==="1")return;
           sessionStorage.setItem(swReloadKey,"1");

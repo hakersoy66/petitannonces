@@ -76,5 +76,7 @@ export default async function sitemap():Promise<MetadataRoute.Sitemap>{
       batch.forEach((item,index)=>{if(active[index])rows.push({url:BASE+emploiLocalHref(item),lastModified:now,changeFrequency:"daily",priority:0.69})});
     }
   }catch{}
-  return rows;
+  // A category may appear in both the editorial/static set and the live facet set.
+  // Keep exactly one canonical URL per page to avoid duplicate entries in Google's sitemap.
+  return [...new Map(rows.map(entry=>[entry.url,entry] as const)).values()];
 }
