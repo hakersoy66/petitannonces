@@ -2,7 +2,7 @@ import { prisma } from "@pa/database";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { z } from "zod";
 import { requireListingUser } from "./listing-auth.js";
-import { expireDueListings, getListingLifecycles, LISTING_LIFETIME_DAYS, LISTING_RENEWAL_COST_MINOR, LISTING_RENEWAL_CURRENCY, renewExpiredListing } from "./listing-lifecycle.js";
+import { expireDueListings, getListingLifecycles, LISTING_LIFETIME_DAYS, LISTING_RENEWAL_COST_MINOR, LISTING_RENEWAL_CURRENCY, LISTING_RENEWAL_WINDOW_DAYS, isListingRenewable, renewExpiredListing } from "./listing-lifecycle.js";
 import { hiddenEditWorkingIds } from "./listing-edit-session.js";
 import { resolveProfessionalContext } from "./pro-suite.js";
 import { deleteStoredObject } from "./storage.js";
@@ -142,6 +142,7 @@ export async function registerAccountListingRoutes(app: FastifyInstance) {
           lifecycle: lifecycle ? {
             expiresAt: lifecycle.expiresAt,
             renewalRequired: lifecycle.isExpired && ["DRAFT","EXPIRED"].includes(listing.status),
+            renewalAvailable: isListingRenewable(listing.status,lifecycle.expiresAt),
             freeRenewalAvailable: !lifecycle.freeRenewalUsed,
             renewalCount: lifecycle.renewalCount,
             renewalCostMinor: lifecycle.freeRenewalUsed ? LISTING_RENEWAL_COST_MINOR : 0,
@@ -151,7 +152,7 @@ export async function registerAccountListingRoutes(app: FastifyInstance) {
         };
       }),
       counts: statusCounts,
-      renewalPolicy: { lifetimeDays: LISTING_LIFETIME_DAYS, firstRenewalFree: true, subsequentRenewalCostMinor: LISTING_RENEWAL_COST_MINOR, currency: LISTING_RENEWAL_CURRENCY },
+      renewalPolicy: { lifetimeDays: LISTING_LIFETIME_DAYS, earlyRenewalDays: LISTING_RENEWAL_WINDOW_DAYS, firstRenewalFree: true, subsequentRenewalCostMinor: LISTING_RENEWAL_COST_MINOR, currency: LISTING_RENEWAL_CURRENCY },
     });
   });
 

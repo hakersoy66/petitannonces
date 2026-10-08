@@ -5,7 +5,7 @@ import { getStripeBillingModeRuntime, getStripeBillingRuntime } from "./admin-co
 import { handleMarketplaceStripeEvent } from "./marketplace-stripe.js";
 import { handleVacationStripeEvent } from "./vacation-payments.js";
 import { handlePromotionStripeEvent } from "./growth.js";
-import { completePaidListingRenewal, getListingLifecycles, LISTING_RENEWAL_COST_MINOR, LISTING_RENEWAL_CURRENCY, renewExpiredListingInTransaction } from "./listing-lifecycle.js";
+import { completePaidListingRenewal, getListingLifecycles, isListingRenewable, LISTING_RENEWAL_COST_MINOR, LISTING_RENEWAL_CURRENCY, renewExpiredListingInTransaction } from "./listing-lifecycle.js";
 import { z } from "zod";
 import { consumeSiteCreditInTransaction, ensureSiteCreditSchema, getSiteCreditPackages, grantPurchasedSiteCredit } from "./site-credit.js";
 import { nativeExternalDigitalBillingEnabled, nativeExternalProBillingEnabled } from "./native-billing-policy.js";
@@ -207,8 +207,8 @@ export async function registerStripeBillingRoutes(app: FastifyInstance) {
     const user=await requireUser(request,reply);if(!user)return;
     const body=z.object({listingId:z.string().min(1),returnMode:z.enum(["WEB","NATIVE"]).optional().default("WEB"),appScheme:z.enum(["petitannonces","petitannonces-development","petitannonces-preview"]).optional().default("petitannonces")}).safeParse(request.body);if(!body.success)return reply.code(400).send({error:"invalid_request"});
     if(body.data.returnMode==="NATIVE"&&!nativeExternalDigitalBillingEnabled())return reply.code(403).send({error:"native_external_digital_billing_disabled"});
-    const listing=await prisma.listing.findFirst({where:{id:body.data.listingId,sellerId:user.id,status:{in:["EXPIRED","DRAFT"]}},select:{id:true,title:true}});if(!listing)return reply.code(404).send({error:"listing_not_found"});
-    const lifecycle=(await getListingLifecycles([listing.id]))[0];if(!lifecycle)return reply.code(409).send({error:"listing_lifecycle_not_found"});if(!lifecycle.isExpired)return reply.code(409).send({error:"listing_not_expired"});if(!lifecycle.freeRenewalUsed)return reply.code(409).send({error:"free_renewal_available"});
+    const listing=await prisma.listing.findFirst({where:{id:body.data.listingId,sellerId:user.id,status:{in:["PUBLISHED","EXPIRED","DRAFT"]}},select:{id:true,title:true,status:true}});if(!listing)return reply.code(404).send({error:"listing_not_found"});
+    const lifecycle=(await getListingLifecycles([listing.id]))[0];if(!lifecycle)return reply.code(409).send({error:"listing_lifecycle_not_found"});if(!isListingRenewable(listing.status,lifecycle.expiresAt))return reply.code(409).send({error:"listing_not_expired"});if(!lifecycle.freeRenewalUsed)return reply.code(409).send({error:"free_renewal_available"});
     await ensureSiteCreditSchema();
     try{
       const creditFlow=await prisma.$transaction(async(tx:any)=>{

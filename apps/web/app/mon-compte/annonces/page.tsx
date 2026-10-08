@@ -24,7 +24,7 @@ type Listing = {
   property?: { transactionType?: string | null } | null;
   store?: { id: string; name: string } | null;
   moderation?: { caseId:string; status:string; decisionAction:string|null; reasonCode:string|null; statement:string|null; decidedAt:string|null } | null;
-  lifecycle?: { expiresAt:string; renewalRequired?:boolean; freeRenewalAvailable:boolean; renewalCount:number; renewalCostMinor:number; renewalCurrency:string; lifetimeDays:number } | null;
+  lifecycle?: { expiresAt:string; renewalRequired?:boolean; renewalAvailable?:boolean; freeRenewalAvailable:boolean; renewalCount:number; renewalCostMinor:number; renewalCurrency:string; lifetimeDays:number } | null;
   promotions?: Array<{id:string;code:string;type:string;name:string;startsAt:string|null;endsAt:string|null;status:string}>;
 };
 
@@ -179,7 +179,7 @@ export default function MyListingsPage() {
                       {proAutoRenew&&item.status==="PUBLISHED"&&<span className={styles.expiry}>Renouvellement automatique Pro activé</span>}
                     </div>
                     <div className={styles.performanceMetrics}><span><b>{Number(item.viewCount??0).toLocaleString("fr-FR")}</b> vues</span><span><b>{item.performance?.favorites??0}</b> favoris</span><span><b>{item.performance?.messages??0}</b> messages</span><span><b>{item.performance?.offers??0}</b> offres</span>{item.status==="PUBLISHED"&&<span className={styles.performanceScore}><b>{item.performance?.score??0}/100</b> {item.performance?.level==="FORTE"?"Forte":item.performance?.level==="CORRECTE"?"Correcte":"Faible"}</span>}</div>{item.status==="PUBLISHED"&&(item.performance?.actions?.length??0)>0&&<div className={styles.smartActions}>{item.performance!.actions!.map(a=><a key={a.code} href={a.href}>{a.label}</a>)}</div>}
-                    {(item.status==="EXPIRED"||item.lifecycle?.renewalRequired)&&<div className={styles.renewalInfo}><b>Publication expirée</b><span>{item.lifecycle?.freeRenewalAvailable!==false?"Vous disposez d’une prolongation gratuite de 30 jours.":`Prolongez de 30 jours pour ${((item.lifecycle?.renewalCostMinor??99)/100).toFixed(2).replace(".",",")} €.`}</span></div>}
+                    {(item.status==="EXPIRED"||item.lifecycle?.renewalRequired||item.lifecycle?.renewalAvailable)&&<div className={styles.renewalInfo}><b>{item.status==="PUBLISHED"?"Expiration proche · renouvellement ouvert":"Publication expirée"}</b><span>{item.lifecycle?.freeRenewalAvailable!==false?"Prolongez dès maintenant de 30 jours gratuitement.":"Prolongez dès maintenant de 30 jours pour "+((item.lifecycle?.renewalCostMinor??99)/100).toFixed(2).replace(".",",")+" €."} {item.status==="PUBLISHED"?"Les jours restants sont conservés.":""}</span></div>}
                     {item.promotions&&item.promotions.length>0&&<div className={styles.promotionList}>{item.promotions.map(p=><span key={p.id}><b>{p.name}</b><small>{p.startsAt&&new Date(p.startsAt)>new Date()?`Prévu à partir du ${new Date(p.startsAt).toLocaleDateString("fr-FR")}`:p.endsAt?`Actif jusqu’au ${new Date(p.endsAt).toLocaleDateString("fr-FR")}`:"Actif"}</small></span>)}</div>}
                     {item.status === "PENDING" && <div className={styles.moderationPending}><b>Vérification en cours</b><span>Votre annonce est dans la file de modération. Elle sera visible publiquement après validation.</span></div>}
                     {item.status === "SUSPENDED" && item.moderation?.decisionAction && item.moderation.decisionAction !== "NONE" && <div className={styles.moderationRejected}><b>Annonce à corriger</b><span>{item.moderation.statement ?? "Cette annonce nécessite une modification avant une nouvelle publication."}</span></div>}
@@ -196,14 +196,14 @@ export default function MyListingsPage() {
                     {item.status === "PUBLISHED" && <a href={`/mon-compte/visibilite?listingId=${encodeURIComponent(item.id)}`}>Booster</a>}
                     {item.status === "PUBLISHED" && <button type="button" onClick={() => void changeStatus(item.id, "SUSPENDED")}>Mettre en pause</button>}
                     {item.status === "PUBLISHED" && <button type="button" onClick={() => void changeStatus(item.id, "SOLD")}>Marquer vendue</button>}
-                    {(item.status === "EXPIRED" || item.lifecycle?.renewalRequired) && <button type="button" className={styles.renew} onClick={() => void renewListing(item)}>{item.lifecycle?.freeRenewalAvailable!==false?"Prolonger +30 jours gratuitement":`Prolonger +30 jours · ${((item.lifecycle?.renewalCostMinor??99)/100).toFixed(2).replace(".",",")} €`}</button>}
+                    {(item.status === "EXPIRED" || item.lifecycle?.renewalRequired || item.lifecycle?.renewalAvailable) && <button type="button" className={styles.renew} onClick={() => void renewListing(item)}>{item.lifecycle?.freeRenewalAvailable!==false?"Prolonger +30 jours gratuitement":`Prolonger +30 jours · ${((item.lifecycle?.renewalCostMinor??99)/100).toFixed(2).replace(".",",")} €`}</button>}
                     <button type="button" className={styles.danger} onClick={() => void deleteListing(item)}>Supprimer</button>
                   </div>
                   <div className={styles.mobileActions}>
                     {item.status === "PUBLISHED" && item.slug && <a className={styles.mobilePrimary} href={`/annonce/${item.slug}`}>Voir l’annonce</a>}
                     {item.status === "DRAFT" && !item.lifecycle?.renewalRequired && <a className={styles.mobilePrimary} href={`/deposer-une-annonce?listingId=${encodeURIComponent(item.id)}`}>Continuer</a>}
                     {item.status === "SUSPENDED" && <a className={styles.mobilePrimary} href={`/deposer-une-annonce?listingId=${encodeURIComponent(item.id)}`}>Corriger</a>}
-                    {(item.status === "EXPIRED" || item.lifecycle?.renewalRequired) && <button type="button" className={styles.mobilePrimary} onClick={() => void renewListing(item)}>{item.lifecycle?.freeRenewalAvailable!==false?"Prolonger gratuitement":"Prolonger l’annonce"}</button>}
+                    {(item.status === "EXPIRED" || item.lifecycle?.renewalRequired || item.lifecycle?.renewalAvailable) && <button type="button" className={styles.mobilePrimary} onClick={() => void renewListing(item)}>{item.lifecycle?.freeRenewalAvailable!==false?"Prolonger gratuitement":"Prolonger l’annonce"}</button>}
                     {item.status === "PENDING" && <span className={styles.mobileState}>En cours de vérification</span>}
                     {item.status === "SOLD" && <span className={styles.mobileState}>Annonce vendue</span>}
                     <details className={styles.mobileMore}><summary>Autres actions</summary><div>
