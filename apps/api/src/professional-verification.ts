@@ -4,6 +4,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { lookupPublicCompany } from "./company-registry.js";
 import { saveSensitiveEvidence, downloadSensitiveEvidence, removeSensitiveEvidence } from "./private-evidence.js";
+import { getProReverificationState } from "./pro-reverification.js";
 
 const MAX_BYTES = 8 * 1024 * 1024;
 const TYPES = { "application/pdf": "pdf", "image/jpeg": "jpg", "image/png": "png" } as const;
@@ -47,7 +48,7 @@ export async function registerProfessionalVerificationRoutes(app:FastifyInstance
   app.get("/pro/business/verification",async(req,reply)=>{
     const u=await sessionUser(req,reply);if(!u)return;
     const b=await prisma.businessProfile.findUnique({where:{userId:u.id},select:{verificationStatus:true,legalName:true,siret:true,siren:true}});
-    return reply.send({business:b,documents:(await documents(u.id)).map(publicDoc),requirements:["REGISTRY","AUTHORITY"]});
+    return reply.send({business:b,documents:(await documents(u.id)).map(publicDoc),requirements:["REGISTRY","AUTHORITY"],reverification:await getProReverificationState(u.id)});
   });
 
   app.post("/pro/business/verification/documents",{bodyLimit:MAX_BYTES},async(req,reply)=>{
@@ -84,7 +85,7 @@ export async function registerProfessionalVerificationRoutes(app:FastifyInstance
     const params=idSchema.safeParse(req.params);if(!params.success)return reply.code(400).send({error:"invalid_request"});
     const business=await prisma.businessProfile.findUnique({where:{userId:params.data.id},select:{verificationStatus:true,siret:true,siren:true,legalName:true,lastRegistryCheckAt:true}});
     if(!business)return reply.code(404).send({error:"business_not_found"});
-    return reply.send({business,documents:(await documents(params.data.id)).map(publicDoc)});
+    return reply.send({business,documents:(await documents(params.data.id)).map(publicDoc),reverification:await getProReverificationState(params.data.id)});
   });
 
   app.get("/admin/professionals/:id/verification/documents/:documentId",async(req,reply)=>{
@@ -120,8 +121,9 @@ export async function registerProfessionalVerificationRoutes(app:FastifyInstance
     const approved=body.data.decision==="APPROVE";
     await prisma.$transaction(async tx=>{
       await tx.businessProfile.update({where:{id:business.id},data:{verificationStatus:approved?"VERIFIED":"REJECTED",verifiedAt:approved?new Date():null,verificationProvider:approved?"manual_authority_and_registry":business.verificationProvider,lastRegistryCheckAt:approved?new Date():business.lastRegistryCheckAt}});
-      if(approved)await tx.store.updateMany({where:{ownerId:params.data.id,status:"DRAFT"},data:{status:"ACTIVE",isVerified:true,publishedAt:new Date()}});
+      if(approved){await tx.store.updateMany({where:{ownerId:params.data.id,status:"DRAFT"},data:{status:"ACTIVE",isVerified:true,publishedAt:new Date()}});await tx.store.updateMany({where:{ownerId:params.data.id,status:"ACTIVE"},data:{isVerified:true}});}
       else await tx.store.updateMany({where:{ownerId:params.data.id,status:"ACTIVE"},data:{status:"SUSPENDED",isVerified:false}});
+      await tx.$executeRawUnsafe('UPDATE "ProReverification" SET "status"=$2,"completedAt"=CURRENT_TIMESTAMP,"updatedAt"=CURRENT_TIMESTAMP WHERE "userId"=$1',params.data.id,approved?"APPROVED":"REJECTED");
       await tx.$executeRawUnsafe('INSERT INTO "AdminAuditEvent" ("id","actorUserId","action","entityType","entityId","metadata") VALUES ($1,$2,$3,$4,$5,$6::jsonb)',randomUUID(),a.id,approved?"PRO_BUSINESS_APPROVED":"PRO_BUSINESS_REJECTED","USER",params.data.id,JSON.stringify({reason:body.data.reason,documentIds:rows.map(r=>r.id),previousStatus:business.verificationStatus}));
     });
     // Identity evidence is short lived: remove bytes after decision. Audit metadata remains.

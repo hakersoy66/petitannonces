@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { prisma } from "@pa/database";
+import { canProfessionalPublish } from "./pro-reverification.js";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { createPresignedUpload, makeStoredObjectPublic, publicObjectUrl, storageConfigured, uploadStoredObject, verifyStoredObject } from "./storage.js";
@@ -412,8 +413,8 @@ export async function registerProfessionalRoutes(app: FastifyInstance) {
   app.post("/pro/listings/bulk", async (request, reply) => {
     const auth=await requireProfessionalContext(request,reply,"LISTINGS"); if(!auth)return;
     const ownerId=auth.ctx.ownerUserId;
-    const ownerBusiness=await prisma.businessProfile.findUnique({where:{userId:ownerId},select:{verificationStatus:true}});
-    if(ownerBusiness?.verificationStatus!=="VERIFIED")return reply.code(403).send({error:"professional_verification_required"});
+    const permitted=await canProfessionalPublish(ownerId);
+    if(!permitted)return reply.code(403).send({error:"professional_verification_required"});
     const body = z.object({
       listingIds: z.array(z.string().min(1)).min(1).max(100).transform(ids => [...new Set(ids)]),
       action: z.enum(["PAUSE","RESUME","SOLD","ATTACH_STORE","DETACH_STORE","SET_PRICE","EXTEND_30"]),

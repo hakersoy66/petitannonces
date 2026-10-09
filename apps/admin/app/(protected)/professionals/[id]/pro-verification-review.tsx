@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 
 type Doc={id:string;kind:string;fileName:string;applicantRole:string;applicantName:string;createdAt:string};
-type Review={business:{verificationStatus:string;legalName:string;siret:string|null};documents:Doc[]};
+type Review={business:{verificationStatus:string;legalName:string;siret:string|null};documents:Doc[];reverification?:{status:string;dueAt:string;graceActive:boolean}|null};
 export default function ProVerificationReview({userId}:{userId:string}){
  const [data,setData]=useState<Review|null>(null);
  const [reason,setReason]=useState("");
@@ -31,7 +31,7 @@ export default function ProVerificationReview({userId}:{userId:string}){
  return <section className="admin-card" style={{marginBottom:16,padding:18}}>
  <h2 style={{fontSize:18,marginBottom:5}}>Contrôle de l’entreprise et du représentant</h2>
  <p style={{fontSize:13}}>Statut : <b>{data.business.verificationStatus}</b> · {data.business.legalName} · {data.business.siret||"—"}</p>
- <div style={{display:"grid",gap:6}}>
+ <div>{data.reverification?.status==="PENDING"&&<p>Réexamen avant le {new Date(data.reverification.dueAt).toLocaleDateString("fr-FR")} — {data.reverification.graceActive?"Période de transition":"Date limite dépassée"}</p>}</div><div style={{display:"grid",gap:6}}>
  {(["REGISTRY","AUTHORITY"] as const).map(kind=><div key={kind} style={{border:"1px solid #ddd",borderRadius:10,padding:12}}>
  <strong>{kind==="REGISTRY"?"Extrait Kbis / RNE":"Identité ou mandat"}</strong>
  {data.documents.filter(d=>d.kind===kind).map(d=><div key={d.id} style={{fontSize:13}}>

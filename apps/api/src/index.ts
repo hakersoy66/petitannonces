@@ -71,6 +71,7 @@ import { registerProSuiteRoutes } from "./pro-suite.js";
 import { registerProMessageToolRoutes } from "./pro-message-tools.js";
 import { registerProfessionalRegistrationRoutes } from "./pro-registration.js";
 import { registerProfessionalVerificationRoutes } from "./professional-verification.js";
+import { startProReverificationWorker } from "./pro-reverification.js";
 import { registerPublicationRoutes } from "./publication.js";
 import { registerPublicListingRoutes } from "./public-listings.js";
 import { requireAdminRoles } from "./rbac.js";
@@ -242,6 +243,7 @@ try {
   startDraftRecoveryWorker(app.log);
   startAcceptedOfferPaymentWindowWorker(app.log);
   startProSubscriptionReminderWorker(app.log);
+  startProReverificationWorker(app.log);
   startListingExpiryWorker(app.log);
   startAutoApprovalWorker(app.log);
   startAbandonedDraftCleanupWorker(app.log);
