@@ -29,7 +29,28 @@ const loginSchema=z.object({email:z.string().trim().toLowerCase().email(),passwo
 function safeReturnPath(value:unknown){const v=typeof value==="string"?value.trim():"";return v.startsWith("/")&&!v.startsWith("//")?v:null}
 function sha256(v:string){return createHash("sha256").update(v).digest("hex")}function newOpaqueToken(bytes=32){return randomBytes(bytes).toString("base64url")}
 async function hashPassword(password:string){return hash(password,{algorithm:2,memoryCost:19456,timeCost:2,parallelism:1})}
-async function createSessionToken(userId:string,request:FastifyRequest,remember=true){const token=newOpaqueToken();const expiresAt=new Date(Date.now()+(remember?SESSION_TTL_MS:SESSION_SHORT_TTL_MS));await prisma.session.create({data:{userId,tokenHash:sha256(token),userAgent:request.headers["user-agent"]?.slice(0,500),expiresAt}});return{token,expiresAt}}
+const MAX_PRIVILEGED_SESSIONS=5;
+async function createSessionToken(userId:string,request:FastifyRequest,remember=true){
+ const token=newOpaqueToken();
+ const expiresAt=new Date(Date.now()+(remember?SESSION_TTL_MS:SESSION_SHORT_TTL_MS));
+ await prisma.session.create({data:{userId,tokenHash:sha256(token),userAgent:request.headers["user-agent"]?.slice(0,500),expiresAt}});
+ // Privileged accounts cannot accumulate unlimited long-lived sessions.
+ // Applied to cookie and native bearer logins, including OAuth and 2FA.
+ const user=await prisma.user.findUnique({where:{id:userId},select:{roles:{select:{role:true}}}});
+ if(user?.roles.length){
+  const oldest=await prisma.session.findMany({
+   where:{userId,revokedAt:null,expiresAt:{gt:new Date()}},
+   select:{id:true},
+   orderBy:[{createdAt:"desc"},{id:"desc"}],
+   skip:MAX_PRIVILEGED_SESSIONS,
+  });
+  if(oldest.length)await prisma.session.updateMany({
+   where:{userId,id:{in:oldest.map(session=>session.id)},revokedAt:null},
+   data:{revokedAt:new Date()},
+  });
+ }
+ return{token,expiresAt};
+}
 export async function issueSession(userId:string,request:FastifyRequest,reply:FastifyReply,remember=true){const session=await createSessionToken(userId,request,remember);reply.setCookie(SESSION_COOKIE,session.token,{httpOnly:true,secure:request.protocol==="https",sameSite:"lax",path:"/",...(remember?{expires:session.expiresAt}:{})});return session}
 function bearerToken(request:FastifyRequest){const value=request.headers.authorization;if(typeof value!=="string")return null;const match=/^Bearer\s+(.+)$/i.exec(value.trim());return match?.[1]?.trim()||null}
 function requestSessionToken(request:FastifyRequest){return bearerToken(request)??request.cookies[SESSION_COOKIE]??null}
