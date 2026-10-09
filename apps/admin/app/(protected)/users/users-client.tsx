@@ -10,7 +10,8 @@ type U={
   reputation:{reviewCount:number;reviewAverage:number|null;completedSales:number;activeReports:number};
 };
 
-const ALL=["SUPER_ADMIN","ADMIN","MODERATOR","SUPPORT","FINANCE","COMPLIANCE","MARKETING"] as const;
+// SUPER_ADMIN is reserved for the existing owner, never assignable from this menu.
+const ALL=["ADMIN","MODERATOR","SUPPORT","FINANCE","COMPLIANCE","MARKETING"] as const;
 const ROLE_META:Record<string,{label:string;description:string}>={
  SUPER_ADMIN:{label:"Super administrateur",description:"Accès complet à tous les réglages et actions sensibles."},
  ADMIN:{label:"Administrateur",description:"Gestion globale des comptes, annonces et opérations."},
@@ -112,7 +113,7 @@ export default function UsersClient(){
          <details className="admin-popover admin-role-popover">
           <summary><span className="admin-popover-summary-icon"><AdminIcon name="shield"/></span><span>{u.roles.length? `${u.roles.length} rôle(s)`:"Aucun rôle"}</span><span className="admin-popover-chevron">⌄</span></summary>
           <div className="admin-popover-panel admin-role-panel">
-           <div className="admin-popover-title"><strong>Rôles administratifs</strong><small>{u.email}</small></div>
+           <div className="admin-popover-title"><strong>Rôles administratifs</strong><small>{u.email}</small><small>Le rôle Super administrateur est verrouillé sur le compte principal.</small></div>
            <div className="admin-role-menu-list">
             {ALL.map(role=>{const meta=ROLE_META[role]??{label:role,description:"Accès administratif."};return <label key={role} className="admin-role-menu-item">
              <span><strong>{meta.label}</strong><small>{meta.description}</small></span>

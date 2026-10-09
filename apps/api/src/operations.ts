@@ -274,18 +274,31 @@ export async function registerOperationsRoutes(app: FastifyInstance) {
     const params = z.object({ id: z.string().min(1) }).safeParse(request.params);
     const body = z.object({ roles: z.array(z.enum(["SUPER_ADMIN","ADMIN","MODERATOR","SUPPORT","FINANCE","COMPLIANCE","MARKETING"])).max(7) }).safeParse(request.body);
     if (!params.success || !body.success) return reply.code(400).send({ error: "invalid_request" });
-    const user = await prisma.user.findUnique({ where: { id: params.data.id }, select: { id: true, roles: { select: { role: true } } } });
-    if (!user || user.roles.some(entry => entry.role === "SUPER_ADMIN")) return reply.code(404).send({ error: "user_not_found" });
-    if (user.roles.some(entry => entry.role === "SUPER_ADMIN") && !body.data.roles.includes("SUPER_ADMIN")) {
-      const otherSuperAdmins = await prisma.userAdminRole.count({ where: { role: "SUPER_ADMIN", userId: { not: user.id } } });
-      if (otherSuperAdmins === 0) return reply.code(409).send({ error: "cannot_remove_last_super_admin" });
-    }
-    await prisma.$transaction(async tx => {
-      await tx.userAdminRole.deleteMany({ where: { userId: user.id } });
-      if (body.data.roles.length) await tx.userAdminRole.createMany({ data: body.data.roles.map(role => ({ userId: user.id, role })) });
+    // The owner intentionally retained the sole SUPER_ADMIN seat. Disallow
+    // accidental or compromised-session assignment of another root account.
+    if(body.data.roles.includes("SUPER_ADMIN"))return reply.code(403).send({error:"super_admin_grants_disabled"});
+    const user = await prisma.user.findUnique({ where: { id: params.data.id }, select: { id:true,status:true,email:true,roles:{select:{role:true}} } });
+    if(!user||user.status!=="ACTIVE"||user.roles.some(entry=>entry.role==="SUPER_ADMIN"))
+      return reply.code(404).send({error:"user_not_found"});
+    const previousRoles=user.roles.map(entry=>entry.role).sort();
+    const nextRoles=[...new Set(body.data.roles)].sort();
+    if(previousRoles.join(",")===nextRoles.join(","))return reply.send({updated:false,roles:nextRoles});
+    await prisma.$transaction(async tx=>{
+      await tx.userAdminRole.deleteMany({where:{userId:user.id}});
+      if(nextRoles.length)await tx.userAdminRole.createMany({data:nextRoles.map(role=>({userId:user.id,role}))});
+      // A permission change invalidates the target account's previously issued
+      // sessions, avoiding privileged access retained across role changes.
+      await tx.session.updateMany({where:{userId:user.id,revokedAt:null},data:{revokedAt:new Date()}});
     });
-    await audit(admin.id, "USER_ROLES_CHANGED", "USER", user.id, { roles: body.data.roles });
-    return reply.send({ updated: true, roles: body.data.roles });
+    await audit(admin.id,"USER_ROLES_CHANGED","USER",user.id,{previousRoles,roles:nextRoles,revokedSessions:true});
+    await queueTransactionalEmail({
+      userId:admin.id,eventKind:"ADMIN_SECURITY_ROLE_CHANGE",
+      title:"Alerte sécurité · Modification des accès administratifs",
+      body:"Les rôles administratifs de "+user.email+" ont été modifiés. Anciens rôles : "+(previousRoles.join(", ")||"aucun")+". Nouveaux rôles : "+(nextRoles.join(", ")||"aucun")+". Les sessions existantes de ce compte ont été déconnectées. Si cette action n'était pas autorisée, vérifiez immédiatement la sécurité de votre compte.",
+      actionUrl:"https://admin.petitannonces.fr/users/"+encodeURIComponent(user.id),
+      metadata:{purpose:"ADMIN_SECURITY_ROLE_CHANGE",targetUserId:user.id,previousRoles,nextRoles},
+    }).catch(error=>request.log.error({error,targetUserId:user.id},"admin_role_change_security_email_failed"));
+    return reply.send({updated:true,roles:nextRoles,sessionsRevoked:true});
   });
 
   app.get("/admin/finance/orders", async (request, reply) => {

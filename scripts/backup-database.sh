@@ -34,5 +34,13 @@ sudo -u "$APP_USER" pg_restore --list "$tmp" >/dev/null
 mv "$tmp" "$out"
 chown "$APP_USER:$APP_USER" "$out"
 chmod 600 "$out"
-find "$BACKUP_DIR" -maxdepth 1 -type f -name 'petitannonces-*.dump' ! -name "$(basename "$out")" -delete
+# Keep several recoverable points in time instead of deleting every backup
+# whenever a new one is written. At a three-hour cadence, 24 files = 72 hours.
+# These files are chmod 600; cleanup only affects older *validated* dumps.
+BACKUP_RETENTION_COUNT=24
+find "$BACKUP_DIR" -maxdepth 1 -type f -name 'petitannonces-*.dump' -printf '%T@ %p\n' |
+  sort -rn | tail -n "+$((BACKUP_RETENTION_COUNT+1))" |
+  cut -d' ' -f2- | while IFS= read -r old; do
+    [ -n "$old" ] && rm -f -- "$old"
+  done
 printf '%s\n' "$out"
