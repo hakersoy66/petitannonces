@@ -101,30 +101,46 @@ export async function registerProfessionalVerificationRoutes(app:FastifyInstance
   app.post("/admin/professionals/:id/verification/decision",async(req,reply)=>{
     const a=await admin(req,reply);if(!a)return;
     const params=idSchema.safeParse(req.params);
-    const body=z.object({decision:z.enum(["APPROVE","REJECT"]),reason:z.string().trim().min(10).max(500)}).safeParse(req.body);
+    const body=z.object({
+      decision:z.enum(["APPROVE","MANUAL_APPROVE","REJECT"]),
+      reason:z.string().trim().min(10).max(500),
+      verificationMethod:z.enum(["REGISTERED_COMPANY_PHONE","VIDEO_CALL","IN_PERSON","SIGNED_AUTHORIZATION","OTHER_INDEPENDENT"]).optional(),
+      verificationReference:z.string().trim().min(8).max(250).optional(),
+      registryConfirmed:z.boolean().optional(),
+      authorityConfirmed:z.boolean().optional(),
+    }).safeParse(req.body);
     if(!params.success||!body.success)return reply.code(400).send({error:"invalid_request"});
     const business=await prisma.businessProfile.findUnique({where:{userId:params.data.id}});
     if(!business)return reply.code(404).send({error:"business_not_found"});
     if(business.verificationStatus==="SUSPENDED")return reply.code(409).send({error:"account_suspended"});
     const rows=await documents(params.data.id);
-    if(body.data.decision==="APPROVE"){
-      if(!rows.some(d=>d.kind==="REGISTRY")||!rows.some(d=>d.kind==="AUTHORITY"))
-        return reply.code(409).send({error:"required_documents_missing"});
-      const roles=new Set(rows.map(d=>d.applicantRole));
-      const names=new Set(rows.map(d=>d.applicantName.trim().toLocaleLowerCase("fr-FR")));
-      if(roles.size!==1||names.size!==1)return reply.code(409).send({error:"applicant_identity_mismatch"});
+    const manual=body.data.decision==="MANUAL_APPROVE";
+    const approved=body.data.decision!=="REJECT";
+    if(manual && (
+      !body.data.registryConfirmed || !body.data.authorityConfirmed ||
+      !body.data.verificationMethod || !body.data.verificationReference ||
+      body.data.reason.length<20
+    ))return reply.code(400).send({error:"manual_verification_details_required"});
+    if(approved){
+      if(!manual){
+        if(!rows.some(d=>d.kind==="REGISTRY")||!rows.some(d=>d.kind==="AUTHORITY"))
+          return reply.code(409).send({error:"required_documents_missing"});
+        const roles=new Set(rows.map(d=>d.applicantRole));
+        const names=new Set(rows.map(d=>d.applicantName.trim().toLocaleLowerCase("fr-FR")));
+        if(roles.size!==1||names.size!==1)return reply.code(409).send({error:"applicant_identity_mismatch"});
+      }
       let current;
       try{current=await lookupPublicCompany(business.siret??business.siren??"");}catch{return reply.code(502).send({error:"registry_unavailable"});}
-      if(!current||current.active===false||current.siren!==(business.siren??business.siret?.slice(0,9)))
+      if(!current||current.active===false||current.siren!==(business.siren??business.siret?.slice(0,9))||
+        (business.siret!=null&&current.siret!==business.siret))
         return reply.code(409).send({error:"registry_check_failed"});
     }
-    const approved=body.data.decision==="APPROVE";
     await prisma.$transaction(async tx=>{
       await tx.businessProfile.update({where:{id:business.id},data:{verificationStatus:approved?"VERIFIED":"REJECTED",verifiedAt:approved?new Date():null,verificationProvider:approved?"manual_authority_and_registry":business.verificationProvider,lastRegistryCheckAt:approved?new Date():business.lastRegistryCheckAt}});
       if(approved){await tx.store.updateMany({where:{ownerId:params.data.id,status:"DRAFT"},data:{status:"ACTIVE",isVerified:true,publishedAt:new Date()}});await tx.store.updateMany({where:{ownerId:params.data.id,status:"ACTIVE"},data:{isVerified:true}});}
       else await tx.store.updateMany({where:{ownerId:params.data.id,status:"ACTIVE"},data:{status:"SUSPENDED",isVerified:false}});
       await tx.$executeRawUnsafe('UPDATE "ProReverification" SET "status"=$2,"completedAt"=CURRENT_TIMESTAMP,"updatedAt"=CURRENT_TIMESTAMP WHERE "userId"=$1',params.data.id,approved?"APPROVED":"REJECTED");
-      await tx.$executeRawUnsafe('INSERT INTO "AdminAuditEvent" ("id","actorUserId","action","entityType","entityId","metadata") VALUES ($1,$2,$3,$4,$5,$6::jsonb)',randomUUID(),a.id,approved?"PRO_BUSINESS_APPROVED":"PRO_BUSINESS_REJECTED","USER",params.data.id,JSON.stringify({reason:body.data.reason,documentIds:rows.map(r=>r.id),previousStatus:business.verificationStatus}));
+      await tx.$executeRawUnsafe('INSERT INTO "AdminAuditEvent" ("id","actorUserId","action","entityType","entityId","metadata") VALUES ($1,$2,$3,$4,$5,$6::jsonb)',randomUUID(),a.id,manual?"PRO_BUSINESS_MANUALLY_APPROVED":approved?"PRO_BUSINESS_APPROVED":"PRO_BUSINESS_REJECTED","USER",params.data.id,JSON.stringify({reason:body.data.reason,documentIds:rows.map(r=>r.id),previousStatus:business.verificationStatus,manual,verificationMethod:manual?body.data.verificationMethod:null,verificationReference:manual?body.data.verificationReference:null,registryConfirmed:manual?body.data.registryConfirmed:null,authorityConfirmed:manual?body.data.authorityConfirmed:null}));
     });
     // Identity evidence is short lived: remove bytes after decision. Audit metadata remains.
     for(const doc of rows)await removeSensitiveEvidence(doc.objectKey).catch(err=>req.log.error(err));
