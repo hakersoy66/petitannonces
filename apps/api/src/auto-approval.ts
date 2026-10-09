@@ -68,7 +68,7 @@ async function adminId(request:any){
 export async function evaluateAutoApprovalEligibility(sellerId:string,settings?:AutoApprovalSettings){
   const cfg=settings??await getAutoApprovalSettings();
   if(!cfg.enabled)return{eligible:false as const,reason:"disabled"};
-  const [rep,risk,user,openCase,history,activeHold,activeReports]=await Promise.all([
+  const [rep,risk,user,openCase,history,activeHold,activeReports,professionalDocumentsVerified]=await Promise.all([
     getUserReputation(sellerId),
     getUserRiskPolicy(sellerId),
     prisma.user.findUnique({where:{id:sellerId},select:{status:true,emailVerifiedAt:true,createdAt:true}}),
@@ -81,6 +81,18 @@ export async function evaluateAutoApprovalEligibility(sellerId:string,settings?:
       WHERE l."sellerId"=$1`,sellerId,HISTORY_VIOLATION_DAYS),
     prisma.$queryRawUnsafe<Array<{id:string}>>(`SELECT "id" FROM "ListingSpamHold" WHERE "userId"=$1 AND "status" IN ('PENDING','REJECTED') AND "updatedAt">=CURRENT_TIMESTAMP-INTERVAL '180 days' LIMIT 1`,sellerId),
     prisma.$queryRawUnsafe<Array<{id:string}>>(`SELECT tr."id" FROM "TrustReport" tr LEFT JOIN "Listing" l ON tr."targetType"='LISTING' AND l."id"=tr."targetId" WHERE tr."status" NOT IN ('DISMISSED','CLOSED') AND ((tr."targetType"='USER' AND tr."targetId"=$1) OR l."sellerId"=$1) LIMIT 1`,sellerId),
+    // Only admin approval with uploaded Kbis/RNE and representative evidence qualifies.
+    // Independent manual approvals and unreviewed SIRET checks are excluded.
+    prisma.$queryRawUnsafe<Array<{eligible:boolean}>>(`
+      SELECT EXISTS (
+        SELECT 1 FROM "BusinessProfile" b
+        JOIN "User" pro ON pro."id"=b."userId" AND pro."kind"='PROFESSIONNEL'
+        WHERE b."userId"=$1 AND b."verificationStatus"='VERIFIED'
+          AND (SELECT e."action" FROM "AdminAuditEvent" e
+               WHERE e."entityType"='USER' AND e."entityId"=$1
+                 AND e."action" IN ('PRO_BUSINESS_APPROVED','PRO_BUSINESS_MANUALLY_APPROVED','PRO_BUSINESS_REJECTED')
+               ORDER BY e."createdAt" DESC, e."id" DESC LIMIT 1)='PRO_BUSINESS_APPROVED'
+      ) AS eligible`,sellerId),
   ]);
   if(!user||user.status!=="ACTIVE")return{eligible:false as const,reason:"account_not_active"};
   if(!rep)return{eligible:false as const,reason:"reputation_unavailable"};
@@ -88,16 +100,19 @@ export async function evaluateAutoApprovalEligibility(sellerId:string,settings?:
   const manualApprovals=history[0]?.approved??0;
   const trustScore=Math.max(rep.trust.score,listingHistoryTrustScore(manualApprovals,ageDays));
   const base={trustScore,riskScore:risk.score,phoneVerified:Boolean(rep.metrics.phoneVerified),manualApprovals};
-  if(cfg.requireEmailVerified&&!user.emailVerifiedAt)return{eligible:false as const,reason:"email_not_verified",...base};
-  if(!base.phoneVerified)return{eligible:false as const,reason:"phone_not_verified",...base};
-  if(ageDays<7)return{eligible:false as const,reason:"account_too_recent",...base};
-  if(manualApprovals<MIN_CLEAN_MANUAL_APPROVALS)return{eligible:false as const,reason:"insufficient_manually_approved_history",...base};
+  const verifiedProWithDocuments=professionalDocumentsVerified[0]?.eligible===true;
+  if((cfg.requireEmailVerified||verifiedProWithDocuments)&&!user.emailVerifiedAt)return{eligible:false as const,reason:"email_not_verified",...base};
+  // Verified documentary identity replaces the tenure, phone and 3-manual-ads prerequisites.
+  // Keep email verification, abuse history, low-risk scoring and moderation checks.
+  if(!verifiedProWithDocuments&&!base.phoneVerified)return{eligible:false as const,reason:"phone_not_verified",...base};
+  if(!verifiedProWithDocuments&&ageDays<7)return{eligible:false as const,reason:"account_too_recent",...base};
+  if(!verifiedProWithDocuments&&manualApprovals<MIN_CLEAN_MANUAL_APPROVALS)return{eligible:false as const,reason:"insufficient_manually_approved_history",...base};
   if((history[0]?.violations??0)>0||activeHold.length||activeReports.length)return{eligible:false as const,reason:"moderation_history_or_report",...base};
   if(risk.level!=="LOW"||risk.reviewRequired||risk.commerceReviewRequired||risk.messagingRestricted||risk.offerRestricted||risk.score>cfg.maxRiskScore)return{eligible:false as const,reason:"risk_review_required",...base};
   if(openCase.length)return{eligible:false as const,reason:"open_user_moderation_case",...base};
-  if(cfg.requireReliableSeller&&!(rep.trust.reliableSeller||manualApprovals>=MIN_CLEAN_MANUAL_APPROVALS))return{eligible:false as const,reason:"not_reliable",...base};
-  if(trustScore<cfg.minTrustScore)return{eligible:false as const,reason:"trust_score_below_threshold",...base};
-  return{eligible:true as const,reason:"trusted_clean_listing_history",...base};
+  if(!verifiedProWithDocuments&&cfg.requireReliableSeller&&!(rep.trust.reliableSeller||manualApprovals>=MIN_CLEAN_MANUAL_APPROVALS))return{eligible:false as const,reason:"not_reliable",...base};
+  if(!verifiedProWithDocuments&&trustScore<cfg.minTrustScore)return{eligible:false as const,reason:"trust_score_below_threshold",...base};
+  return{eligible:true as const,reason:verifiedProWithDocuments?"professional_documents_verified":"trusted_clean_listing_history",...base};
 }
 
 export async function scheduleTrustedListingAutoApproval(listingId:string,sellerId:string){
@@ -105,7 +120,8 @@ export async function scheduleTrustedListingAutoApproval(listingId:string,seller
   const cfg=await getAutoApprovalSettings();
   const eligibility=await evaluateAutoApprovalEligibility(sellerId,cfg);
   if(!eligibility.eligible)return{scheduled:false as const,...eligibility};
-  const delaySeconds=cfg.minDelaySeconds===cfg.maxDelaySeconds?cfg.minDelaySeconds:randomInt(cfg.minDelaySeconds,cfg.maxDelaySeconds+1);
+  const delaySeconds=eligibility.reason==="professional_documents_verified"?60:
+    cfg.minDelaySeconds===cfg.maxDelaySeconds?cfg.minDelaySeconds:randomInt(cfg.minDelaySeconds,cfg.maxDelaySeconds+1);
   // Use the database clock for both scheduling and worker comparisons. The app host
   // and PostgreSQL may have different timezone/clock configuration; mixing clocks
   // can make a future approval look immediately due.
@@ -153,8 +169,11 @@ async function approveOne(listingId:string){
   const changed=await prisma.$transaction(async tx=>{
     const u=await tx.listing.updateMany({where:{id:listing.id,status:"PENDING"},data:{status:"PUBLISHED",publishedAt}});
     if(!u.count)return false;
-    const approvalReason="AUTO_APPROVED_TRUSTED";
-    const approvalStatement="Annonce approuvée après délai de sécurité : contacts vérifiés, trois annonces validées manuellement, score de confiance suffisant et contrôles anti-fraude réussis.";
+    const professionalDocumentPath=eligibility.reason==="professional_documents_verified";
+    const approvalReason=professionalDocumentPath?"AUTO_APPROVED_VERIFIED_PRO":"AUTO_APPROVED_TRUSTED";
+    const approvalStatement=professionalDocumentPath
+      ?"Annonce professionnelle publiée après 60 secondes : entreprise et représentant vérifiés sur justificatifs par un administrateur ; contrôles de contenu, modération, fraude et images réussis."
+      :"Annonce approuvée après délai de sécurité : contacts vérifiés, trois annonces validées manuellement, score de confiance suffisant et contrôles anti-fraude réussis.";
     const caseUpdated=await tx.$executeRawUnsafe(`UPDATE "ModerationCase" SET "status"='RESOLVED',"automatedDecision"=TRUE,"decisionAction"='NONE'::"ModerationActionType","decisionReasonCode"=$2,"decisionStatement"=$3,"decidedAt"=CURRENT_TIMESTAMP,"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$1 AND "status"='OPEN' AND "riskScore"<=$4`,c.id,approvalReason,approvalStatement,cfg.maxRiskScore);
     if(caseUpdated!==1)throw new Error("moderation_case_changed_before_auto_approval");
     await tx.$executeRawUnsafe(`UPDATE "ListingAutoApprovalQueue" SET "status"='APPROVED',"reason"=$2,"processedAt"=CURRENT_TIMESTAMP,"updatedAt"=CURRENT_TIMESTAMP WHERE "listingId"=$1`,listing.id,"auto_approved_trusted");
