@@ -3,7 +3,9 @@ import { prisma } from "@pa/database";
 import type { FastifyReply, FastifyRequest } from "fastify";
 
 function sha256(value:string){return createHash("sha256").update(value).digest("hex")}
-function clientIp(request:FastifyRequest){const forwarded=request.headers["x-forwarded-for"];const first=Array.isArray(forwarded)?forwarded[0]:forwarded?.split(",")[0];return (first?.trim()||request.ip||"unknown").slice(0,120)}
+// Fastify resolves request.ip using ONLY the trusted local Nginx hop.
+// Do not read X-Forwarded-For directly: its leftmost address is client-controlled.
+function clientIp(request:FastifyRequest){return (request.ip||"unknown").slice(0,120)}
 
 export async function enforceAuthRateLimit(args:{request:FastifyRequest;reply:FastifyReply;action:string;identity?:string;limit:number;windowMs:number;blockMs?:number}){
   const keyHash=sha256(`${clientIp(args.request)}|${(args.identity??"").trim().toLowerCase()}`);

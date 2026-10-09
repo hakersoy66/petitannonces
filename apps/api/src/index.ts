@@ -103,7 +103,13 @@ import { ensureVacationStayOperationsSchema, registerVacationStayOperationsRoute
 import { ensureVacationStayLifecycleSchema, registerVacationStayLifecycleRoutes } from "./vacation-stay-lifecycle.js";
 import { ensureVacationTaxSchema, registerVacationTaxRoutes } from "./vacation-tax.js";
 
-const app = Fastify({ logger: true, trustProxy: true, bodyLimit: 1024 * 1024 });
+// The public reverse proxy is the local Nginx process. Never trust arbitrary
+// client-supplied X-Forwarded-For chains as authenticated client identities.
+const app = Fastify({
+  logger: true,
+  trustProxy: (address: string) => address === "127.0.0.1" || address === "::1",
+  bodyLimit: 1024 * 1024,
+});
 await app.register(cookie);
 await app.register(rawBody,{field:"rawBody",global:false,encoding:"utf8",runFirst:true});
 

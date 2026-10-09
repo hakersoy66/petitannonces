@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { hash } from "@node-rs/argon2";
 import { prisma } from "@pa/database";
+import { enforceAuthRateLimit } from "./auth-rate-limit.js";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 
@@ -39,6 +40,7 @@ export async function registerSecurityRoutes(app: FastifyInstance) {
   app.post("/auth/password/forgot", async (request, reply) => {
     const parsed = z.object({ email: z.string().trim().toLowerCase().email() }).safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: "invalid_request" });
+    if(!await enforceAuthRateLimit({request,reply,action:"FORGOT_PASSWORD_LEGACY",identity:parsed.data.email,limit:3,windowMs:15*60*1000,blockMs:15*60*1000}))return;
 
     const user = await prisma.user.findUnique({ where: { email: parsed.data.email } });
     if (!user) return reply.send({ accepted: true });
@@ -61,6 +63,7 @@ export async function registerSecurityRoutes(app: FastifyInstance) {
   app.post("/auth/password/reset", async (request, reply) => {
     const parsed = z.object({ token: z.string().min(20), password: z.string().min(10).max(128) }).safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: "invalid_request" });
+    if(!await enforceAuthRateLimit({request,reply,action:"RESET_PASSWORD_LEGACY",limit:10,windowMs:15*60*1000,blockMs:15*60*1000}))return;
 
     const record = await prisma.passwordResetToken.findUnique({ where: { tokenHash: sha256(parsed.data.token) } });
     if (!record || record.usedAt || record.expiresAt <= new Date()) {
