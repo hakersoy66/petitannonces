@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import type { FastifyReply } from 'fastify';
 const BASE='/var/www/petitannonces/shared/private/sensitive-evidence';
 function securePath(key:string){
- if(!/^private\/(?:disputes|vacation-incidents)\/[a-zA-Z0-9_-]{5,100}\/[a-f0-9-]{36}\.(?:jpg|jpeg|png|webp|pdf)$/.test(key))throw new Error('invalid_private_evidence_key');
+ if(!/^private\/(?:disputes|vacation-incidents|pro-business)\/[a-zA-Z0-9_-]{5,100}\/[a-f0-9-]{36}\.(?:jpg|jpeg|png|webp|pdf)$/.test(key))throw new Error('invalid_private_evidence_key');
  const file=resolve(BASE,key);
  if(!file.startsWith(BASE+'/'))throw new Error('invalid_private_evidence_key');return file;
 }

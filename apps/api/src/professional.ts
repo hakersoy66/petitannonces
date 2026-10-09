@@ -131,8 +131,8 @@ export async function registerProfessionalRoutes(app: FastifyInstance) {
     const parsed=z.object({identifier:z.string().trim().min(9).max(20)}).safeParse(request.body);if(!parsed.success)return reply.code(400).send({error:"invalid_identifier"});
     const identifier=onlyDigits(parsed.data.identifier);if(![9,14].includes(identifier.length))return reply.code(400).send({error:"invalid_identifier"});
     let company;try{company=await lookupPublicCompany(identifier)}catch{return reply.code(502).send({error:"registry_unavailable"})}if(!company)return reply.code(404).send({error:"company_not_found"});if(company.active===false)return reply.code(409).send({error:"company_inactive"});
-    const business=await prisma.$transaction(async tx=>{await tx.user.update({where:{id:user.id},data:{kind:"PROFESSIONNEL"}});const b=await tx.businessProfile.upsert({where:{userId:user.id},create:{userId:user.id,legalName:company.legalName,tradeName:company.tradeName??undefined,siren:company.siren,siret:company.siret??undefined,nafCode:company.nafCode??undefined,legalForm:company.legalFormCode??undefined,headquartersAddress:company.headquartersAddress??undefined,headquartersPostalCode:company.headquartersPostalCode??undefined,headquartersCity:company.headquartersCity??undefined,verificationStatus:"VERIFIED",verificationProvider:company.source,verificationReference:company.reference,verifiedAt:new Date(),lastRegistryCheckAt:new Date()},update:{legalName:company.legalName,tradeName:company.tradeName??undefined,siren:company.siren,siret:company.siret??undefined,nafCode:company.nafCode??undefined,legalForm:company.legalFormCode??undefined,headquartersAddress:company.headquartersAddress??undefined,headquartersPostalCode:company.headquartersPostalCode??undefined,headquartersCity:company.headquartersCity??undefined,verificationStatus:"VERIFIED",verificationProvider:company.source,verificationReference:company.reference,verifiedAt:new Date(),lastRegistryCheckAt:new Date()}});await tx.store.updateMany({where:{ownerId:user.id,status:"DRAFT"},data:{status:"ACTIVE",isVerified:true,publishedAt:new Date()}});return b});
-    return reply.send({business,company,verified:true});
+    const business=await prisma.$transaction(async tx=>{await tx.user.update({where:{id:user.id},data:{kind:"PROFESSIONNEL"}});const b=await tx.businessProfile.upsert({where:{userId:user.id},create:{userId:user.id,legalName:company.legalName,tradeName:company.tradeName??undefined,siren:company.siren,siret:company.siret??undefined,nafCode:company.nafCode??undefined,legalForm:company.legalFormCode??undefined,headquartersAddress:company.headquartersAddress??undefined,headquartersPostalCode:company.headquartersPostalCode??undefined,headquartersCity:company.headquartersCity??undefined,verificationStatus:"PENDING",verificationProvider:company.source,verificationReference:company.reference,verifiedAt:null,lastRegistryCheckAt:new Date()},update:{legalName:company.legalName,tradeName:company.tradeName??undefined,siren:company.siren,siret:company.siret??undefined,nafCode:company.nafCode??undefined,legalForm:company.legalFormCode??undefined,headquartersAddress:company.headquartersAddress??undefined,headquartersPostalCode:company.headquartersPostalCode??undefined,headquartersCity:company.headquartersCity??undefined,verificationStatus:"PENDING",verificationProvider:company.source,verificationReference:company.reference,verifiedAt:null,lastRegistryCheckAt:new Date()}});return b});
+    return reply.send({business,company,verified:false,registryValid:true,documentsRequired:true});
   });
 
   app.get("/pro/plans", async (_request, reply) => {
@@ -174,15 +174,15 @@ export async function registerProfessionalRoutes(app: FastifyInstance) {
     const updated = await prisma.businessProfile.update({
       where: { id: business.id },
       data: {
-        verificationStatus: verified ? "VERIFIED" : "PENDING",
+        verificationStatus: "PENDING",
         verificationProvider: registry ? String((registry as any).source ?? "registry_adapter") : null,
         verificationReference: registry && typeof (registry as any).reference === "string" ? String((registry as any).reference) : null,
-        verifiedAt: verified ? new Date() : null,
+        verifiedAt: null,
         lastRegistryCheckAt: new Date(),
       },
     });
-    if(verified) await prisma.store.updateMany({where:{ownerId:user.id,status:"DRAFT"},data:{status:"ACTIVE",isVerified:true,publishedAt:new Date()}});
-    return reply.send({ business: updated, registryConfigured: true });
+
+    return reply.send({ business: updated, registryConfigured: true, registryValid: verified, documentsRequired: true });
   });
 
   app.get("/pro/me", async (request, reply) => {
@@ -411,6 +411,8 @@ export async function registerProfessionalRoutes(app: FastifyInstance) {
   app.post("/pro/listings/bulk", async (request, reply) => {
     const auth=await requireProfessionalContext(request,reply,"LISTINGS"); if(!auth)return;
     const ownerId=auth.ctx.ownerUserId;
+    const ownerBusiness=await prisma.businessProfile.findUnique({where:{userId:ownerId},select:{verificationStatus:true}});
+    if(ownerBusiness?.verificationStatus!=="VERIFIED")return reply.code(403).send({error:"professional_verification_required"});
     const body = z.object({
       listingIds: z.array(z.string().min(1)).min(1).max(100).transform(ids => [...new Set(ids)]),
       action: z.enum(["PAUSE","RESUME","SOLD","ATTACH_STORE","DETACH_STORE","SET_PRICE","EXTEND_30"]),

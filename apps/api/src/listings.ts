@@ -587,6 +587,10 @@ export async function registerListingRoutes(app: FastifyInstance) {
 
   app.post("/listings/:id/submit", async (request, reply) => {
     const user = await requireListingUser(request, reply); if (!user) return;
+    if (user.kind === "PROFESSIONNEL") {
+      const company = await prisma.businessProfile.findUnique({where:{userId:user.id},select:{verificationStatus:true}});
+      if (company?.verificationStatus !== "VERIFIED") return reply.code(403).send({error:"professional_verification_required",verificationUrl:"/espace-pro/entreprise"});
+    }
     const params = idParams.safeParse(request.params); if (!params.success) return reply.code(400).send({ error: "invalid_request" });
     const listing = await prisma.listing.findFirst({ where: { id: params.data.id, sellerId: user.id, status: "DRAFT" }, include: { category: { include: { attributes: { where: { required: true } } } }, attributes: true, vehicle: true, property: true, energy: true } });
     if (!listing) return reply.code(404).send({ error: "draft_not_found" });
