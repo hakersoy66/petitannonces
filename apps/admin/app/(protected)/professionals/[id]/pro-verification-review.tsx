@@ -9,6 +9,8 @@ export default function ProVerificationReview({userId}:{userId:string}){
  const [approvedCheck,setApprovedCheck]=useState(false);
  const [manualMethod,setManualMethod]=useState("REGISTERED_COMPANY_PHONE");
  const [manualReference,setManualReference]=useState("");
+ const [manualReason,setManualReason]=useState("");
+ const [manualMessage,setManualMessage]=useState("");
  const [registryConfirmed,setRegistryConfirmed]=useState(false);
  const [authorityConfirmed,setAuthorityConfirmed]=useState(false);
  const [working,setWorking]=useState(false);
@@ -19,18 +21,32 @@ export default function ProVerificationReview({userId}:{userId:string}){
  }
  useEffect(()=>{void refresh()},[userId]);
  async function decision(value:"APPROVE"|"MANUAL_APPROVE"|"REJECT"){
-  if(reason.trim().length<(value==="MANUAL_APPROVE"?20:10)){setMessage("Veuillez motiver la décision de façon précise.");return}
+  const explanation=value==="MANUAL_APPROVE"?manualReason.trim():reason.trim();
+  if(explanation.length<(value==="MANUAL_APPROVE"?20:10)){
+   const feedback=value==="MANUAL_APPROVE"?"Renseignez le motif de validation manuelle (au moins 20 caractères).":"Veuillez motiver la décision (au moins 10 caractères).";
+   if(value==="MANUAL_APPROVE")setManualMessage(feedback);else setMessage(feedback);
+   return;
+  }
   if(value==="APPROVE"&&!approvedCheck){setMessage("Confirmez le contrôle de l’identité et de l’autorisation.");return}
   if(value==="MANUAL_APPROVE"&&(!registryConfirmed||!authorityConfirmed||manualReference.trim().length<8)){
-   setMessage("Pour valider manuellement : contrôlez le registre, confirmez le pouvoir de représentation et renseignez une référence de contrôle.");return;
+   setManualMessage("Vérifiez les deux cases et indiquez la référence du contrôle (au moins 8 caractères).");return;
   }
-  setWorking(true);setMessage("");
+  setWorking(true);setMessage("");setManualMessage("");
   try{
-   const r=await fetch("/api/admin/professionals/"+encodeURIComponent(userId)+"/verification/decision",{method:"POST",credentials:"include",headers:{"content-type":"application/json"},body:JSON.stringify({decision:value,reason,verificationMethod:value==="MANUAL_APPROVE"?manualMethod:undefined,verificationReference:value==="MANUAL_APPROVE"?manualReference.trim():undefined,registryConfirmed:value==="MANUAL_APPROVE"?registryConfirmed:undefined,authorityConfirmed:value==="MANUAL_APPROVE"?authorityConfirmed:undefined})});
+   const r=await fetch("/api/admin/professionals/"+encodeURIComponent(userId)+"/verification/decision",{method:"POST",credentials:"include",headers:{"content-type":"application/json"},body:JSON.stringify({decision:value,reason:explanation,verificationMethod:value==="MANUAL_APPROVE"?manualMethod:undefined,verificationReference:value==="MANUAL_APPROVE"?manualReference.trim():undefined,registryConfirmed:value==="MANUAL_APPROVE"?registryConfirmed:undefined,authorityConfirmed:value==="MANUAL_APPROVE"?authorityConfirmed:undefined})});
    const body=await r.json().catch(()=>({}));
-   setMessage(r.ok?"Décision enregistrée.":body.error??"Erreur");
-   if(r.ok){setApprovedCheck(false);setRegistryConfirmed(false);setAuthorityConfirmed(false);setManualReference("");setReason("");await refresh()}
-  }catch{setMessage("Erreur réseau")}
+   const errors:Record<string,string>={
+    registry_unavailable:"Le registre public est indisponible. Réessayez dans quelques instants.",
+    registry_check_failed:"Le SIRET ou le statut de l’entreprise ne correspond pas aux données officielles. Contrôlez la fiche entreprise.",
+    manual_verification_details_required:"Les justificatifs du contrôle manuel sont incomplets.",
+    unauthorized:"Votre session a expiré. Reconnectez-vous.",
+    forbidden:"Vous ne disposez pas de la permission nécessaire.",
+    account_suspended:"Ce compte est suspendu. Contactez un administrateur principal."
+   };
+   const feedback=r.ok?"Compte professionnel vérifié avec succès.":errors[body.error]??"La validation a échoué ("+(body.error??"erreur inconnue")+").";
+   if(value==="MANUAL_APPROVE")setManualMessage(feedback);else setMessage(feedback);
+   if(r.ok){setApprovedCheck(false);setRegistryConfirmed(false);setAuthorityConfirmed(false);setManualReference("");setManualReason("");setReason("");await refresh()}
+  }catch{if(value==="MANUAL_APPROVE")setManualMessage("Connexion impossible. Veuillez réessayer.");else setMessage("Erreur réseau")}
   finally{setWorking(false)}
  }
  if(!data)return null;
@@ -78,7 +94,13 @@ export default function ProVerificationReview({userId}:{userId:string}){
        <input type="checkbox" checked={authorityConfirmed} onChange={e=>setAuthorityConfirmed(e.target.checked)} />
        J’ai personnellement confirmé que ce demandeur est autorisé à représenter l’entreprise par une source indépendante.
      </label>
-     <button type="button" className="admin-btn primary" disabled={working||!registryConfirmed||!authorityConfirmed||manualReference.trim().length<8||reason.trim().length<20} onClick={()=>void decision("MANUAL_APPROVE")}>Valider manuellement le compte professionnel</button>
+     <label>Motif détaillé de la validation manuelle
+       <textarea value={manualReason} onChange={e=>{setManualReason(e.target.value);setManualMessage("");}} rows={3} maxLength={500} placeholder="Expliquez les éléments vérifiés, la relation entre le demandeur et l’entreprise, et le résultat du contrôle (20 caractères minimum)." style={{width:"100%",padding:10,border:"1px solid #c7c7d2",borderRadius:8}} />
+     </label>
+     <button type="button" className="admin-btn primary" aria-busy={working} disabled={working} onClick={()=>void decision("MANUAL_APPROVE")}>{working?"Vérification en cours…":"Valider manuellement le compte professionnel"}</button>
+     {manualMessage&&<p role="status" aria-live="polite" style={{fontSize:14,fontWeight:700,margin:0,padding:"10px 12px",borderRadius:8,background:"#f3f0ff",overflowWrap:"anywhere"}}>{manualMessage}</p>}
+     {(!registryConfirmed||!authorityConfirmed||manualReference.trim().length<8||manualReason.trim().length<20)&&
+       <p style={{fontSize:12,margin:0,color:"#695a75"}}>Pour valider : référence du contrôle (8 caractères), justification (20 caractères), vérification SIRET et habilitation confirmées.</p>}
    </div>
  </details>
  </div>}
