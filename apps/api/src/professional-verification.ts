@@ -48,7 +48,12 @@ export async function registerProfessionalVerificationRoutes(app:FastifyInstance
   app.get("/pro/business/verification",async(req,reply)=>{
     const u=await sessionUser(req,reply);if(!u)return;
     const b=await prisma.businessProfile.findUnique({where:{userId:u.id},select:{verificationStatus:true,legalName:true,siret:true,siren:true}});
-    return reply.send({business:b,documents:(await documents(u.id)).map(publicDoc),requirements:["REGISTRY","AUTHORITY"],reverification:await getProReverificationState(u.id)});
+    const rejection=b?.verificationStatus==="REJECTED" ?
+      await prisma.$queryRawUnsafe<Array<{reason:string;createdAt:Date;correctionKinds:string[]}>>(
+       'SELECT "metadata"->>\'reason\' AS "reason", "metadata"->\'correctionKinds\' AS "correctionKinds", "createdAt" FROM "AdminAuditEvent" WHERE "entityType"=$1 AND "entityId"=$2 AND "action"=$3 ORDER BY "createdAt" DESC LIMIT 1',
+       "USER",u.id,"PRO_BUSINESS_REJECTED").catch(()=>[]) : [];
+    return reply.send({business:b,documents:(await documents(u.id)).map(publicDoc),requirements:["REGISTRY","AUTHORITY"],reverification:await getProReverificationState(u.id),
+      rejection:rejection[0]?.reason?{reason:rejection[0].reason,date:rejection[0].createdAt,correctionKinds:rejection[0].correctionKinds??["REGISTRY","AUTHORITY"]}:null});
   });
 
   app.post("/pro/business/verification/documents",{bodyLimit:MAX_BYTES},async(req,reply)=>{
@@ -82,7 +87,34 @@ export async function registerProfessionalVerificationRoutes(app:FastifyInstance
       await prisma.$executeRawUnsafe('INSERT INTO "ProVerificationDocument" ("id","userId","kind","objectKey","mimeType","fileName","applicantRole","applicantName") VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',id,u.id,fields.data.kind,objectKey,fields.data.mime,fields.data.kind.toLowerCase()+"-"+id.slice(0,8)+"."+ext,fields.data.role,fields.data.name);
       await prisma.businessProfile.update({where:{userId:u.id},data:{verificationStatus:"PENDING",verifiedAt:null}});
     }catch(err){await removeSensitiveEvidence(objectKey).catch(()=>undefined);req.log.error(err);return reply.code(500).send({error:"document_upload_failed"});}
-    return reply.code(201).send({uploaded:true,documents:(await documents(u.id)).map(publicDoc),status:"PENDING"});
+    const submitted=await documents(u.id);
+    // Notify super admins only once the applicant has supplied BOTH required documents.
+    if(submitted.some(d=>d.kind==="REGISTRY")&&submitted.some(d=>d.kind==="AUTHORITY")){
+      try{
+        const superadmins=await prisma.user.findMany({where:{status:"ACTIVE",roles:{some:{role:"SUPER_ADMIN"}}},select:{id:true},take:12});
+        const lastDoc=[...submitted].sort((a,b)=>b.createdAt.getTime()-a.createdAt.getTime()||b.id.localeCompare(a.id))[0];
+        const dedupeKey="pro-verification-documents:"+u.id+":"+(lastDoc?.id??id);
+        const actionUrl="https://admin.petitannonces.fr/professionals/"+encodeURIComponent(u.id);
+        const title="Nouveau dossier Pro à vérifier";
+        const body="Un professionnel a envoyé son Kbis/RNE et son justificatif d’identité ou de mandat. Le dossier est complet et attend votre examen dans l’administration.";
+        const metadata=JSON.stringify({purpose:"PRO_DOCUMENTS_READY",professionalId:u.id,transactional:true});
+        const payload=JSON.stringify({title,body,actionUrl,metadata:{purpose:"PRO_DOCUMENTS_READY",professionalId:u.id,transactional:true}});
+        for(const recipient of superadmins){
+          await prisma.$transaction(async tx=>{
+            const notificationId=randomUUID();
+            await tx.$executeRawUnsafe(
+              'INSERT INTO "UserNotification" ("id","userId","kind","title","body","actionUrl","metadata","dedupeKey") VALUES ($1,$2,$3::"NotificationKind",$4,$5,$6,$7::jsonb,$8) ON CONFLICT ("userId","dedupeKey") WHERE "dedupeKey" IS NOT NULL DO NOTHING',
+              notificationId,recipient.id,"SYSTEM",title,body,actionUrl,metadata,dedupeKey);
+            const notification=await tx.$queryRawUnsafe<Array<{id:string}>>(
+              'SELECT "id" FROM "UserNotification" WHERE "userId"=$1 AND "dedupeKey"=$2 LIMIT 1',recipient.id,dedupeKey);
+            await tx.$executeRawUnsafe(
+              'INSERT INTO "NotificationDeliveryOutbox" ("id","userId","notificationId","eventKind","channel","payload","dedupeKey") VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7) ON CONFLICT ("userId","channel","dedupeKey") WHERE "dedupeKey" IS NOT NULL DO NOTHING',
+              randomUUID(),recipient.id,notification[0]?.id??null,"PRO_DOCUMENTS_READY","EMAIL",payload,dedupeKey);
+          });
+        }
+      }catch(err){req.log.error({err,userId:u.id},"pro_documents_admin_notification_failed");}
+    }
+    return reply.code(201).send({uploaded:true,documents:submitted.map(publicDoc),status:"PENDING"});
   });
 
   app.get("/admin/professionals/:id/verification",async(req,reply)=>{
@@ -109,6 +141,7 @@ export async function registerProfessionalVerificationRoutes(app:FastifyInstance
     const body=z.object({
       decision:z.enum(["APPROVE","MANUAL_APPROVE","REJECT"]),
       reason:z.string().trim().min(10).max(500),
+      correctionKinds:z.array(z.enum(["REGISTRY","AUTHORITY"])).min(1).max(2).optional(),
       verificationMethod:z.enum(["REGISTERED_COMPANY_PHONE","VIDEO_CALL","IN_PERSON","SIGNED_AUTHORIZATION","OTHER_INDEPENDENT"]).optional(),
       verificationReference:z.string().trim().min(8).max(250).optional(),
       registryConfirmed:z.boolean().optional(),
@@ -121,6 +154,7 @@ export async function registerProfessionalVerificationRoutes(app:FastifyInstance
     const rows=await documents(params.data.id);
     const manual=body.data.decision==="MANUAL_APPROVE";
     const approved=body.data.decision!=="REJECT";
+    const correctionKinds:string[]=body.data.correctionKinds??["REGISTRY","AUTHORITY"];
     // Avoid sending duplicate decision notices if the same decision is submitted again.
     if(approved&&business.verificationStatus==="VERIFIED")return reply.send({ok:true,status:"VERIFIED",alreadyDecided:true});
     if(!approved&&business.verificationStatus==="REJECTED")return reply.send({ok:true,status:"REJECTED",alreadyDecided:true});
@@ -164,9 +198,9 @@ export async function registerProfessionalVerificationRoutes(app:FastifyInstance
     await prisma.$transaction(async tx=>{
       await tx.businessProfile.update({where:{id:business.id},data:{verificationStatus:approved?"VERIFIED":"REJECTED",verifiedAt:approved?new Date():null,verificationProvider:approved?"manual_authority_and_registry":business.verificationProvider,lastRegistryCheckAt:approved?new Date():business.lastRegistryCheckAt}});
       if(approved){await tx.store.updateMany({where:{ownerId:params.data.id,status:"DRAFT"},data:{status:"ACTIVE",isVerified:true,publishedAt:new Date()}});await tx.store.updateMany({where:{ownerId:params.data.id,status:"ACTIVE"},data:{isVerified:true}});}
-      else await tx.store.updateMany({where:{ownerId:params.data.id,status:"ACTIVE"},data:{status:"SUSPENDED",isVerified:false}});
+      else await tx.store.updateMany({where:{ownerId:params.data.id,status:"ACTIVE"},data:{status:"DRAFT",isVerified:false}});
       await tx.$executeRawUnsafe('UPDATE "ProReverification" SET "status"=$2,"completedAt"=CURRENT_TIMESTAMP,"updatedAt"=CURRENT_TIMESTAMP WHERE "userId"=$1',params.data.id,approved?"APPROVED":"REJECTED");
-      await tx.$executeRawUnsafe('INSERT INTO "AdminAuditEvent" ("id","actorUserId","action","entityType","entityId","metadata") VALUES ($1,$2,$3,$4,$5,$6::jsonb)',decisionAuditId,a.id,manual?"PRO_BUSINESS_MANUALLY_APPROVED":approved?"PRO_BUSINESS_APPROVED":"PRO_BUSINESS_REJECTED","USER",params.data.id,JSON.stringify({reason:body.data.reason,documentIds:rows.map(r=>r.id),previousStatus:business.verificationStatus,manual,verificationMethod:manual?body.data.verificationMethod:null,verificationReference:manual?body.data.verificationReference:null,registryConfirmed:manual?body.data.registryConfirmed:null,authorityConfirmed:manual?body.data.authorityConfirmed:null}));
+      await tx.$executeRawUnsafe('INSERT INTO "AdminAuditEvent" ("id","actorUserId","action","entityType","entityId","metadata") VALUES ($1,$2,$3,$4,$5,$6::jsonb)',decisionAuditId,a.id,manual?"PRO_BUSINESS_MANUALLY_APPROVED":approved?"PRO_BUSINESS_APPROVED":"PRO_BUSINESS_REJECTED","USER",params.data.id,JSON.stringify({reason:body.data.reason,documentIds:rows.map(r=>r.id),previousStatus:business.verificationStatus,manual,correctionKinds:approved?null:correctionKinds,verificationMethod:manual?body.data.verificationMethod:null,verificationReference:manual?body.data.verificationReference:null,registryConfirmed:manual?body.data.registryConfirmed:null,authorityConfirmed:manual?body.data.authorityConfirmed:null}));
       // Record the decision and its user-facing notification atomically.
       // EMAIL is processed by the existing outbox worker with retries and branded templates.
       await tx.$executeRawUnsafe('INSERT INTO "UserNotification" ("id","userId","kind","title","body","actionUrl","metadata","dedupeKey") VALUES ($1,$2,$3::"NotificationKind",$4,$5,$6,$7::jsonb,$8)',
@@ -175,8 +209,10 @@ export async function registerProfessionalVerificationRoutes(app:FastifyInstance
         randomUUID(),params.data.id,notificationId,"PRO_VERIFICATION_DECISION","EMAIL",notificationPayload,notificationDedupeKey);
     });
     // Identity evidence is short lived: remove bytes after decision. Audit metadata remains.
-    for(const doc of rows)await removeSensitiveEvidence(doc.objectKey).catch(err=>req.log.error(err));
-    await prisma.$executeRawUnsafe('DELETE FROM "ProVerificationDocument" WHERE "userId"=$1',params.data.id);
+    const documentsToRemove=approved?rows:rows.filter(doc=>correctionKinds.includes(doc.kind));
+    for(const doc of documentsToRemove)await removeSensitiveEvidence(doc.objectKey).catch(err=>req.log.error(err));
+    for(const doc of documentsToRemove)
+      await prisma.$executeRawUnsafe('DELETE FROM "ProVerificationDocument" WHERE "id"=$1 AND "userId"=$2',doc.id,params.data.id);
     return reply.send({ok:true,status:approved?"VERIFIED":"REJECTED"});
   });
 }

@@ -6,6 +6,7 @@ type Review={business:{verificationStatus:string;legalName:string;siret:string|n
 export default function ProVerificationReview({userId}:{userId:string}){
  const [data,setData]=useState<Review|null>(null);
  const [reason,setReason]=useState("");
+ const [correctionKinds,setCorrectionKinds]=useState<Array<"REGISTRY"|"AUTHORITY">>(["REGISTRY","AUTHORITY"]);
  const [approvedCheck,setApprovedCheck]=useState(false);
  const [manualMethod,setManualMethod]=useState("REGISTERED_COMPANY_PHONE");
  const [manualReference,setManualReference]=useState("");
@@ -27,13 +28,14 @@ export default function ProVerificationReview({userId}:{userId:string}){
    if(value==="MANUAL_APPROVE")setManualMessage(feedback);else setMessage(feedback);
    return;
   }
+  if(value==="REJECT"&&!correctionKinds.length){setMessage("Sélectionnez au moins un justificatif à refaire.");return}
   if(value==="APPROVE"&&!approvedCheck){setMessage("Confirmez le contrôle de l’identité et de l’autorisation.");return}
   if(value==="MANUAL_APPROVE"&&(!registryConfirmed||!authorityConfirmed||manualReference.trim().length<8)){
    setManualMessage("Vérifiez les deux cases et indiquez la référence du contrôle (au moins 8 caractères).");return;
   }
   setWorking(true);setMessage("");setManualMessage("");
   try{
-   const r=await fetch("/api/admin/professionals/"+encodeURIComponent(userId)+"/verification/decision",{method:"POST",credentials:"include",headers:{"content-type":"application/json"},body:JSON.stringify({decision:value,reason:explanation,verificationMethod:value==="MANUAL_APPROVE"?manualMethod:undefined,verificationReference:value==="MANUAL_APPROVE"?manualReference.trim():undefined,registryConfirmed:value==="MANUAL_APPROVE"?registryConfirmed:undefined,authorityConfirmed:value==="MANUAL_APPROVE"?authorityConfirmed:undefined})});
+   const r=await fetch("/api/admin/professionals/"+encodeURIComponent(userId)+"/verification/decision",{method:"POST",credentials:"include",headers:{"content-type":"application/json"},body:JSON.stringify({decision:value,reason:explanation,correctionKinds:value==="REJECT"?correctionKinds:undefined,verificationMethod:value==="MANUAL_APPROVE"?manualMethod:undefined,verificationReference:value==="MANUAL_APPROVE"?manualReference.trim():undefined,registryConfirmed:value==="MANUAL_APPROVE"?registryConfirmed:undefined,authorityConfirmed:value==="MANUAL_APPROVE"?authorityConfirmed:undefined})});
    const body=await r.json().catch(()=>({}));
    const errors:Record<string,string>={
     registry_unavailable:"Le registre public est indisponible. Réessayez dans quelques instants.",
@@ -65,6 +67,14 @@ export default function ProVerificationReview({userId}:{userId:string}){
  </div>
  {data.business.verificationStatus!=="VERIFIED"&&<div style={{display:"grid",gap:8,marginTop:14}}>
  <label>Motif de la décision (communiqué au professionnel en cas de refus)<textarea value={reason} onChange={e=>setReason(e.target.value)} rows={2} placeholder="Expliquez clairement au professionnel ce qui doit être corrigé." style={{width:"100%"}} /></label>
+ <div style={{border:"1px solid #e4e1ed",padding:12,borderRadius:10,display:"grid",gap:6}}>
+  <strong style={{fontSize:13}}>En cas de refus : justificatifs à refaire</strong>
+  {([["REGISTRY","Kbis / RNE"],["AUTHORITY","Identité / mandat"]] as const).map(([kind,label])=>
+   <label key={kind} style={{display:"flex",gap:8,alignItems:"center",fontSize:13}}>
+    <input type="checkbox" checked={correctionKinds.includes(kind)} onChange={e=>setCorrectionKinds(old=>e.target.checked?[...old.filter(k=>k!==kind),kind]:old.filter(k=>k!==kind))}/>{label}
+   </label>)}
+  <small>Les documents non sélectionnés resteront attachés au dossier. L’utilisateur pourra remplacer uniquement les documents à corriger.</small>
+ </div>
  <label><input type="checkbox" checked={approvedCheck} onChange={e=>setApprovedCheck(e.target.checked)}/> J’ai contrôlé l’identité et le mandat avec une source indépendante.</label>
  <div style={{display:"flex",gap:8}}>
  <button className="admin-btn primary" disabled={working||!complete} onClick={()=>void decision("APPROVE")}>Approuver</button>

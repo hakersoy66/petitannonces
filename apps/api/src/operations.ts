@@ -464,8 +464,32 @@ export async function registerOperationsRoutes(app: FastifyInstance) {
   app.get("/admin/professionals", async (request, reply) => {
     const admin=await requireAdmin(request,reply,["SUPER_ADMIN","ADMIN","SUPPORT","COMPLIANCE"]);if(!admin)return;
     const q=String((request.query as any)?.q??"").trim();
-    const rows=await prisma.user.findMany({where:{kind:"PROFESSIONNEL",roles:{none:{role:"SUPER_ADMIN"}},...(q?{OR:[{email:{contains:q,mode:"insensitive" as const}},{profile:{is:{displayName:{contains:q,mode:"insensitive" as const}}}},{business:{is:{tradeName:{contains:q,mode:"insensitive" as const}}}},{business:{is:{legalName:{contains:q,mode:"insensitive" as const}}}}]}:{})},include:{profile:true,business:true,stores:{include:{_count:{select:{listings:true}}},orderBy:{createdAt:"asc"}},subscriptions:{include:{plan:true},orderBy:{createdAt:"desc"},take:1}},orderBy:{createdAt:"desc"},take:100});
-    return reply.send({professionals:rows.map(u=>({id:u.id,email:u.email,status:u.status,displayName:u.profile?.displayName??null,business:u.business,stores:u.stores.map(s=>({...s,listingCount:s._count.listings})),subscription:u.subscriptions[0]??null,createdAt:u.createdAt}))});
+    const rawFilter=String((request.query as any)?.verification??"ALL");
+    const filter=["ALL","PENDING_REVIEW","PENDING_DOCS","VERIFIED","REJECTED","NOT_STARTED"].includes(rawFilter)?rawFilter:"ALL";
+    const allVisible=await prisma.user.findMany({where:{kind:"PROFESSIONNEL",roles:{none:{role:"SUPER_ADMIN"}}},select:{id:true,business:{select:{verificationStatus:true}}}});
+    const readyRows=await prisma.$queryRawUnsafe<Array<{userId:string}>>(
+      'SELECT "userId" FROM "ProVerificationDocument" GROUP BY "userId" HAVING COUNT(DISTINCT "kind")=2');
+    const readyIds=new Set(readyRows.map(row=>row.userId));
+    const totals={ALL:allVisible.length,PENDING_REVIEW:0,PENDING_DOCS:0,VERIFIED:0,REJECTED:0,NOT_STARTED:0};
+    for(const item of allVisible){
+      const status=item.business?.verificationStatus??"NOT_STARTED";
+      if(status==="VERIFIED")totals.VERIFIED++;
+      else if(status==="REJECTED")totals.REJECTED++;
+      else if(status==="PENDING"&&readyIds.has(item.id))totals.PENDING_REVIEW++;
+      else if(status==="PENDING")totals.PENDING_DOCS++;
+      else totals.NOT_STARTED++;
+    }
+    const allowedIds=filter==="ALL"?null:allVisible.filter(item=>{
+      const status=item.business?.verificationStatus??"NOT_STARTED";
+      return filter==="PENDING_REVIEW" ? status==="PENDING"&&readyIds.has(item.id)
+        :filter==="PENDING_DOCS" ? status==="PENDING"&&!readyIds.has(item.id)
+        :status===filter;
+    }).map(item=>item.id);
+    const rows=await prisma.user.findMany({where:{kind:"PROFESSIONNEL",roles:{none:{role:"SUPER_ADMIN"}},
+      ...(allowedIds?{id:{in:allowedIds}}:{}),
+      ...(q?{OR:[{email:{contains:q,mode:"insensitive" as const}},{profile:{is:{displayName:{contains:q,mode:"insensitive" as const}}}},{business:{is:{tradeName:{contains:q,mode:"insensitive" as const}}}},{business:{is:{legalName:{contains:q,mode:"insensitive" as const}}}}]}:{})},
+      include:{profile:true,business:true,stores:{include:{_count:{select:{listings:true}}},orderBy:{createdAt:"asc"}},subscriptions:{include:{plan:true},orderBy:{createdAt:"desc"},take:1}},orderBy:{createdAt:"desc"},take:100});
+    return reply.send({totals,filter,professionals:rows.map(u=>({id:u.id,email:u.email,status:u.status,displayName:u.profile?.displayName??null,business:u.business,reviewReady:readyIds.has(u.id)&&u.business?.verificationStatus==="PENDING",stores:u.stores.map(s=>({...s,listingCount:s._count.listings})),subscription:u.subscriptions[0]??null,createdAt:u.createdAt}))});
   });
 
   app.patch("/admin/professionals/:id", async (request, reply) => {
