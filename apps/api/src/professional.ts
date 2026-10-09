@@ -131,7 +131,7 @@ export async function registerProfessionalRoutes(app: FastifyInstance) {
     const parsed=z.object({identifier:z.string().trim().min(9).max(20)}).safeParse(request.body);if(!parsed.success)return reply.code(400).send({error:"invalid_identifier"});
     const identifier=onlyDigits(parsed.data.identifier);if(![9,14].includes(identifier.length))return reply.code(400).send({error:"invalid_identifier"});
     let company;try{company=await lookupPublicCompany(identifier)}catch{return reply.code(502).send({error:"registry_unavailable"})}if(!company)return reply.code(404).send({error:"company_not_found"});if(company.active===false)return reply.code(409).send({error:"company_inactive"});
-    const business=await prisma.$transaction(async tx=>{await tx.user.update({where:{id:user.id},data:{kind:"PROFESSIONNEL"}});const b=await tx.businessProfile.upsert({where:{userId:user.id},create:{userId:user.id,legalName:company.legalName,tradeName:company.tradeName??undefined,siren:company.siren,siret:company.siret??undefined,nafCode:company.nafCode??undefined,legalForm:company.legalFormCode??undefined,headquartersAddress:company.headquartersAddress??undefined,headquartersPostalCode:company.headquartersPostalCode??undefined,headquartersCity:company.headquartersCity??undefined,verificationStatus:"PENDING",verificationProvider:company.source,verificationReference:company.reference,verifiedAt:null,lastRegistryCheckAt:new Date()},update:{legalName:company.legalName,tradeName:company.tradeName??undefined,siren:company.siren,siret:company.siret??undefined,nafCode:company.nafCode??undefined,legalForm:company.legalFormCode??undefined,headquartersAddress:company.headquartersAddress??undefined,headquartersPostalCode:company.headquartersPostalCode??undefined,headquartersCity:company.headquartersCity??undefined,verificationStatus:"PENDING",verificationProvider:company.source,verificationReference:company.reference,verifiedAt:null,lastRegistryCheckAt:new Date()}});return b});
+    const business=await prisma.$transaction(async tx=>{await tx.user.update({where:{id:user.id},data:{kind:"PROFESSIONNEL"}});const b=await tx.businessProfile.upsert({where:{userId:user.id},create:{userId:user.id,legalName:company.legalName,tradeName:company.tradeName??undefined,siren:company.siren,siret:company.siret??undefined,nafCode:company.nafCode??undefined,legalForm:company.legalFormCode??undefined,headquartersAddress:company.headquartersAddress??undefined,headquartersPostalCode:company.headquartersPostalCode??undefined,headquartersCity:company.headquartersCity??undefined,verificationStatus:"PENDING",verificationProvider:company.source,verificationReference:company.reference,verifiedAt:null,lastRegistryCheckAt:new Date()},update:{legalName:company.legalName,tradeName:company.tradeName??undefined,siren:company.siren,siret:company.siret??undefined,nafCode:company.nafCode??undefined,legalForm:company.legalFormCode??undefined,headquartersAddress:company.headquartersAddress??undefined,headquartersPostalCode:company.headquartersPostalCode??undefined,headquartersCity:company.headquartersCity??undefined,verificationStatus:"PENDING",verificationProvider:company.source,verificationReference:company.reference,verifiedAt:null,lastRegistryCheckAt:new Date()}});await tx.store.updateMany({where:{ownerId:user.id},data:{isVerified:false}});return b});
     return reply.send({business,company,verified:false,registryValid:true,documentsRequired:true});
   });
 
@@ -160,6 +160,7 @@ export async function registerProfessionalRoutes(app: FastifyInstance) {
         update: { ...parsed.data, siren, siret, verificationStatus: "PENDING", verifiedAt: null },
       });
     });
+    await prisma.store.updateMany({where:{ownerId:user.id},data:{isVerified:false}});
     return reply.send({ business });
   });
 
@@ -181,7 +182,7 @@ export async function registerProfessionalRoutes(app: FastifyInstance) {
         lastRegistryCheckAt: new Date(),
       },
     });
-
+    await prisma.store.updateMany({where:{ownerId:user.id},data:{isVerified:false}});
     return reply.send({ business: updated, registryConfigured: true, registryValid: verified, documentsRequired: true });
   });
 
