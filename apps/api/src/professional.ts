@@ -75,6 +75,16 @@ function luhnValid(value: string) {
   return sum % 10 === 0;
 }
 
+async function businessVerificationLock(userId:string):Promise<string|null>{
+  const business=await prisma.businessProfile.findUnique({where:{userId},select:{verificationStatus:true}});
+  if(business?.verificationStatus==="VERIFIED"||business?.verificationStatus==="SUSPENDED")
+    return "business_already_verified";
+  const submitted=await prisma.$queryRawUnsafe<Array<{id:string}>>(
+    'SELECT "id" FROM "ProVerificationDocument" WHERE "userId"=$1 LIMIT 1',userId);
+  if(submitted.length>0)return "verification_review_in_progress";
+  return null;
+}
+
 async function registryLookup(siren?: string, siret?: string) {
   const endpoint = process.env.PROFESSIONAL_REGISTRY_API_URL;
   if (!endpoint) return null;
@@ -129,6 +139,7 @@ export async function registerProfessionalRoutes(app: FastifyInstance) {
   });
   app.post("/pro/business/quick-verify", async (request, reply) => {
     const user=await requireUser(request,reply);if(!user)return;
+    const lock=await businessVerificationLock(user.id);if(lock)return reply.code(409).send({error:lock});
     const parsed=z.object({identifier:z.string().trim().min(9).max(20)}).safeParse(request.body);if(!parsed.success)return reply.code(400).send({error:"invalid_identifier"});
     const identifier=onlyDigits(parsed.data.identifier);if(![9,14].includes(identifier.length))return reply.code(400).send({error:"invalid_identifier"});
     let company;try{company=await lookupPublicCompany(identifier)}catch{return reply.code(502).send({error:"registry_unavailable"})}if(!company)return reply.code(404).send({error:"company_not_found"});if(company.active===false)return reply.code(409).send({error:"company_inactive"});
@@ -145,6 +156,7 @@ export async function registerProfessionalRoutes(app: FastifyInstance) {
   app.post("/pro/business", async (request, reply) => {
     const user = await requireUser(request, reply);
     if (!user) return;
+    const lock=await businessVerificationLock(user.id);if(lock)return reply.code(409).send({error:lock});
     const parsed = businessSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: "invalid_business", details: parsed.error.flatten() });
     const siren = parsed.data.siren ? onlyDigits(parsed.data.siren) : undefined;
@@ -170,6 +182,7 @@ export async function registerProfessionalRoutes(app: FastifyInstance) {
     if (!user) return;
     const business = await prisma.businessProfile.findUnique({ where: { userId: user.id } });
     if (!business) return reply.code(404).send({ error: "business_not_found" });
+    const lock=await businessVerificationLock(user.id);if(lock)return reply.code(409).send({error:lock});
     let registry: Record<string, any> | null = null;
     try { registry = await registryLookup(business.siren ?? undefined, business.siret ?? undefined); if(!registry) registry = await lookupPublicCompany(business.siret ?? business.siren ?? "") as any; } catch { return reply.code(502).send({ error: "registry_unavailable" }); }
     const verified = registry ? registry.active !== false && registry.valid !== false : false;

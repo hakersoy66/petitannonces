@@ -68,6 +68,11 @@ export async function registerProfessionalVerificationRoutes(app:FastifyInstance
     if(!Buffer.isBuffer(bytes)||bytes.length<100||bytes.length>MAX_BYTES||!matchesMime(bytes,fields.data.mime))
       return reply.code(415).send({error:"invalid_document_file"});
     const recent=await documents(u.id);
+    if(recent.some(d=>d.kind==="REGISTRY")&&recent.some(d=>d.kind==="AUTHORITY"))
+      return reply.code(409).send({error:"verification_review_in_progress"});
+    if(recent.some(d=>d.applicantRole!==fields.data.role||
+       d.applicantName.trim().toLocaleLowerCase("fr-FR")!==fields.data.name.toLocaleLowerCase("fr-FR")))
+      return reply.code(409).send({error:"applicant_identity_mismatch"});
     if(recent.length>=8)return reply.code(429).send({error:"document_limit_reached"});
     const id=randomUUID();
     const ext=TYPES[fields.data.mime];
