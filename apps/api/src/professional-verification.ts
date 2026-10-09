@@ -3,7 +3,7 @@ import { prisma } from "@pa/database";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { lookupPublicCompany } from "./company-registry.js";
-import { saveSensitiveEvidence, downloadSensitiveEvidence, removeSensitiveEvidence } from "./private-evidence.js";
+import { saveSensitiveEvidence, previewSensitiveEvidence, removeSensitiveEvidence } from "./private-evidence.js";
 import { getProReverificationState } from "./pro-reverification.js";
 
 const MAX_BYTES = 8 * 1024 * 1024;
@@ -38,7 +38,7 @@ function matchesMime(bytes:Buffer,mime:EvidenceMime) {
 async function documents(userId:string) {
   return prisma.$queryRawUnsafe<DocumentRow[]>('SELECT "id","userId","kind","objectKey","mimeType","fileName","applicantRole","applicantName","createdAt" FROM "ProVerificationDocument" WHERE "userId"=$1 ORDER BY "createdAt" DESC',userId);
 }
-const publicDoc = (d:DocumentRow) => ({id:d.id,kind:d.kind,fileName:d.fileName,applicantRole:d.applicantRole,applicantName:d.applicantName,createdAt:d.createdAt});
+const publicDoc = (d:DocumentRow) => ({id:d.id,kind:d.kind,fileName:d.fileName,mimeType:d.mimeType,applicantRole:d.applicantRole,applicantName:d.applicantName,createdAt:d.createdAt});
 const idSchema=z.object({id:z.string().min(1).max(120)});
 export async function registerProfessionalVerificationRoutes(app:FastifyInstance) {
   await ensureProfessionalVerificationSchema();
@@ -132,7 +132,7 @@ export async function registerProfessionalVerificationRoutes(app:FastifyInstance
     const rows=await prisma.$queryRawUnsafe<DocumentRow[]>('SELECT * FROM "ProVerificationDocument" WHERE "id"=$1 AND "userId"=$2 LIMIT 1',params.data.documentId,params.data.id);
     if(!rows[0])return reply.code(404).send({error:"document_not_found"});
     await prisma.$executeRawUnsafe('INSERT INTO "AdminAuditEvent" ("id","actorUserId","action","entityType","entityId","metadata") VALUES ($1,$2,$3,$4,$5,$6::jsonb)',randomUUID(),a.id,"PRO_VERIFICATION_DOCUMENT_VIEW","USER",params.data.id,JSON.stringify({documentId:params.data.documentId}));
-    return downloadSensitiveEvidence(reply,rows[0].objectKey,rows[0].fileName);
+    return previewSensitiveEvidence(reply,rows[0].objectKey,rows[0].mimeType);
   });
 
   app.post("/admin/professionals/:id/verification/decision",async(req,reply)=>{

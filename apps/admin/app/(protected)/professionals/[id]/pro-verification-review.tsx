@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 
-type Doc={id:string;kind:string;fileName:string;applicantRole:string;applicantName:string;createdAt:string};
+type Doc={id:string;kind:string;fileName:string;mimeType:string;applicantRole:string;applicantName:string;createdAt:string};
 type Review={business:{verificationStatus:string;legalName:string;siret:string|null};documents:Doc[];reverification?:{status:string;dueAt:string;graceActive:boolean}|null};
 export default function ProVerificationReview({userId}:{userId:string}){
  const [data,setData]=useState<Review|null>(null);
@@ -16,6 +16,38 @@ export default function ProVerificationReview({userId}:{userId:string}){
  const [authorityConfirmed,setAuthorityConfirmed]=useState(false);
  const [working,setWorking]=useState(false);
  const [message,setMessage]=useState("");
+ const [selectedDocument,setSelectedDocument]=useState<Doc|null>(null);
+ const [previewUrl,setPreviewUrl]=useState<string|null>(null);
+ const [previewError,setPreviewError]=useState("");
+ useEffect(()=>{
+  if(!selectedDocument)return;
+  const controller=new AbortController();
+  let closed=false;
+  setPreviewUrl(null);
+  setPreviewError("");
+  void (async()=>{
+   try{
+    const path="/api/admin/professionals/"+encodeURIComponent(userId)+"/verification/documents/"+encodeURIComponent(selectedDocument.id);
+    const res=await fetch(path,{credentials:"include",cache:"no-store",signal:controller.signal});
+    if(!res.ok)throw new Error(res.status===401?"Votre session a expiré. Reconnectez-vous.":res.status===403?"Accès à ce justificatif refusé.":"Impossible d’ouvrir le document. Réessayez.");
+    const bytes=await res.blob();
+    if(closed)return;
+    const mime=selectedDocument.mimeType;
+    if(!["application/pdf","image/jpeg","image/png"].includes(mime))throw new Error("Format non pris en charge.");
+    setPreviewUrl(URL.createObjectURL(new Blob([bytes],{type:mime})));
+   }catch(error){
+    if(!closed)setPreviewError(error instanceof Error?error.message:"Prévisualisation indisponible.");
+   }
+  })();
+  return()=>{closed=true;controller.abort()};
+ },[selectedDocument,userId]);
+ useEffect(()=>()=>{if(previewUrl)URL.revokeObjectURL(previewUrl)},[previewUrl]);
+ useEffect(()=>{
+  if(!selectedDocument)return;
+  const onKeyDown=(event:KeyboardEvent)=>{if(event.key==="Escape")setSelectedDocument(null)};
+  window.addEventListener("keydown",onKeyDown);
+  return()=>window.removeEventListener("keydown",onKeyDown);
+ },[selectedDocument]);
  async function refresh(){
   const r=await fetch("/api/admin/professionals/"+encodeURIComponent(userId)+"/verification",{credentials:"include",cache:"no-store"});
   if(r.ok)setData(await r.json());
@@ -60,7 +92,9 @@ export default function ProVerificationReview({userId}:{userId:string}){
  {(["REGISTRY","AUTHORITY"] as const).map(kind=><div key={kind} style={{border:"1px solid #ddd",borderRadius:10,padding:12}}>
  <strong>{kind==="REGISTRY"?"Extrait Kbis / RNE":"Identité ou mandat"}</strong>
  {data.documents.filter(d=>d.kind===kind).map(d=><div key={d.id} style={{fontSize:13}}>
- <a target="_blank" rel="noreferrer" href={"/api/admin/professionals/"+userId+"/verification/documents/"+d.id}>{d.fileName} ↗</a> · {d.applicantName} · {d.applicantRole==="LEGAL_REPRESENTATIVE"?"Dirigeant":"Mandataire"}
+ <button type="button" onClick={()=>setSelectedDocument(d)} style={{display:"inline-flex",alignItems:"center",gap:7,background:"#f0edff",color:"#5345bd",border:"1px solid #dbd4ff",borderRadius:9,cursor:"pointer",padding:"8px 11px",fontWeight:750,fontSize:13}}>
+  <span aria-hidden="true">👁</span> Voir le document · {d.fileName}
+ </button> <span style={{color:"#6b7280",marginLeft:6}}>{d.applicantName} · {d.applicantRole==="LEGAL_REPRESENTATIVE"?"Dirigeant":"Mandataire"}</span>
  </div>)}
  {!data.documents.some(d=>d.kind===kind)&&<p>Document manquant</p>}
  </div>)}
@@ -115,5 +149,29 @@ export default function ProVerificationReview({userId}:{userId:string}){
  </details>
  </div>}
  {message&&<p>{message}</p>}
+ {selectedDocument&&<div role="presentation" onClick={()=>setSelectedDocument(null)} style={{position:"fixed",inset:0,zIndex:10000,background:"rgba(17,19,43,.8)",display:"flex",alignItems:"center",justifyContent:"center",padding:"max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom))"}}>
+   <div role="dialog" aria-modal="true" aria-label={"Contrôle du justificatif "+selectedDocument.fileName} onClick={event=>event.stopPropagation()} style={{background:"#fff",borderRadius:18,boxShadow:"0 25px 80px rgba(0,0,0,.35)",width:"min(1050px,100%)",height:"min(90dvh,900px)",display:"flex",flexDirection:"column",minHeight:0,overflow:"hidden"}}>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"13px 16px",gap:12,borderBottom:"1px solid #e6e4ef",flex:"0 0 auto"}}>
+     <div style={{minWidth:0}}>
+      <strong style={{fontSize:16,display:"block"}}>Vérification du justificatif</strong>
+      <span style={{fontSize:12,color:"#6c687b",display:"block",overflowWrap:"anywhere"}}>{selectedDocument.kind==="REGISTRY"?"Extrait Kbis / RNE":"Identité / mandat"} · {selectedDocument.fileName}</span>
+     </div>
+     <button type="button" className="admin-btn" onClick={()=>setSelectedDocument(null)} aria-label="Fermer la prévisualisation" style={{flexShrink:0,fontSize:17}}>✕ Fermer</button>
+    </div>
+    <div style={{flex:1,minHeight:0,background:"#ececf2",display:"flex",alignItems:"center",justifyContent:"center",overflow:"auto",padding:selectedDocument.mimeType==="application/pdf"?0:14}}>
+     {previewError?<p role="alert" style={{background:"#fff",borderRadius:12,padding:20,margin:16,color:"#b42318"}}>{previewError}</p>
+     :!previewUrl?<p role="status" style={{background:"#fff",borderRadius:12,padding:20}}>Chargement du document sécurisé…</p>
+     :selectedDocument.mimeType==="application/pdf"
+      ?<object data={previewUrl+"#toolbar=0&navpanes=0"} type="application/pdf" aria-label="Aperçu du document PDF" style={{width:"100%",height:"100%",border:0}}>
+        <p>Votre navigateur ne prend pas en charge la prévisualisation des PDF. Ouvrez cette page dans un navigateur avec lecteur PDF intégré.</p>
+       </object>
+      :<img src={previewUrl} alt={"Justificatif : "+selectedDocument.fileName} style={{display:"block",maxWidth:"100%",maxHeight:"100%",objectFit:"contain"}}/>}
+    </div>
+    <div style={{flex:"0 0 auto",padding:"9px 16px",borderTop:"1px solid #e6e4ef",fontSize:11,color:"#706d7b",display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:6}}>
+     <span>Document privé · Accès contrôlé et journalisé</span>
+     <span>Prévisualisation uniquement · Aucun téléchargement automatique</span>
+    </div>
+   </div>
+ </div>}
  </section>;
 }
