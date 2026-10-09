@@ -121,6 +121,27 @@ export async function registerProfessionalVerificationRoutes(app:FastifyInstance
     const rows=await documents(params.data.id);
     const manual=body.data.decision==="MANUAL_APPROVE";
     const approved=body.data.decision!=="REJECT";
+    // Avoid sending duplicate decision notices if the same decision is submitted again.
+    if(approved&&business.verificationStatus==="VERIFIED")return reply.send({ok:true,status:"VERIFIED",alreadyDecided:true});
+    if(!approved&&business.verificationStatus==="REJECTED")return reply.send({ok:true,status:"REJECTED",alreadyDecided:true});
+    // The reason is shown verbatim to the applicant in the rejection notification.
+    const title=approved
+      ?"Votre compte professionnel est vérifié !"
+      :"Vérification de votre compte professionnel : demande refusée";
+    const notificationBody=approved
+      ?`Bonne nouvelle ! Votre entreprise « ${business.legalName} » a été vérifiée par notre équipe. Votre compte professionnel est désormais actif et votre badge Pro est disponible. Vous pouvez utiliser vos services professionnels sur Petit Annonces. Merci pour votre confiance !`
+      :`Après examen de votre demande pour « ${business.legalName} », nous ne pouvons pas valider votre compte professionnel pour le moment.\n\nMotif : ${body.data.reason}\n\nVous pouvez consulter votre espace Entreprise & vérification pour corriger votre dossier et déposer les justificatifs nécessaires. Pour toute question, contactez notre assistance.`;
+    const decisionAuditId=randomUUID();
+    const notificationId=randomUUID();
+    const notificationDedupeKey=`pro-verification-decision:${decisionAuditId}`;
+    const notificationMetadata={
+      purpose:"PRO_VERIFICATION_DECISION",
+      status:approved?"VERIFIED":"REJECTED",
+      decisionId:decisionAuditId,
+      transactional:true,
+    };
+    const actionUrl="/espace-pro/entreprise";
+    const notificationPayload=JSON.stringify({title,body:notificationBody,actionUrl,metadata:notificationMetadata});
     if(manual && (
       !body.data.registryConfirmed || !body.data.authorityConfirmed ||
       !body.data.verificationMethod || !body.data.verificationReference ||
@@ -145,7 +166,13 @@ export async function registerProfessionalVerificationRoutes(app:FastifyInstance
       if(approved){await tx.store.updateMany({where:{ownerId:params.data.id,status:"DRAFT"},data:{status:"ACTIVE",isVerified:true,publishedAt:new Date()}});await tx.store.updateMany({where:{ownerId:params.data.id,status:"ACTIVE"},data:{isVerified:true}});}
       else await tx.store.updateMany({where:{ownerId:params.data.id,status:"ACTIVE"},data:{status:"SUSPENDED",isVerified:false}});
       await tx.$executeRawUnsafe('UPDATE "ProReverification" SET "status"=$2,"completedAt"=CURRENT_TIMESTAMP,"updatedAt"=CURRENT_TIMESTAMP WHERE "userId"=$1',params.data.id,approved?"APPROVED":"REJECTED");
-      await tx.$executeRawUnsafe('INSERT INTO "AdminAuditEvent" ("id","actorUserId","action","entityType","entityId","metadata") VALUES ($1,$2,$3,$4,$5,$6::jsonb)',randomUUID(),a.id,manual?"PRO_BUSINESS_MANUALLY_APPROVED":approved?"PRO_BUSINESS_APPROVED":"PRO_BUSINESS_REJECTED","USER",params.data.id,JSON.stringify({reason:body.data.reason,documentIds:rows.map(r=>r.id),previousStatus:business.verificationStatus,manual,verificationMethod:manual?body.data.verificationMethod:null,verificationReference:manual?body.data.verificationReference:null,registryConfirmed:manual?body.data.registryConfirmed:null,authorityConfirmed:manual?body.data.authorityConfirmed:null}));
+      await tx.$executeRawUnsafe('INSERT INTO "AdminAuditEvent" ("id","actorUserId","action","entityType","entityId","metadata") VALUES ($1,$2,$3,$4,$5,$6::jsonb)',decisionAuditId,a.id,manual?"PRO_BUSINESS_MANUALLY_APPROVED":approved?"PRO_BUSINESS_APPROVED":"PRO_BUSINESS_REJECTED","USER",params.data.id,JSON.stringify({reason:body.data.reason,documentIds:rows.map(r=>r.id),previousStatus:business.verificationStatus,manual,verificationMethod:manual?body.data.verificationMethod:null,verificationReference:manual?body.data.verificationReference:null,registryConfirmed:manual?body.data.registryConfirmed:null,authorityConfirmed:manual?body.data.authorityConfirmed:null}));
+      // Record the decision and its user-facing notification atomically.
+      // EMAIL is processed by the existing outbox worker with retries and branded templates.
+      await tx.$executeRawUnsafe('INSERT INTO "UserNotification" ("id","userId","kind","title","body","actionUrl","metadata","dedupeKey") VALUES ($1,$2,$3::"NotificationKind",$4,$5,$6,$7::jsonb,$8)',
+        notificationId,params.data.id,"SECURITY",title,notificationBody,actionUrl,JSON.stringify(notificationMetadata),notificationDedupeKey);
+      await tx.$executeRawUnsafe('INSERT INTO "NotificationDeliveryOutbox" ("id","userId","notificationId","eventKind","channel","payload","dedupeKey") VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7)',
+        randomUUID(),params.data.id,notificationId,"PRO_VERIFICATION_DECISION","EMAIL",notificationPayload,notificationDedupeKey);
     });
     // Identity evidence is short lived: remove bytes after decision. Audit metadata remains.
     for(const doc of rows)await removeSensitiveEvidence(doc.objectKey).catch(err=>req.log.error(err));

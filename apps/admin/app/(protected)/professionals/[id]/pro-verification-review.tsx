@@ -64,7 +64,7 @@ export default function ProVerificationReview({userId}:{userId:string}){
  </div>)}
  </div>
  {data.business.verificationStatus!=="VERIFIED"&&<div style={{display:"grid",gap:8,marginTop:14}}>
- <label>Motif du contrôle<textarea value={reason} onChange={e=>setReason(e.target.value)} rows={2} style={{width:"100%"}} /></label>
+ <label>Motif de la décision (communiqué au professionnel en cas de refus)<textarea value={reason} onChange={e=>setReason(e.target.value)} rows={2} placeholder="Expliquez clairement au professionnel ce qui doit être corrigé." style={{width:"100%"}} /></label>
  <label><input type="checkbox" checked={approvedCheck} onChange={e=>setApprovedCheck(e.target.checked)}/> J’ai contrôlé l’identité et le mandat avec une source indépendante.</label>
  <div style={{display:"flex",gap:8}}>
  <button className="admin-btn primary" disabled={working||!complete} onClick={()=>void decision("APPROVE")}>Approuver</button>
