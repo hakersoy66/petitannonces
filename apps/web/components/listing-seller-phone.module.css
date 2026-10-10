@@ -1,4 +1,4 @@
-.wrapper{display:grid;gap:7px;min-width:0}
+.wrapper{display:grid;gap:7px;min-width:0;margin-top:16px}
 .revealButton,.phoneLink{display:flex;align-items:center;justify-content:center;gap:9px;width:100%;min-height:48px;box-sizing:border-box;border-radius:13px;border:1px solid #cec8ff;background:#f4f2ff;color:#5144c4;font:inherit;font-size:14px;font-weight:850;cursor:pointer;text-decoration:none;transition:background .15s,border-color .15s}
 .revealButton:hover,.phoneLink:hover{background:#eae6ff;border-color:#a79cff}
 .revealButton:disabled{cursor:wait;opacity:.65}
