@@ -32,7 +32,24 @@ async function ensureVehicleHistorySnapshotTable(){
 }
 async function ensureVehicleOfficialReportTable(){await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "VehicleOfficialReport" ("listingId" text PRIMARY KEY,"histovecUrl" text,"createdAt" timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,"updatedAt" timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP)`)}
 
+const phoneRevealLimits=new Map<string,{count:number;windowStart:number}>();
+function validSellerPhone(phone:string|null|undefined){const digits=String(phone??"").replace(/\D/g,"");return digits.length>=8&&digits.length<=15;}
 export async function registerPublicListingRoutes(app: FastifyInstance) {
+  app.get("/public/listings/:slug/seller-phone",async(request,reply)=>{
+    const params=z.object({slug:z.string().min(1).max(180)}).safeParse(request.params);
+    if(!params.success)return reply.code(400).send({error:"invalid_request"});
+    const key=request.ip??"unknown";const now=Date.now();const prior=phoneRevealLimits.get(key);
+    const windowStart=prior&&now-prior.windowStart<3600000?prior.windowStart:now;
+    const count=prior&&windowStart===prior.windowStart?prior.count+1:1;
+    phoneRevealLimits.set(key,{count,windowStart});
+    if(phoneRevealLimits.size>3000){for(const [ip,limit] of phoneRevealLimits){if(now-limit.windowStart>=3600000)phoneRevealLimits.delete(ip);}}
+    if(count>60)return reply.code(429).send({error:"phone_reveal_rate_limited"});
+    const listing=await prisma.listing.findFirst({where:{slug:params.data.slug,status:"PUBLISHED"},select:{seller:{select:{profile:{select:{phone:true}}}}}});
+    const phone=listing?.seller.profile?.phone?.trim()??null;
+    if(!validSellerPhone(phone))return reply.code(404).send({error:"phone_not_available"});
+    reply.header("cache-control","no-store, private");
+    return reply.send({phone});
+  });
   app.post("/public/listings/:id/view", async (request, reply) => {
     const params=z.object({id:z.string().min(1)}).safeParse(request.params);
     const body=z.object({visitorId:z.string().min(8).max(160)}).safeParse(request.body);
@@ -54,7 +71,7 @@ export async function registerPublicListingRoutes(app: FastifyInstance) {
       include: {
         category: { include: { parent: { include: { parent: true } } } }, attributes: { include: { attribute: true } }, vehicle: true, property: true, energy: true,
         store: { select: { id:true, name:true, slug:true, logoUrl:true, isVerified:true, status:true } },
-        seller: { select: { id: true, kind: true, createdAt: true, emailVerifiedAt: true, profile: { select: { displayName: true, firstName: true, avatarUrl: true } }, business: { select: { tradeName: true, legalName: true, verificationStatus: true, siret: true } }, stores: { where: { status: "ACTIVE" }, take: 1, select: { id:true, name: true, slug: true, logoUrl: true, isVerified: true } } } },
+        seller: { select: { id: true, kind: true, createdAt: true, emailVerifiedAt: true, profile: { select: { displayName: true, firstName: true, avatarUrl: true, phone:true } }, business: { select: { tradeName: true, legalName: true, verificationStatus: true, siret: true } }, stores: { where: { status: "ACTIVE" }, take: 1, select: { id:true, name: true, slug: true, logoUrl: true, isVerified: true } } } },
       },
     });
     if (!listing) return reply.code(404).send({ error: "listing_not_found" });
@@ -132,7 +149,7 @@ export async function registerPublicListingRoutes(app: FastifyInstance) {
       consumerDisclosure: consumerDisclosureRows[0]??null,
       supplierProduct: supplierProductRows[0]??null,
       commerce: { acceptsOffers: commerce?.acceptsOffers !== false, securePaymentEnabled: commerce?.securePaymentEnabled === true, handDeliveryEnabled: commerce?.handDeliveryEnabled === true, mondialRelayEnabled: commerce?.mondialRelayEnabled === true, colissimoEnabled: commerce?.colissimoEnabled === true, shippingEnabled: shippable && (commerce?.mondialRelayEnabled === true || commerce?.colissimoEnabled === true) },
-      seller: { id: listing.seller.id, kind: listing.seller.kind, name: sellerName, siretVerified, professionalSector, appointmentBookingEnabled, avatarUrl: listing.seller.profile?.avatarUrl ?? publicStore?.logoUrl ?? null, memberSince: listing.seller.createdAt, verified, phoneVerified:Boolean(reputation?.metrics.phoneVerified), paymentReady, store: publicStore?{id:publicStore.id,name:publicStore.name,slug:publicStore.slug,logoUrl:publicStore.logoUrl,isVerified:publicStore.isVerified}:null, completedSales, trust:reputation?.trust??trust, reputation, reviews: { count: reviewCount, average: reviewAverage, recent: recentReviews } },
+      seller: { id: listing.seller.id, kind: listing.seller.kind, name: sellerName, siretVerified, professionalSector, appointmentBookingEnabled, avatarUrl: listing.seller.profile?.avatarUrl ?? publicStore?.logoUrl ?? null, memberSince: listing.seller.createdAt, verified, phoneVerified:Boolean(reputation?.metrics.phoneVerified), hasPhone:listing.status==="PUBLISHED"&&validSellerPhone(listing.seller.profile?.phone), paymentReady, store: publicStore?{id:publicStore.id,name:publicStore.name,slug:publicStore.slug,logoUrl:publicStore.logoUrl,isVerified:publicStore.isVerified}:null, completedSales, trust:reputation?.trust??trust, reputation, reviews: { count: reviewCount, average: reviewAverage, recent: recentReviews } },
     }});
   });
 }

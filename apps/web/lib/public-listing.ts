@@ -43,6 +43,7 @@ export type PublicListingDetail = {
     memberSince: string;
     verified: boolean;
     phoneVerified: boolean;
+    hasPhone: boolean;
     paymentReady: boolean;
     store: { id:string; name: string; slug: string; logoUrl: string | null; isVerified: boolean } | null;
     completedSales: number;

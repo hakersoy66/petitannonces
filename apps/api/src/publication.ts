@@ -7,7 +7,7 @@ import { activateListingLifetime, getListingLifecycles, LISTING_RENEWAL_COST_MIN
 import { queueAdminRoleEmail, queueTransactionalEmail } from "./transactional-email.js";
 import { scheduleTrustedListingAutoApproval } from "./auto-approval.js";
 import { categoryAttributeDefinitions, categoryBelongsToRootSlug } from "./category-attributes.js";
-import { rejectListingAttemptForPolicy } from "./listing-content-policy.js";
+import { rejectListingAttemptForPolicy, descriptionContactIssues } from "./listing-content-policy.js";
 import { applyWorkingCopyToOriginal, editSessionByWorkingId, finalizeEditSessionCleanup } from "./listing-edit-session.js";
 import { rewardReferralAfterFirstPublishedListing } from "./referrals.js";
 
@@ -256,6 +256,8 @@ export async function registerPublicationRoutes(app: FastifyInstance) {
     const receipt=receiptRows[0];
     if(receipt)return reply.send({ready:true,status:receipt.status,listing:{id:receipt.targetListingId,status:receipt.status,slug:receipt.slug},idempotent:true});
     const editSession=await editSessionByWorkingId(params.data.id,user.id);
+    const currentDraft=await prisma.listing.findFirst({where:{id:params.data.id,sellerId:user.id,status:"DRAFT"},select:{description:true}});
+    if(currentDraft){const contact=descriptionContactIssues(currentDraft.description);if(contact.email||contact.phone)return reply.code(422).send({error:"listing_description_contacts_forbidden",fields:contact,message:"Retirez le numéro de téléphone ou l’adresse e-mail de la description pour continuer."});}
     const policyBlock=await rejectListingAttemptForPolicy({request,userId:user.id,listingId:params.data.id});
     if(policyBlock)return reply.code(423).send({error:"listing_content_policy_violation",message:editSession?"Les modifications contiennent un contenu interdit. L’annonce active n’a pas été modifiée.":"L’annonce contient un contenu interdit ou des coordonnées directes. Elle n’a pas été publiée ni conservée comme brouillon.",reasons:policyBlock.signals,redirect:policyBlock.redirect});
 

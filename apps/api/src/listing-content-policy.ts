@@ -44,6 +44,10 @@ function phoneIn(value:string){
   const labelled=/(?:t[ée]l(?:[ée]phone)?|phone|whatsapp|contact)\s*[:=.-]?\s*(?:\+|00)?\s*\d(?:[\s().-]*\d){7,14}/i;
   return international.test(value)||french.test(value)||labelled.test(value);
 }
+export function descriptionContactIssues(description:string|null|undefined){
+ const text=String(description??"");
+ return{email:emailIn(text),phone:phoneIn(text)};
+}
 function phraseInNormalized(value:string,phrase:string){return (` ${value} `).includes(` ${normalize(phrase)} `)}
 function prohibitedSignals(titleNorm:string,descriptionNorm:string){
   const signals:PolicySignal[]=[];

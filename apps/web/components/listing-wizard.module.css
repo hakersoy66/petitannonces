@@ -43,6 +43,10 @@
 .validationBlockText{margin-top:8px;padding:10px 12px;border-radius:11px;background:#fff0f1;color:#a83c49;font-size:12px;font-weight:800;line-height:1.45}
 .stepRequirementError{display:flex;align-items:center;gap:10px;padding:13px 14px;border:1px solid #df6671;border-radius:13px;background:#fff3f4;color:#a83c49;font-size:13px;font-weight:800}
 
+.contactBlockedWarning{display:flex;align-items:flex-start;gap:10px;margin-top:9px;padding:13px 14px;border:1px solid #e9a1a9;border-radius:13px;background:#fff1f2;color:#a72e3f;font-size:13px;font-weight:700;line-height:1.5}
+.contactBlockedWarning>svg{flex:0 0 18px;width:18px;height:18px;margin-top:2px}
+.contactBlockedWarning span{display:grid;gap:3px;min-width:0}
+.contactBlockedWarning strong{display:block;font-size:13px;font-weight:900}
 /* 2026-09-19 save-for-later moved below primary wizard action */
 .footerActionStack{display:grid;gap:8px;min-width:230px;margin-left:auto}
 .footerActionStack>button{width:100%}

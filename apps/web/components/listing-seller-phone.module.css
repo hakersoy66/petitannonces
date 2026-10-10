@@ -1,0 +1,8 @@
+.wrapper{display:grid;gap:7px;min-width:0}
+.revealButton,.phoneLink{display:flex;align-items:center;justify-content:center;gap:9px;width:100%;min-height:48px;box-sizing:border-box;border-radius:13px;border:1px solid #cec8ff;background:#f4f2ff;color:#5144c4;font:inherit;font-size:14px;font-weight:850;cursor:pointer;text-decoration:none;transition:background .15s,border-color .15s}
+.revealButton:hover,.phoneLink:hover{background:#eae6ff;border-color:#a79cff}
+.revealButton:disabled{cursor:wait;opacity:.65}
+.revealButton svg,.phoneLink svg{width:17px;height:17px}
+.phoneLink{background:#edf9f3;color:#176c4b;border-color:#bfe6cf}
+.phoneLink:hover{background:#ddf4e6;border-color:#98d9b4}
+.error{color:#b23847;font-size:12px;font-weight:700;line-height:1.45}

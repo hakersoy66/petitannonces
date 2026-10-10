@@ -9,7 +9,7 @@ import { lookupVehicleByPlate, normalizeFrenchPlate, plateHash } from "./vehicle
 import { getRuntimeIntegration } from "./admin-control.js";
 import { deleteStoredObject } from "./storage.js";
 import { categoryAttributeDefinitions } from "./category-attributes.js";
-import { rejectListingAttemptForPolicy } from "./listing-content-policy.js";
+import { rejectListingAttemptForPolicy, descriptionContactIssues } from "./listing-content-policy.js";
 import { discardListingEditSession, openListingEditSession } from "./listing-edit-session.js";
 
 const idParams = z.object({ id: z.string().min(1) });
@@ -289,8 +289,14 @@ export async function registerListingRoutes(app: FastifyInstance) {
   app.post("/listings/:id/save-draft", async (request, reply) => {
     const user = await requireListingUser(request, reply); if (!user) return;
     const params = idParams.safeParse(request.params); if (!params.success) return reply.code(400).send({ error: "invalid_request" });
-    const listing = await prisma.listing.findFirst({ where: { id: params.data.id, sellerId: user.id, status: "DRAFT" }, select: { id: true } });
+    const listing = await prisma.listing.findFirst({ where: { id: params.data.id, sellerId: user.id, status: "DRAFT" }, select: { id: true, description:true } });
     if (!listing) return reply.code(409).send({ error: "draft_required" });
+    const content=z.object({description:z.string().max(12000).optional()}).safeParse(request.body??{});
+    if(!content.success)return reply.code(400).send({error:"invalid_request"});
+    const nextDescription=content.data.description??listing.description??"";
+    const contact=descriptionContactIssues(nextDescription);
+    if(contact.email||contact.phone)return reply.code(422).send({error:"listing_description_contacts_forbidden",fields:contact,message:"Retirez les coordonnées de la description avant d’enregistrer ce brouillon."});
+    if(content.data.description!==undefined)await prisma.listing.update({where:{id:listing.id},data:{description:nextDescription.trim()||null}});
     const policyBlock=await rejectListingAttemptForPolicy({request,userId:user.id,listingId:listing.id});
     if(policyBlock)return reply.code(423).send({error:"listing_content_policy_violation",message:"Cette annonce contient un contenu interdit ou des coordonnées directes. Elle n’a pas été enregistrée comme brouillon.",reasons:policyBlock.signals,redirect:policyBlock.redirect});
     await prisma.listing.update({ where: { id: listing.id }, data: { draftSavedAt: new Date() } });
@@ -365,6 +371,7 @@ export async function registerListingRoutes(app: FastifyInstance) {
     }).safeParse(request.body);
     if (!params.success || !body.success) return reply.code(400).send({ error: "invalid_request" });
     const draft = await ownedDraft(params.data.id, user.id); if (!draft) return reply.code(404).send({ error: "draft_not_found" });
+    if(body.data.description!==undefined){const contact=descriptionContactIssues(body.data.description);if(contact.email||contact.phone)return reply.code(422).send({error:"listing_description_contacts_forbidden",fields:contact,message:"Retirez les coordonnées de la description pour continuer."});}
     const data: any = { ...body.data };
     if (body.data.city !== undefined || body.data.postalCode !== undefined) {
       const city = body.data.city ?? draft.city ?? "";
@@ -390,6 +397,7 @@ export async function registerListingRoutes(app: FastifyInstance) {
     if(!params.success||!body.success)return reply.code(400).send({error:"invalid_request"});
     const draft=await prisma.listing.findFirst({where:{id:params.data.id,sellerId:user.id,status:"DRAFT"},include:{category:true}});
     if(!draft)return reply.code(409).send({error:"draft_required"});
+    if(body.data.description!==undefined){const contact=descriptionContactIssues(body.data.description);if(contact.email||contact.phone)return reply.code(422).send({error:"listing_description_contacts_forbidden",fields:contact,message:"Retirez les coordonnées de la description pour continuer."});}
     const update:any={};
     if(body.data.title!==undefined)update.title=body.data.title.trim()||null;
     if(body.data.description!==undefined)update.description=body.data.description.trim()||null;
