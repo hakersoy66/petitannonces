@@ -1,4 +1,5 @@
 import { cache } from "react";
+import { decodeHtmlEntities } from "./decode-html-entities";
 
 export type PublicListingDetail = {
   id: string;
@@ -61,7 +62,12 @@ export const fetchPublicListing = cache(async (slug: string): Promise<PublicList
   if (response.status === 404) return null;
   if (!response.ok) throw new Error(`listing_api_${response.status}`);
   const payload = await response.json() as { listing: PublicListingDetail };
-  return payload.listing;
+  const listing = payload.listing;
+  return {
+    ...listing,
+    title: listing.title == null ? null : decodeHtmlEntities(listing.title),
+    description: listing.description == null ? null : decodeHtmlEntities(listing.description),
+  };
 });
 
 export function formatMoney(amountMinor: number | null, currency = "EUR") {
