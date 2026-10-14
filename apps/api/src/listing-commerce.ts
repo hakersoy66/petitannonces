@@ -57,7 +57,7 @@ export async function registerListingCommerceRoutes(app: FastifyInstance) {
 
     const listing = await prisma.listing.findFirst({
       where: { id: params.data.id, sellerId: user.id },
-      select: { id: true, priceMinor: true, currency: true, categoryId:true, category: { select: { domain: true } }, property: { select: { transactionType: true } } },
+      select: { id: true, priceMinor: true, currency: true, categoryId:true, category: { select: { domain: true, slug: true } }, property: { select: { transactionType: true } } },
     });
     if (!listing) return reply.code(404).send({ error: "listing_not_found" });
     const isVacation=await categoryBelongsToRootSlug(listing.categoryId,"vacances");
@@ -66,7 +66,7 @@ export async function registerListingCommerceRoutes(app: FastifyInstance) {
       `SELECT * FROM "ListingCommerceSettings" WHERE "listingId"=$1 LIMIT 1`,
       listing.id,
     );
-    const securePaymentAllowed = !isVacation && !["VEHICLE", "REAL_ESTATE"].includes(listing.category.domain);
+    const securePaymentAllowed = !isVacation && !["VEHICLE", "REAL_ESTATE"].includes(listing.category.domain) && !["location-vehicules", "transfert-vip"].includes(listing.category.slug);
     const storedSettings = rows[0] ?? {
       listingId: listing.id,
       acceptsOffers: !isVacation,
@@ -92,7 +92,7 @@ export async function registerListingCommerceRoutes(app: FastifyInstance) {
     } catch {}
 
     const feePreview=listing.priceMinor!=null&&listing.priceMinor>0?marketplaceQuote(listing.priceMinor,0,settings.commissionPayer):null;
-    return reply.send({ listing: { priceMinor: listing.priceMinor, currency: listing.currency, domain: listing.category.domain, transactionType: listing.property?.transactionType ?? null, isVacation }, settings, configured:Boolean(rows[0]), importInfo, sellerPaymentReady: await sellerPaymentReady(user.id), commission:{rateBps:MARKETPLACE_COMMISSION_RATE_BPS,ratePercent:MARKETPLACE_COMMISSION_RATE_BPS/100,preview:feePreview} });
+    return reply.send({ listing: { priceMinor: listing.priceMinor, currency: listing.currency, domain: listing.category.domain, categorySlug: listing.category.slug, transactionType: listing.property?.transactionType ?? null, isVacation }, settings, configured:Boolean(rows[0]), importInfo, sellerPaymentReady: await sellerPaymentReady(user.id), commission:{rateBps:MARKETPLACE_COMMISSION_RATE_BPS,ratePercent:MARKETPLACE_COMMISSION_RATE_BPS/100,preview:feePreview} });
   });
 
   app.get("/listings/:id/price-insight", async (request, reply) => {
@@ -206,12 +206,12 @@ export async function registerListingCommerceRoutes(app: FastifyInstance) {
 
     const listing = await prisma.listing.findFirst({
       where: { id: params.data.id, sellerId: user.id, status: { in: ["DRAFT", "PENDING", "PUBLISHED"] } },
-      select: { id: true, categoryId:true, category: { select: { domain: true } } },
+      select: { id: true, categoryId:true, category: { select: { domain: true, slug: true } } },
     });
     if (!listing) return reply.code(404).send({ error: "listing_not_found" });
     const isVacation=await categoryBelongsToRootSlug(listing.categoryId,"vacances");
     if (body.data.priceMinor === null && listing.category.domain !== "SERVICE") return reply.code(400).send({ error: "price_required" });
-    const securePaymentAllowed = !isVacation && !["VEHICLE", "REAL_ESTATE"].includes(listing.category.domain);
+    const securePaymentAllowed = !isVacation && !["VEHICLE", "REAL_ESTATE"].includes(listing.category.domain) && !["location-vehicules", "transfert-vip"].includes(listing.category.slug);
     const securePaymentEnabled = securePaymentAllowed && body.data.securePaymentEnabled;
     if (body.data.priceMinor === null && securePaymentEnabled) return reply.code(400).send({ error: "secure_payment_requires_price" });
 

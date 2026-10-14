@@ -72,6 +72,7 @@ function priceInsightLabel(position:PriceInsight extends infer _T ? "unknown"|"v
 export const ListingCommerceForm = forwardRef<ListingCommerceFormHandle, ListingCommerceFormProps>(function ListingCommerceForm({ listingId, onSaved, onDirty }, ref) {
   const [form, setForm] = useState<CommerceState>(initialState);
   const [domain, setDomain] = useState<Domain>("GENERAL");
+  const [categorySlug, setCategorySlug] = useState("");
   const [transactionType, setTransactionType] = useState<"SALE" | "RENTAL" | null>(null);
   const [isVacation,setIsVacation]=useState(false);
   const [status, setStatus] = useState(listingId ? "Chargement…" : "Les réglages seront enregistrés dès que le brouillon sera créé.");
@@ -83,10 +84,11 @@ export const ListingCommerceForm = forwardRef<ListingCommerceFormHandle, Listing
   const [validationAttempted,setValidationAttempted]=useState(false);
   const [packagePreset,setPackagePreset]=useState<PackagePresetKey|null>(null);
 
-  const securePaymentAllowed = !isVacation && !["VEHICLE", "REAL_ESTATE"].includes(domain);
+  const isTransportService = ["location-vehicules", "transfert-vip"].includes(categorySlug);
+  const securePaymentAllowed = !isVacation && !isTransportService && !["VEHICLE", "REAL_ESTATE"].includes(domain);
   const shippable = !isVacation && !["VEHICLE", "REAL_ESTATE", "JOB", "SERVICE"].includes(domain);
   const shippingSelected = form.mondialRelayEnabled || form.colissimoEnabled;
-  const priceCopy = listingPriceCopy({ domain, transactionType, isVacation });
+  const priceCopy = listingPriceCopy({ domain, transactionType, isVacation, categorySlug });
   const priceOptional = domain === "SERVICE";
   const priceMinor = useMemo(() => {
     if (form.freeListing) return 0;
@@ -108,7 +110,7 @@ export const ListingCommerceForm = forwardRef<ListingCommerceFormHandle, Listing
       .then(async (response) => {
         if (!response.ok) throw new Error(`commerce_${response.status}`);
         return response.json() as Promise<{
-          listing: { priceMinor: number | null; domain: Domain; transactionType: "SALE" | "RENTAL" | null; isVacation?:boolean };
+          listing: { priceMinor: number | null; domain: Domain; categorySlug: string; transactionType: "SALE" | "RENTAL" | null; isVacation?:boolean };
           importInfo?: { sourceType: string; sourceUrl: string | null; createdAt: string } | null;
           configured?: boolean;
           sellerPaymentReady?: boolean;
@@ -123,6 +125,7 @@ export const ListingCommerceForm = forwardRef<ListingCommerceFormHandle, Listing
       .then((payload) => {
         if (cancelled) return;
         setDomain(payload.listing.domain);
+        setCategorySlug(payload.listing.categorySlug??"");
         setTransactionType(payload.listing.transactionType ?? null);
         setIsVacation(Boolean(payload.listing.isVacation));
         const paymentReady = payload.sellerPaymentReady !== false;
@@ -153,7 +156,7 @@ export const ListingCommerceForm = forwardRef<ListingCommerceFormHandle, Listing
   }, [listingId]);
 
   useEffect(()=>{
-    if(!listingId||form.freeListing||priceMinor==null||priceMinor<=0){setPriceInsight(null);setPriceInsightLoading(false);return}
+    if(!listingId||isTransportService||form.freeListing||priceMinor==null||priceMinor<=0){setPriceInsight(null);setPriceInsightLoading(false);return}
     let cancelled=false;
     const timer=window.setTimeout(()=>{
       setPriceInsightLoading(true);
@@ -164,7 +167,7 @@ export const ListingCommerceForm = forwardRef<ListingCommerceFormHandle, Listing
         .finally(()=>{if(!cancelled)setPriceInsightLoading(false)});
     },550);
     return()=>{cancelled=true;window.clearTimeout(timer)};
-  },[listingId,priceMinor,form.freeListing]);
+  },[listingId,isTransportService,priceMinor,form.freeListing]);
 
   function updateForm(updater: (current: CommerceState) => CommerceState) {
     onDirty?.();
@@ -248,11 +251,11 @@ export const ListingCommerceForm = forwardRef<ListingCommerceFormHandle, Listing
           <span>{priceCopy.label}{importedPrice && <small className={styles.importBadge}>Importé</small>}</span>
           <div className={styles.priceInput}><input inputMode="decimal" value={form.priceEuros} disabled={form.freeListing} onChange={(event) => { setImportedPrice(false); updateForm((current) => ({ ...current, freeListing:false, priceEuros: event.target.value })); }} placeholder={form.freeListing?"Gratuit":priceCopy.placeholder} /><b>{form.freeListing?"Offert":priceCopy.inputSuffix}</b></div>
           <small className={styles.priceHelp}>{form.freeListing?"Vous donnez cet article gratuitement. Aucun montant ne sera demandé à l’acheteur.":priceCopy.help}</small>{validationAttempted&&!priceOptional&&priceMinor==null&&<small className={styles.validationText}>Indiquez un prix valide.</small>}
-          {!form.freeListing&&priceMinor!=null&&priceMinor>0&&<div className={`${styles.priceInsight} ${priceInsightTone}`}>
+          {!isTransportService&&!form.freeListing&&priceMinor!=null&&priceMinor>0&&<div className={`${styles.priceInsight} ${priceInsightTone}`}>
             <div className={styles.priceInsightHead}><span><AppIcon name="gauge"/></span><div><strong>{priceInsight?.available?priceInsightLabel(priceInsight.position):"Comparaison de prix"}</strong><small>{priceInsight?.available?`${priceInsight.sampleSize} annonce${priceInsight.sampleSize>1?"s":""} comparée${priceInsight.sampleSize>1?"s":""} · ${priceInsight.basisLabel}`:priceInsightLoading?"Analyse des annonces similaires…":"Analyse des prix disponibles sur Petit Annonces."}</small></div>{priceInsight?.available&&priceInsight.differencePercent!=null&&<em>{priceInsight.differencePercent>0?"+":""}{priceInsight.differencePercent}%</em>}</div>
             {priceInsightLoading?<div className={styles.priceInsightLoading}><i/><span>Recherche de prix comparables…</span></div>:priceInsight?.available?<><p>{priceInsight.message}</p><div className={styles.priceInsightStats}><span><small>Fourchette observée</small><b>{money(priceInsight.rangeLowMinor)} – {money(priceInsight.rangeHighMinor)}</b></span><span><small>Prix médian</small><b>{money(priceInsight.medianMinor)}</b></span></div>{priceInsight.position!=="fair"&&priceInsight.position!=="unknown"&&<button type="button" className={styles.applyMarketPrice} onClick={()=>applySuggestedPrice(priceInsight.medianMinor)}><AppIcon name="sparkles"/>Utiliser le prix conseillé : {money(priceInsight.medianMinor)}</button>}</>:priceInsight&&<p>Pas encore assez d’annonces comparables pour proposer un prix fiable.</p>}
           </div>}
-          {priceCopy.basis==="TOTAL"&&<button type="button" className={`${styles.freeToggle} ${form.freeListing?styles.freeToggleActive:""}`} onClick={()=>{setImportedPrice(false);updateForm(current=>({...current,freeListing:!current.freeListing,priceEuros:current.freeListing?current.priceEuros:"",acceptsOffers:current.freeListing?current.acceptsOffers:false,securePaymentEnabled:current.freeListing?current.securePaymentEnabled:false}))}}><strong>{form.freeListing?"✓ Offert":"Offrir gratuitement"}</strong><span>{form.freeListing?"L’annonce sera affichée comme Gratuit.":"Aucun prix demandé à l’acheteur."}</span></button>}
+          {priceCopy.basis==="TOTAL"&&domain!=="SERVICE"&&<button type="button" className={`${styles.freeToggle} ${form.freeListing?styles.freeToggleActive:""}`} onClick={()=>{setImportedPrice(false);updateForm(current=>({...current,freeListing:!current.freeListing,priceEuros:current.freeListing?current.priceEuros:"",acceptsOffers:current.freeListing?current.acceptsOffers:false,securePaymentEnabled:current.freeListing?current.securePaymentEnabled:false}))}}><strong>{form.freeListing?"✓ Offert":"Offrir gratuitement"}</strong><span>{form.freeListing?"L’annonce sera affichée comme Gratuit.":"Aucun prix demandé à l’acheteur."}</span></button>}
         </label>
         {!isVacation&&<label className={styles.switchRow}>
           <input type="checkbox" checked={form.acceptsOffers} disabled={form.freeListing||noPriceService} onChange={() => toggle("acceptsOffers")} />

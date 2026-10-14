@@ -59,6 +59,8 @@ export function listingFieldRelevant(s:Selection,field:Field):boolean{
  if(TWO_WHEELERS.has(slug)&&["doors","seats","fiscalPower","bodyStyle"].includes(key))return false;
  if(slug==="voitures-electriques"&&key==="gearbox")return false;
  if(slug==="nautisme"&&["doors","seats","fiscalPower","gearbox","critAir","firstRegistration"].includes(key))return false;
+ // A rental with unlimited mileage should not ask for a daily mileage cap.
+ if(slug==="location-vehicules"&&key==="includedKmPerDay"&&chosen(s,"unlimitedMileage")==="true")return false;
 
  // Category is a family: only ask dependent questions when the type is known.
  if(slug==="telephones-smartphones"){
