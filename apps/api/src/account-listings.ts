@@ -217,6 +217,7 @@ export async function registerAccountListingRoutes(app: FastifyInstance) {
       const code = error instanceof Error ? error.message : "listing_renewal_failed";
       if (code === "listing_not_found") return reply.code(404).send({ error: code });
       if (code === "listing_not_expired") return reply.code(409).send({ error: code });
+      if (code === "animal_cession_requires_cda_production_validation") return reply.code(423).send({ error: code });
       if (code === "listing_renewal_payment_required") return reply.code(402).send({ error: code, amountMinor: LISTING_RENEWAL_COST_MINOR, currency: LISTING_RENEWAL_CURRENCY });
       request.log.error({ error }, "listing renewal failed");
       return reply.code(500).send({ error: "listing_renewal_failed" });

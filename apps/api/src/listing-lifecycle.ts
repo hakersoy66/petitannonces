@@ -1,4 +1,5 @@
 import { prisma } from "@pa/database";
+import { animalCessionRequiresProductionApproval } from "./animal-cession-gate.js";
 import { deliverUserEvent } from "./notification-delivery.js";
 import { notifyListingIndexNow } from "./indexnow.js";
 
@@ -70,7 +71,8 @@ export async function expireDueListings(limit=500){
 }
 
 async function renewLocked(tx:any,listingId:string,userId:string,paid:boolean){
- const ls=await tx.$queryRawUnsafe(`SELECT "id","sellerId","status"::text FROM "Listing" WHERE "id"=$1 FOR UPDATE`,listingId) as Array<{id:string;sellerId:string;status:string}>;const l=ls[0];if(!l||l.sellerId!==userId)throw new Error("listing_not_found");
+ const ls=await tx.$queryRawUnsafe(`SELECT l."id",l."sellerId",l."status"::text AS "status",c."domain"::text AS "domain",c."slug" FROM "Listing" l JOIN "Category" c ON c."id"=l."categoryId" WHERE l."id"=$1 FOR UPDATE OF l`,listingId) as Array<{id:string;sellerId:string;status:string;domain:string;slug:string}>;const l=ls[0];if(!l||l.sellerId!==userId)throw new Error("listing_not_found");
+ if(animalCessionRequiresProductionApproval(l))throw new Error("animal_cession_requires_cda_production_validation");
  const rs=await tx.$queryRawUnsafe(`SELECT "listingId","expiresAt","freeRenewalUsed","renewalCount","lastRenewedAt",("expiresAt"<=CURRENT_TIMESTAMP) AS "isExpired" FROM "ListingLifecycle" WHERE "listingId"=$1 FOR UPDATE`,listingId) as ListingLifecycleRow[];let lc=rs[0];if(!lc)throw new Error("listing_lifecycle_not_found");if(!isListingRenewable(l.status,lc.expiresAt))throw new Error("listing_not_expired");
  if(!paid&&lc.freeRenewalUsed)throw new Error("listing_renewal_payment_required");if(paid&&!lc.freeRenewalUsed)throw new Error("free_renewal_available");
  const now=new Date(),expiresAt=listingExpiryFrom(new Date(Math.max(now.getTime(),lc.expiresAt.getTime())));await tx.$executeRawUnsafe(`UPDATE "ListingLifecycle" SET "expiresAt"=$2,"freeRenewalUsed"=TRUE,"renewalCount"="renewalCount"+1,"lastRenewedAt"=$3,"updatedAt"=CURRENT_TIMESTAMP WHERE "listingId"=$1`,listingId,expiresAt,now);const nextStatus=l.status==="DRAFT"?"DRAFT":"PUBLISHED";await tx.$executeRawUnsafe(`UPDATE "Listing" SET "status"=$2::"ListingStatus","publishedAt"=CASE WHEN $4::boolean THEN $3 ELSE "publishedAt" END,"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$1`,listingId,nextStatus,now,l.status!=="PUBLISHED"||lc.isExpired);return{listingId,expiresAt,status:nextStatus,requiresReview:nextStatus==="DRAFT",chargedMinor:paid?LISTING_RENEWAL_COST_MINOR:0,currency:LISTING_RENEWAL_CURRENCY,freeRenewalUsed:true,renewalCount:lc.renewalCount+1}

@@ -3,6 +3,7 @@ import { prisma } from "@pa/database";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { activateListingLifetime } from "./listing-lifecycle.js";
+import { animalCessionRequiresProductionApproval } from "./animal-cession-gate.js";
 import { ensurePayoutReconciliationSchema } from "./marketplace-stripe.js";
 import { getPayoutProviderRuntime } from "./marketplace-payout-provider.js";
 import { deliverUserEvent } from "./notification-delivery.js";
@@ -257,8 +258,9 @@ export async function registerOperationsRoutes(app: FastifyInstance) {
     const params = z.object({ id: z.string().min(1) }).safeParse(request.params);
     const body = z.object({ status: z.enum(["PUBLISHED","SUSPENDED","EXPIRED"]), reason: z.string().trim().min(5).max(1000) }).safeParse(request.body);
     if (!params.success || !body.success) return reply.code(400).send({ error: "invalid_request" });
-    const listing = await prisma.listing.findUnique({ where: { id: params.data.id }, select: { id: true, status: true, publishedAt:true } });
+    const listing = await prisma.listing.findUnique({ where: { id: params.data.id }, select: { id: true, status: true, publishedAt:true, category:{select:{domain:true,slug:true}} } });
     if (!listing) return reply.code(404).send({ error: "listing_not_found" });
+    if(body.data.status==="PUBLISHED"&&animalCessionRequiresProductionApproval(listing.category))return reply.code(423).send({error:"animal_cession_requires_cda_production_validation"});
     const publishedAt = body.data.status === "PUBLISHED" ? new Date() : null;
     await prisma.listing.update({ where: { id: listing.id }, data: { status: body.data.status, ...(publishedAt ? { publishedAt } : {}) } });
     if (publishedAt) {
@@ -593,7 +595,8 @@ export async function registerOperationsRoutes(app: FastifyInstance) {
     const admin=await requireAdmin(request,reply,["SUPER_ADMIN","ADMIN","MODERATOR"]);if(!admin)return;
     const body=z.object({ids:z.array(z.string().min(1)).min(1).max(100),status:z.enum(["PUBLISHED","SUSPENDED","EXPIRED"]),reason:z.string().trim().min(5).max(1000)}).safeParse(request.body);
     if(!body.success)return reply.code(400).send({error:"invalid_request"});
-    const unique=[...new Set(body.data.ids)];const rows=await prisma.listing.findMany({where:{id:{in:unique}},select:{id:true,status:true,publishedAt:true}});if(!rows.length)return reply.code(404).send({error:"listings_not_found"});
+    const unique=[...new Set(body.data.ids)];const rows=await prisma.listing.findMany({where:{id:{in:unique}},select:{id:true,status:true,publishedAt:true,category:{select:{domain:true,slug:true}}}});if(!rows.length)return reply.code(404).send({error:"listings_not_found"});
+    if(body.data.status==="PUBLISHED"&&rows.some(row=>animalCessionRequiresProductionApproval(row.category)))return reply.code(423).send({error:"animal_cession_requires_cda_production_validation"});
     const now=new Date();await prisma.$transaction(async tx=>{for(const row of rows){await tx.listing.update({where:{id:row.id},data:{status:body.data.status,...(body.data.status==="PUBLISHED"?{publishedAt:now}:{})}})}});
     if(body.data.status==="PUBLISHED")for(const row of rows){await activateListingLifetime(row.id,now,true);if(row.publishedAt==null)await notifyInstantSavedSearchesForListing(row.id).catch(error=>request.log.warn({error,listingId:row.id},"instant saved-search notification failed after bulk admin publication"));}
     await audit(admin.id,"LISTING_BULK_STATUS_CHANGED","LISTING",undefined,{ids:rows.map(r=>r.id),status:body.data.status,reason:body.data.reason,count:rows.length});
