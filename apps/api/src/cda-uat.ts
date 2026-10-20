@@ -2,16 +2,24 @@ import { createHmac } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { requireAdminRoles } from "./rbac.js";
+import { getRuntimeIntegration } from "./admin-control.js";
 
 // CDA partner UAT is intentionally isolated from publication.
 // Never embed provider credentials in an HTTP response, browser bundle, or source control.
 const CDA_UAT_BASE = "https://annonces-preprod.i-cad.fr/";
 const consumerId = 21;
 const adminOnly = requireAdminRoles(["SUPER_ADMIN", "ADMIN", "COMPLIANCE"]);
-const cdaEnabled = () => process.env.CDA_UAT_ENABLED === "true";
-const cdaReady = () => cdaEnabled() && Boolean(process.env.CDA_SECRET?.trim());
+// The UAT signing secret is read only on the server; it never reaches clients.
+async function cdaSecret(): Promise<string | null> {
+  const integration = await getRuntimeIntegration("cda-uat");
+  const stored = integration?.enabled ? integration.secrets?.secret?.trim() : undefined;
+  if (stored && /^[a-f0-9]{64}$/i.test(stored)) return stored;
+  const env = process.env.CDA_UAT_ENABLED === "true" ? process.env.CDA_SECRET?.trim() : null;
+  return env && /^[a-f0-9]{64}$/i.test(env) ? env : null;
+}
+const cdaReady = async () => Boolean(await cdaSecret());
 
-const professionalNumber = z.object({
+export const professionalNumber = z.object({
   proNumberType: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]),
   proNumber: z.string().trim().min(6).max(15),
 }).superRefine(({ proNumberType, proNumber }, ctx) => {
@@ -49,7 +57,7 @@ const owner = z.discriminatedUnion("type", [
   }),
 ]);
 
-const checkData = z.object({
+export const checkData = z.object({
   operationType: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]),
   data: z.object({ animal, owner }),
 }).superRefine(({ operationType, data }, ctx) => {
@@ -75,9 +83,7 @@ function encode64(value: string | Buffer) {
   return Buffer.from(value).toString("base64url");
 }
 
-function signJwt(payload: Record<string, unknown>) {
-  const secret = process.env.CDA_SECRET?.trim();
-  if (!secret) throw new Error("cda_not_configured");
+function signJwt(secret: string, payload: Record<string, unknown>) {
   const header = encode64(JSON.stringify({ alg: "HS256", typ: "JWT" }));
   const body = encode64(JSON.stringify(payload));
   const bodyToSign = header + "." + body;
@@ -86,11 +92,12 @@ function signJwt(payload: Record<string, unknown>) {
 }
 
 async function callCda(path: "checkPro" | "checkData" | "contactValidation" | "ownerValidation", payload: Record<string, unknown>): Promise<CdaResponse> {
-  if (!cdaReady()) throw new Error("cda_not_configured");
+  const secret = await cdaSecret();
+  if (!secret) throw new Error("cda_not_configured");
   const response = await fetch(new URL(path, CDA_UAT_BASE), {
     method: "POST",
     headers: { "content-type": "application/json", "accept": "application/json" },
-    body: JSON.stringify({token: signJwt({ consumerId, ...payload })}),
+    body: JSON.stringify({token: signJwt(secret, { consumerId, ...payload })}),
     signal: AbortSignal.timeout(12000),
     redirect: "error",
   });
@@ -126,14 +133,14 @@ function permit(key: string) {
 
 export function registerCdaPreproductionRoutes(app: FastifyInstance) {
   app.get("/admin/integrations/cda-uat", { preHandler: adminOnly }, async () => ({
-    available: cdaReady(), environment: "preproduction", consumerId,
+    available: await cdaReady(), environment: "preproduction", consumerId,
     supportedSpecies: ["chien", "chat"], productionPublicationEnabled: false,
   }));
 
   app.post("/admin/integrations/cda-uat/check-pro", { preHandler: adminOnly }, async (request, reply) => {
     const parsed = professionalNumber.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: "invalid_professional_identifier" });
-    if (!cdaReady()) return reply.code(503).send({ error:"cda_not_configured" });
+    if (!(await cdaReady())) return reply.code(503).send({ error:"cda_not_configured" });
     if (!permit(request.ip)) return reply.code(429).send({ error:"cda_rate_limit" });
     try { return reply.send(await callCda("checkPro", parsed.data)); }
     catch { return reply.code(502).send({ error: "cda_unavailable" }); }
@@ -142,7 +149,7 @@ export function registerCdaPreproductionRoutes(app: FastifyInstance) {
   app.post("/admin/integrations/cda-uat/check-data", { preHandler: adminOnly }, async (request, reply) => {
     const parsed = checkData.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: "invalid_animal_verification_data", issues: parsed.error.issues.map(x => x.message) });
-    if (!cdaReady()) return reply.code(503).send({ error:"cda_not_configured" });
+    if (!(await cdaReady())) return reply.code(503).send({ error:"cda_not_configured" });
     if (!permit(request.ip)) return reply.code(429).send({ error:"cda_rate_limit" });
     try { return reply.send(await callCda("checkData", parsed.data)); }
     catch { return reply.code(502).send({ error: "cda_unavailable" }); }
@@ -154,7 +161,7 @@ export function registerCdaPreproductionRoutes(app: FastifyInstance) {
     if (parsed.data.scope === "professional" && parsed.data.contactType !== 1) {
       return reply.code(422).send({ error:"professional_email_only" });
     }
-    if (!cdaReady()) return reply.code(503).send({ error:"cda_not_configured" });
+    if (!(await cdaReady())) return reply.code(503).send({ error:"cda_not_configured" });
     if (!permit(request.ip)) return reply.code(429).send({ error:"cda_rate_limit" });
     try { return reply.send(await callCda("contactValidation", { data: { id:parsed.data.id, contactType:parsed.data.contactType } })); }
     catch { return reply.code(502).send({ error:"cda_unavailable" }); }
@@ -163,7 +170,7 @@ export function registerCdaPreproductionRoutes(app: FastifyInstance) {
   app.post("/admin/integrations/cda-uat/validate", { preHandler: adminOnly }, async (request, reply) => {
     const parsed = code.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: "invalid_request" });
-    if (!cdaReady()) return reply.code(503).send({ error:"cda_not_configured" });
+    if (!(await cdaReady())) return reply.code(503).send({ error:"cda_not_configured" });
     if (!permit(request.ip)) return reply.code(429).send({ error:"cda_rate_limit" });
     try { return reply.send(await callCda("ownerValidation", { data: { id:parsed.data.id, code:parsed.data.code } })); }
     catch { return reply.code(502).send({ error:"cda_unavailable" }); }
