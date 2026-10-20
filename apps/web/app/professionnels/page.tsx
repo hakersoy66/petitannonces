@@ -3,14 +3,14 @@ import { AppIcon } from "../../components/app-icon";
 import styles from "./page.module.css";
 
 export const metadata: Metadata = {
-  title: { absolute: "Boutiques & professionnels en France | Petit Annonces" },
-  description: "Trouvez des boutiques et professionnels en France par secteur et par ville. Les entreprises peuvent aussi ouvrir une vitrine Pro et publier leur catalogue sur Petit Annonces.",
+  title: { absolute: "Annonces pour professionnels & boutiques Pro | Petit Annonces" },
+  description: "Commerçants, magasins et agences : diffusez vos annonces professionnelles, importez votre catalogue et créez votre boutique Pro. Offre de lancement de 90 jours sans carte bancaire.",
   alternates: { canonical: "/professionnels" },
   openGraph: {
     type: "website",
     url: "/professionnels",
-    title: "Boutiques & professionnels en France | Petit Annonces",
-    description: "Découvrez des boutiques et entreprises par secteur et par ville, ou ouvrez votre vitrine Pro pour publier votre catalogue.",
+    title: "Annonces pour professionnels & boutiques Pro | Petit Annonces",
+    description: "Découvrez les boutiques et entreprises par secteur ou diffusez vos annonces professionnelles avec 90 jours Pro offerts, sans carte bancaire.",
   },
 };
 
