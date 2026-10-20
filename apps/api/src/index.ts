@@ -49,6 +49,7 @@ import { ensureListingContentPolicySchema, registerListingContentPolicyRoutes, s
 import { ensureListingLifecycleSchema, startListingExpiryWorker } from "./listing-lifecycle.js";
 import { registerListingRoutes } from "./listings.js";
 import { registerCdaPreproductionRoutes } from "./cda-uat.js";
+import { registerCdaListingRoutes } from "./cda-listings.js";
 import { registerLocationRoutes } from "./locations.js";
 import { registerMediaRoutes } from "./media.js";
 import { registerMessagingRoutes } from "./messaging.js";
@@ -135,6 +136,7 @@ app.addHook("preHandler",spamHoldPreHandler);
 await registerHealthRoutes(app);
 await registerListingContentPolicyRoutes(app);
 registerCdaPreproductionRoutes(app);
+await registerCdaListingRoutes(app);
 await registerAdminControlRoutes(app);
 await registerGoogleAdsDirectRoutes(app);
 await registerAutoApprovalAdminRoutes(app);
