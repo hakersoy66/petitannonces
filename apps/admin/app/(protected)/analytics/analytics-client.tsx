@@ -13,7 +13,7 @@ type Row = {
   revenueMinor: number;
 };
 
-type AnonymousAudience={today:{estimatedEntries:number;pageViews:number};period:{days:number;estimatedEntries:number;pageViews:number;daily:Array<{day:string;entries:number;views:number}>};live:{onlineTabsApprox:number};firstMeasuredAt:string|null};
+type AnonymousAudience={today:{estimatedEntries:number;pageViews:number};period:{days:number;estimatedEntries:number;pageViews:number;daily:Array<{day:string;entries:number;views:number}>};live:{onlineTabsApprox:number};firstMeasuredAt:string|null;comparison?:{recent7:number;previous7:number;period:string}};
 type Audience = {
   visitors: number;
   sessions: number;
@@ -179,7 +179,11 @@ export default function AnalyticsClient() {
   const max = useMemo(() => Math.max(1, ...(data?.series ?? []).map((r) => Math.max(r.newUsers, r.publishedListings, r.paidOrders))), [data]);
   const pagesPerVisit = data?.audience?.sessions ? data.audience.pageViews / data.audience.sessions : 0;
   const todayAudience = data?.dailyAudience?.[data.dailyAudience.length - 1];
-  const maxAudience = useMemo(() => Math.max(1, ...(data?.dailyAudience ?? []).map((r) => r.visitors)), [data]);
+  const parisToday=new Date().toLocaleDateString("sv-SE",{timeZone:"Europe/Paris"});
+  const completedAggregateDays=(aggregate?.period.daily??[]).filter(row=>row.day<parisToday);
+  const maxAudience=Math.max(1,...completedAggregateDays.map(row=>row.entries));
+  const weekOverWeek=aggregate?.comparison?.previous7
+    ?(aggregate.comparison.recent7-aggregate.comparison.previous7)/aggregate.comparison.previous7*100:null;
   const signupTotalToday=(data?.signupSourcesToday??[]).reduce((sum,row)=>sum+row.count,0);
   const signupKnownToday=(data?.signupSourcesToday??[]).filter(row=>row.source!=="unknown").reduce((sum,row)=>sum+row.count,0);
   const signupGoogleToday=(data?.signupSourcesToday??[]).filter(row=>row.source==="google_ads"||row.source==="google_organic").reduce((sum,row)=>sum+row.count,0);
@@ -229,6 +233,7 @@ export default function AnalyticsClient() {
        <article className="admin-card admin-kpi"><small>Pages vues · {days} jours</small><strong>{aggregate?n(aggregate.period.pageViews):"—"}</strong><p>Comptage agrégé, sans parcours individuel</p></article>
        <article className="admin-card admin-kpi"><small>Entrées estimées aujourd’hui</small><strong>{aggregate?n(aggregate.today.estimatedEntries):"—"}</strong><p>Heure de Paris</p></article>
        <article className="admin-card admin-kpi"><small>Onglets actifs · approximation</small><strong>{aggregate?"~"+n(aggregate.live.onlineTabsApprox):"—"}</strong><p>Basé sur les signaux des dernières minutes</p></article>
+       <article className="admin-card admin-kpi"><small>Tendance · 7 jours complets</small><strong>{weekOverWeek===null?"—":`${weekOverWeek>0?"+":""}${weekOverWeek.toLocaleString("fr-FR",{maximumFractionDigits:1})}%`}</strong><p>{aggregate?.comparison?`${n(aggregate.comparison.recent7)} entrées estimées contre ${n(aggregate.comparison.previous7)} les 7 jours précédents`:"Historique comparatif indisponible"}</p></article>
       </div>
       {aggregate?.firstMeasuredAt&&<p style={{fontSize:12,color:"#777",marginTop:10}}>Mesure démarrée le {new Date(aggregate.firstMeasuredAt).toLocaleString("fr-FR",{timeZone:"Europe/Paris"})} ; historique antérieur indisponible.</p>}
     </section>
@@ -251,16 +256,17 @@ export default function AnalyticsClient() {
 
     <section className="admin-card admin-section" style={{ marginTop: 16 }}>
       <div className="admin-section-head">
-        <div><h2>Trafic quotidien</h2><p>Total quotidien des visiteurs mesurés, toutes sources confondues.</p></div>
+        <div><h2>Tendance du trafic quotidien</h2><p>Entrées anonymes estimées sans cookies de suivi ni identification des personnes. Comparaison sur les journées complètes, distincte des visiteurs ayant accepté la mesure.</p></div>
       </div>
       <div className="admin-grid admin-kpis">
-        <article className="admin-card admin-kpi"><small>Visiteurs aujourd’hui</small><strong>{loading ? "…" : n(todayAudience?.visitors ?? 0)}</strong><p>toutes sources confondues</p></article>
-        <article className="admin-card admin-kpi"><small>Visites aujourd’hui</small><strong>{loading ? "…" : n(todayAudience?.sessions ?? 0)}</strong><p>sessions mesurées aujourd’hui</p></article>
-        <article className="admin-card admin-kpi"><small>Pages aujourd’hui</small><strong>{loading ? "…" : n(todayAudience?.pageViews ?? 0)}</strong><p>pages vues aujourd’hui</p></article>
+        <article className="admin-card admin-kpi"><small>Entrées estimées aujourd’hui</small><strong>{aggregate?n(aggregate.today.estimatedEntries):"—"}</strong><p>signal anonyme, sans déduplication entre appareils</p></article>
+        <article className="admin-card admin-kpi"><small>Pages vues aujourd’hui</small><strong>{aggregate?n(aggregate.today.pageViews):"—"}</strong><p>mesure anonyme agrégée</p></article>
+        <article className="admin-card admin-kpi"><small>Visiteurs consentants aujourd’hui</small><strong>{loading?"…":n(todayAudience?.visitors??0)}</strong><p>uniquement les visiteurs ayant accepté la mesure détaillée</p></article>
       </div>
       <div style={{ marginTop: 14 }}>
-        <h3>Visiteurs par jour</h3>
-        <div className="admin-mini-chart admin-analytics-chart">{(data?.dailyAudience ?? []).map((row) => <div className="admin-chart-day" key={row.d} title={`${row.d} · ${row.visitors} visiteurs`}><div className="admin-chart-bars"><i style={{ height: `${Math.max(2, row.visitors / maxAudience * 100)}%` }} /></div><small>{new Date(`${row.d}T00:00:00`).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" })}</small></div>)}</div>
+        <h3>Entrées estimées par jour · jours complets</h3>
+        <div className="admin-mini-chart admin-analytics-chart">{completedAggregateDays.map((row) => <div className="admin-chart-day" key={row.day} title={`${row.day} · ${row.entries} entrées estimées (non uniques)`}><div className="admin-chart-bars"><i style={{ height: `${Math.max(2, row.entries / maxAudience * 100)}%` }} /></div><small>{new Date(`${row.day}T00:00:00`).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" })}</small></div>)}</div>
+        {!aggregate&&<p>Mesure agrégée indisponible pour le moment.</p>}
       </div>
     </section>
 

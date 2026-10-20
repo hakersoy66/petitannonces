@@ -41,7 +41,7 @@ export async function registerAnonymousAudienceRoutes(app:FastifyInstance){
  app.get("/admin/analytics/anonymous-audience",{preHandler:requireAdminRoles([...ADMIN_ROLES])},async(request,reply)=>{
   const query=z.object({days:z.coerce.number().int().min(1).max(90).default(30)}).safeParse(request.query);
   if(!query.success)return reply.code(400).send({error:"invalid_period"});
-  const [today,period,live,first]=await Promise.all([
+  const [today,period,live,first,comparison]=await Promise.all([
    prisma.$queryRawUnsafe<Array<{entries:number;views:number}>>(`SELECT COALESCE(SUM("entries"),0)::int AS entries,COALESCE(SUM("pageViews"),0)::int AS views
       FROM "SiteAudienceAggregate" WHERE "bucket">=(date_trunc('day',NOW() AT TIME ZONE 'Europe/Paris') AT TIME ZONE 'Europe/Paris')`),
    prisma.$queryRawUnsafe<Array<{entries:number;views:number;day:string}>>(`SELECT TO_CHAR("bucket" AT TIME ZONE 'Europe/Paris','YYYY-MM-DD') AS day,
@@ -49,7 +49,11 @@ export async function registerAnonymousAudienceRoutes(app:FastifyInstance){
       FROM "SiteAudienceAggregate" WHERE "bucket">=NOW()-($1::int||' days')::interval
       GROUP BY 1 ORDER BY 1`,query.data.days),
    prisma.$queryRawUnsafe<Array<{signals:number}>>(`SELECT COALESCE(SUM("pulses"),0)::int AS signals FROM "SiteAudienceAggregate" WHERE "bucket">=date_trunc('minute',NOW())-INTERVAL '2 minutes'`),
-   prisma.$queryRawUnsafe<Array<{firstAt:Date|null}>>(`SELECT MIN("bucket") AS "firstAt" FROM "SiteAudienceAggregate"`)
+   prisma.$queryRawUnsafe<Array<{firstAt:Date|null}>>(`SELECT MIN("bucket") AS "firstAt" FROM "SiteAudienceAggregate"`),
+   prisma.$queryRawUnsafe<Array<{recent7:number;previous7:number}>>(`SELECT
+     COALESCE(SUM("entries") FILTER (WHERE ("bucket" AT TIME ZONE 'Europe/Paris')::date BETWEEN (NOW() AT TIME ZONE 'Europe/Paris')::date-7 AND (NOW() AT TIME ZONE 'Europe/Paris')::date-1),0)::int AS "recent7",
+     COALESCE(SUM("entries") FILTER (WHERE ("bucket" AT TIME ZONE 'Europe/Paris')::date BETWEEN (NOW() AT TIME ZONE 'Europe/Paris')::date-14 AND (NOW() AT TIME ZONE 'Europe/Paris')::date-8),0)::int AS "previous7"
+     FROM "SiteAudienceAggregate" WHERE "bucket">=NOW()-INTERVAL '16 days'`)
   ]);
   reply.header("Cache-Control","private, no-store");
   return {today:{estimatedEntries:today[0]?.entries??0,pageViews:today[0]?.views??0},
@@ -57,6 +61,7 @@ export async function registerAnonymousAudienceRoutes(app:FastifyInstance){
       pageViews:period.reduce((t,row)=>t+row.views,0),daily:period},
     live:{recentPulseSignals:live[0]?.signals??0,onlineTabsApprox:Math.round((live[0]?.signals??0)/2)},
     firstMeasuredAt:first[0]?.firstAt??null,
+    comparison:{recent7:comparison[0]?.recent7??0,previous7:comparison[0]?.previous7??0,period:"last_two_complete_7_day_windows"},
     method:"anonymous_aggregate_no_identifiers",note:"Estimation de chargements de site et d'onglets actifs, et non nombre exact de personnes uniques. Aucune identification ou attribution publicitaire."};
  });
  // Keep only anonymous, aggregated 1-minute data for a short fixed period.
