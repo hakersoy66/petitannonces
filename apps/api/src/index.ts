@@ -48,6 +48,7 @@ import { ensureMarketplaceFeeSchema } from "./marketplace-fees.js";
 import { ensureListingContentPolicySchema, registerListingContentPolicyRoutes, spamHoldPreHandler } from "./listing-content-policy.js";
 import { ensureListingLifecycleSchema, startListingExpiryWorker } from "./listing-lifecycle.js";
 import { registerListingRoutes } from "./listings.js";
+import { registerCdaPreproductionRoutes } from "./cda-uat.js";
 import { registerLocationRoutes } from "./locations.js";
 import { registerMediaRoutes } from "./media.js";
 import { registerMessagingRoutes } from "./messaging.js";
@@ -133,6 +134,7 @@ app.addHook("preHandler",async(request,reply)=>{
 app.addHook("preHandler",spamHoldPreHandler);
 await registerHealthRoutes(app);
 await registerListingContentPolicyRoutes(app);
+registerCdaPreproductionRoutes(app);
 await registerAdminControlRoutes(app);
 await registerGoogleAdsDirectRoutes(app);
 await registerAutoApprovalAdminRoutes(app);

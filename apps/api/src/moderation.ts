@@ -295,7 +295,8 @@ export async function registerModerationRoutes(app: FastifyInstance) {
     const cases = await prisma.$queryRawUnsafe<Array<any>>(`SELECT * FROM "ModerationCase" WHERE "id"=$1 LIMIT 1`, params.data.id);
     const c = cases[0]; if (!c) return reply.code(404).send({ error: "case_not_found" });
     if (body.data.action === "NONE" && c.targetType === "LISTING") {
-      const currentListing=await prisma.listing.findUnique({where:{id:c.targetId},select:{publishedAt:true,sellerId:true}});
+      const currentListing=await prisma.listing.findUnique({where:{id:c.targetId},select:{publishedAt:true,sellerId:true,category:{select:{domain:true,slug:true}}}});
+      if(currentListing?.category.domain==="ANIMAL" && currentListing.category.slug!=="animaux-perdus")return reply.code(423).send({error:"animal_cession_requires_cda_production_validation"});
       const firstPublication=currentListing?.publishedAt==null;
       const publishedAt = currentListing?.publishedAt ?? new Date();
       const published = await prisma.listing.updateMany({ where: { id: c.targetId, status: "PENDING" }, data: { status: "PUBLISHED", publishedAt } });
