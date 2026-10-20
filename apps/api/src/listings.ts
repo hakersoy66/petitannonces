@@ -603,6 +603,14 @@ export async function registerListingRoutes(app: FastifyInstance) {
     const params = idParams.safeParse(request.params); if (!params.success) return reply.code(400).send({ error: "invalid_request" });
     const listing = await prisma.listing.findFirst({ where: { id: params.data.id, sellerId: user.id, status: "DRAFT" }, include: { category: { include: { attributes: { where: { required: true } } } }, attributes: true, vehicle: true, property: true, energy: true } });
     if (!listing) return reply.code(404).send({ error: "draft_not_found" });
+    // Fail closed on the legacy submit endpoint: CDA UAT tests never authorize
+    // production animal transfers. This must match the modern /publish gate.
+    if (listing.category.domain === "ANIMAL" && listing.category.slug !== "animaux-perdus") {
+      return reply.code(423).send({
+        error: "animal_cession_requires_cda_production_validation",
+        message: "Les annonces de cession d’animaux vivants restent indisponibles jusqu’à l’activation du contrôle officiel I-CAD en production.",
+      });
+    }
 
     const errors: string[] = []; const warnings: string[] = [];
     if (!listing.title || listing.title.trim().length < 5) errors.push("title_required");
