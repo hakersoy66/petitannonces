@@ -152,7 +152,7 @@ export function ListingPublicationReview({ listingId, promotionCode="", promotio
     try {
       if(!await saveCompliance())return;
       if(promotionCode){
-        const response=await fetch(apiBase()+"/listings/"+encodeURIComponent(listingId)+"/promotions/checkout",{
+        const response=await fetch(apiBase()+"/listings/"+encodeURIComponent(listingId)+"/promotions",{
           method:"POST",credentials:"include",headers:{"content-type":"application/json"},
           body:JSON.stringify({productCode:promotionCode,publishAfterPayment:true,publicationConsents:{termsAccepted:true,rulesAccepted:true,accuracyConfirmed:true,professionalDisclosureConfirmed:true}}),
         });
