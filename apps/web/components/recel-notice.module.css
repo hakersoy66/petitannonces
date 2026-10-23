@@ -54,3 +54,15 @@
   .inner button svg{font-size:22px}
 }
 @media print{.notice{display:none!important}}
+
+/* Scroll-following header: bypass mobile body overflow rules that can disable CSS sticky. */
+.anchor{display:block;height:0;line-height:0;pointer-events:none}
+:global(.site-header).pinned{
+  position:fixed!important;
+  top:0!important;
+  left:0!important;
+  right:0!important;
+  width:100%;
+  z-index:100!important;
+  background:#fff;
+}

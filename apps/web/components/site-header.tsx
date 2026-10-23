@@ -129,6 +129,10 @@ export function SiteHeader({initialBrand,initialCategories}:{initialBrand?:Publi
  const [searchSuggestionsLoading,setSearchSuggestionsLoading]=useState(false);
  const [mobileAccountOpen,setMobileAccountOpen]=useState(false);
  const [recelNoticeVisible,setRecelNoticeVisible]=useState(true);
+ const [headerPinned,setHeaderPinned]=useState(false);
+ const [headerPinnedHeight,setHeaderPinnedHeight]=useState(0);
+ const stickyAnchorRef=useRef<HTMLSpanElement|null>(null);
+ const stickyHeaderRef=useRef<HTMLElement|null>(null);
  useEffect(()=>{
   try{if(Number(window.localStorage.getItem("pa_recel_notice_hidden_until_v1")??0)>Date.now())setRecelNoticeVisible(false)}catch{}
  },[]);
@@ -136,6 +140,37 @@ export function SiteHeader({initialBrand,initialCategories}:{initialBrand?:Publi
  const openTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
  const suggestionTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
  const searchFormRef=useRef<HTMLFormElement|null>(null);
+ useEffect(()=>{
+  const anchor=stickyAnchorRef.current;
+  const header=stickyHeaderRef.current;
+  if(!anchor||!header)return;
+  let frame=0;
+  const sync=()=>{
+   const shouldPin=anchor.getBoundingClientRect().top<0;
+   if(shouldPin){
+    const measuredHeight=header.offsetHeight;
+    setHeaderPinnedHeight(previous=>previous===measuredHeight?previous:measuredHeight);
+   }
+   setHeaderPinned(previous=>previous===shouldPin?previous:shouldPin);
+  };
+  const schedule=()=>{
+   if(frame)return;
+   frame=window.requestAnimationFrame(()=>{frame=0;sync()});
+  };
+  const observer=typeof IntersectionObserver!=="undefined"?new IntersectionObserver(schedule):null;
+  observer?.observe(anchor);
+  window.addEventListener("scroll",schedule,{passive:true});
+  document.addEventListener("scroll",schedule,true);
+  window.addEventListener("resize",schedule);
+  schedule();
+  return()=>{
+   observer?.disconnect();
+   window.removeEventListener("scroll",schedule);
+   document.removeEventListener("scroll",schedule,true);
+   window.removeEventListener("resize",schedule);
+   if(frame)window.cancelAnimationFrame(frame);
+  };
+ },[pathname,recelNoticeVisible]);
  useEffect(()=>{
   if(initialBrand){headerBrandCache=initialBrand;setBrandResolved(true);if(initialBrand.accentColor)document.documentElement.style.setProperty("--primary",initialBrand.accentColor);return;}
   let mounted=true;
@@ -221,7 +256,7 @@ export function SiteHeader({initialBrand,initialCategories}:{initialBrand?:Publi
    <p><strong>Le recel est un délit.</strong> <a href="/articles-interdits">Découvrez nos actions</a> et <a href="/signaler-contenu-illicite">comment signaler une annonce.</a></p>
    <button type="button" onClick={()=>{setRecelNoticeVisible(false);try{window.localStorage.setItem("pa_recel_notice_hidden_until_v1",String(Date.now()+7*24*60*60*1000))}catch{}}} aria-label="Fermer cet avertissement"><AppIcon name="xmark"/></button>
   </div>
- </aside>}<header className="site-header">
+ </aside>}<span ref={stickyAnchorRef} className={noticeStyles.anchor} aria-hidden="true"/><header ref={stickyHeaderRef} className={`site-header${headerPinned?` ${noticeStyles.pinned}`:""}`}>
   <div className="header-wide">
    <div className="header-brand-cluster">
     <a className="brand brand-modern" href="/" aria-label={`${brand.siteName}, accueil`}>{brand.logoUrl?<picture className="brand-logo-picture"><source media="(max-width: 720px)" srcSet={brand.mobileLogoUrl??brand.logoUrl}/><img className="brand-logo-img" src={brand.logoUrl} alt={brand.siteName}/></picture>:!brandResolved?<span className="brand-logo-placeholder" aria-hidden="true"/>:brand.siteName==="Petit Annonces"?<span className="brand-name"><b>Petit</b> <strong>Annonces</strong></span>:<span className="brand-name"><b>{brand.siteName}</b></span>}{headerCategory&&<span className="header-category-brand"><span className="header-category-divider" aria-hidden="true"/><span>{headerCategory}</span></span>}</a>
@@ -300,7 +335,7 @@ export function SiteHeader({initialBrand,initialCategories}:{initialBrand?:Publi
     </aside>
    </div>}
   </div>
-  </header>
+  </header>{headerPinned&&<div aria-hidden="true" style={{height:headerPinnedHeight}}/>}
   {authenticated&&<><button type="button" className={`mobile-account-backdrop ${mobileAccountOpen?"is-open":""}`} aria-label="Fermer le menu du compte" onClick={()=>setMobileAccountOpen(false)}/><aside className={`mobile-account-drawer ${mobileAccountOpen?"is-open":""}`} aria-hidden={!mobileAccountOpen} data-no-pull-refresh>
    <div className="mobile-account-drawer-head"><div className="mobile-account-identity"><span className={`mobile-account-avatar${accountAvatarUrl?" has-avatar":""}`}>{accountAvatarUrl?<img src={accountAvatarUrl} alt={`Photo de ${accountName}`}/>:<AppIcon name="user"/>}</span><div><small>{accountKind==="PROFESSIONNEL"?"Compte professionnel":"Mon espace"}</small><strong>{accountName}</strong></div></div><button type="button" aria-label="Fermer" onClick={()=>setMobileAccountOpen(false)}>×</button></div>
    <nav aria-label="Navigation du compte">
