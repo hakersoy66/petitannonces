@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { AppIcon, type AppIconName } from "./app-icon";
 import { lockBodyScroll } from "../lib/body-scroll-lock";
 import { navigateApp } from "../lib/app-navigation";
+import noticeStyles from "./recel-notice.module.css";
 
 type Category={id:string;name:string;slug:string;domain:string;children?:Category[]};
 type HeaderSummary={unreadConversations:number;pendingOffers:number;unreadNotifications:number};
@@ -127,6 +128,10 @@ export function SiteHeader({initialBrand,initialCategories}:{initialBrand?:Publi
  const [searchSuggestionsOpen,setSearchSuggestionsOpen]=useState(false);
  const [searchSuggestionsLoading,setSearchSuggestionsLoading]=useState(false);
  const [mobileAccountOpen,setMobileAccountOpen]=useState(false);
+ const [recelNoticeVisible,setRecelNoticeVisible]=useState(true);
+ useEffect(()=>{
+  try{if(Number(window.localStorage.getItem("pa_recel_notice_hidden_until_v1")??0)>Date.now())setRecelNoticeVisible(false)}catch{}
+ },[]);
  const closeTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
  const openTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
  const suggestionTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
@@ -211,7 +216,12 @@ export function SiteHeader({initialBrand,initialCategories}:{initialBrand?:Publi
  const activeCategory=moreOpen?null:(categories.find(category=>category.id===activeCategoryId)??null);
  const advice=activeCategory?categoryAdvice(activeCategory):null;
  const headerCategory=categoryHeaderLabel(pathname,categories);
- return <><header className="site-header">
+ return <>{recelNoticeVisible&&<aside className={noticeStyles.notice} aria-label="Prévention du recel et signalement">
+  <div className={noticeStyles.inner}>
+   <p><strong>Le recel est un délit.</strong> <a href="/articles-interdits">Découvrez nos actions</a> et <a href="/signaler-contenu-illicite">comment signaler une annonce.</a></p>
+   <button type="button" onClick={()=>{setRecelNoticeVisible(false);try{window.localStorage.setItem("pa_recel_notice_hidden_until_v1",String(Date.now()+7*24*60*60*1000))}catch{}}} aria-label="Fermer cet avertissement"><AppIcon name="xmark"/></button>
+  </div>
+ </aside>}<header className="site-header">
   <div className="header-wide">
    <div className="header-brand-cluster">
     <a className="brand brand-modern" href="/" aria-label={`${brand.siteName}, accueil`}>{brand.logoUrl?<picture className="brand-logo-picture"><source media="(max-width: 720px)" srcSet={brand.mobileLogoUrl??brand.logoUrl}/><img className="brand-logo-img" src={brand.logoUrl} alt={brand.siteName}/></picture>:!brandResolved?<span className="brand-logo-placeholder" aria-hidden="true"/>:brand.siteName==="Petit Annonces"?<span className="brand-name"><b>Petit</b> <strong>Annonces</strong></span>:<span className="brand-name"><b>{brand.siteName}</b></span>}{headerCategory&&<span className="header-category-brand"><span className="header-category-divider" aria-hidden="true"/><span>{headerCategory}</span></span>}</a>

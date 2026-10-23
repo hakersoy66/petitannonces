@@ -1,0 +1,56 @@
+/* Anti-recel information strip: in normal flow so the sticky navigation remains compact. */
+.notice{
+  width:100%;
+  background:#fbeae1;
+  color:#783b20;
+  border-bottom:1px solid #edd4c6;
+}
+.inner{
+  width:min(1380px,calc(100% - 44px));
+  min-height:74px;
+  margin:0 auto;
+  padding:14px 0;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:24px;
+}
+.inner p{
+  flex:1;
+  margin:0;
+  color:#783b20;
+  font-size:clamp(15px,1.35vw,19px);
+  line-height:1.42;
+  font-weight:450;
+  letter-spacing:-.015em;
+}
+.inner strong{font-weight:650}
+.inner a{
+  color:inherit;
+  text-decoration:underline;
+  text-decoration-color:rgba(120,59,32,.35);
+  text-underline-offset:3px;
+}
+.inner a:hover{text-decoration-color:currentColor}
+.inner button{
+  appearance:none;
+  width:42px;
+  height:42px;
+  flex:0 0 42px;
+  display:grid;
+  place-items:center;
+  border:0;
+  border-radius:50%;
+  background:transparent;
+  color:#1d2731;
+  cursor:pointer;
+}
+.inner button:hover{background:rgba(120,59,32,.09)}
+.inner button svg{font-size:24px}
+@media(max-width:760px){
+  .inner{width:calc(100% - 28px);min-height:76px;padding:13px 0;gap:14px}
+  .inner p{font-size:14.5px;line-height:1.46;letter-spacing:0}
+  .inner button{width:36px;height:36px;flex-basis:36px}
+  .inner button svg{font-size:22px}
+}
+@media print{.notice{display:none!important}}
