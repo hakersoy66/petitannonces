@@ -253,7 +253,7 @@ export function SiteHeader({initialBrand,initialCategories}:{initialBrand?:Publi
  const headerCategory=categoryHeaderLabel(pathname,categories);
  return <>{recelNoticeVisible&&<aside className={noticeStyles.notice} aria-label="Prévention du recel et signalement">
   <div className={noticeStyles.inner}>
-   <p><strong>Le recel est un délit.</strong> <a href="/articles-interdits">Découvrez nos actions</a> et <a href="/signaler-contenu-illicite">comment signaler une annonce.</a></p>
+   <p><strong>Le recel est un délit.</strong> <a href="/lutte-contre-le-recel">Découvrez nos actions</a> et <a href="/signaler-contenu-illicite">comment signaler une annonce.</a></p>
    <button type="button" onClick={()=>{setRecelNoticeVisible(false);try{window.localStorage.setItem("pa_recel_notice_hidden_until_v1",String(Date.now()+7*24*60*60*1000))}catch{}}} aria-label="Fermer cet avertissement"><AppIcon name="xmark"/></button>
   </div>
  </aside>}<span ref={stickyAnchorRef} className={noticeStyles.anchor} aria-hidden="true"/><header ref={stickyHeaderRef} className={`site-header${headerPinned?` ${noticeStyles.pinned}`:""}`}>
