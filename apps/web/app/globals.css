@@ -759,7 +759,7 @@ input,select,textarea,button{max-width:100%}
   @keyframes pwaLaunchDot{0%,60%,100%{opacity:.38;transform:translateY(0)}30%{opacity:1;transform:translateY(-5px)}}
   @keyframes pwaLaunchSplashFade{to{opacity:0;visibility:hidden}}
   @media(max-width:390px){.pwa-launch-splash-logo{width:min(41.6vw,176px)}.pwa-launch-splash-center>span{font-size:11px}}
-  @media(prefers-reduced-motion:reduce){.pwa-launch-splash-loader i{animation:none}.pwa-launch-splash{animation:none}}
+  @media(prefers-reduced-motion:reduce){.pwa-launch-splash-loader i{animation:none}.pwa-launch-splash{animation:pwaLaunchSplashFade .001s linear .85s both}}
 }
 
 /* 2026-09-08 compact professional mobile/PWA footer */

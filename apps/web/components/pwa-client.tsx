@@ -153,24 +153,14 @@ export function PwaClient({initialPwaIconUrl="/icons/icon-192.png",initialAppLog
       }catch{}
     };
     if("serviceWorker" in navigator){
-      const swReloadKey="pa_sw_reloaded_v51";
-      // The very first controller is normal during initial PWA installation.
-      // Reloading the page in response loses focus, scroll, and pending input.
-      // Only perform one guarded reload when an existing worker is replaced.
-      let previouslyControlled=Boolean(navigator.serviceWorker.controller);
-      const onControllerChange=()=>{
-        const wasControlled=previouslyControlled;
-        previouslyControlled=true;
-        if(!wasControlled)return;
-        try{
-          if(sessionStorage.getItem(swReloadKey)==="1")return;
-          sessionStorage.setItem(swReloadKey,"1");
-        }catch{}
-        const sensitivePath=window.location.pathname.startsWith("/checkout")||window.location.pathname.startsWith("/deposer-une-annonce")||window.location.pathname.startsWith("/importer-une-annonce");
-        if(!sensitivePath)window.location.reload();
-      };
-      navigator.serviceWorker.addEventListener("controllerchange",onControllerChange);
-      navigator.serviceWorker.register("/sw.js?v=50",{scope:"/",updateViaCache:"none"}).then(reg=>{const update=()=>void reg.update().catch(()=>undefined);if(typeof window.requestIdleCallback==="function")window.requestIdleCallback(update,{timeout:3000});else window.setTimeout(update,1400)}).catch(()=>undefined);
+      // Never reload Android while its service worker changes mid-navigation.
+      // Stale Next.js chunks are recovered separately by NavigationRecovery.
+      navigator.serviceWorker.register("/sw.js?v=52",{scope:"/",updateViaCache:"none"}).then(reg=>{
+        const update=()=>void reg.update().catch(()=>undefined);
+        if(document.visibilityState==="hidden")update();
+        else if(typeof window.requestIdleCallback==="function")window.requestIdleCallback(update,{timeout:8000});
+        else window.setTimeout(update,4500);
+      }).catch(()=>undefined);
       navigator.serviceWorker.addEventListener("message",onServiceWorkerMessage);
     }
     let disposed=false;

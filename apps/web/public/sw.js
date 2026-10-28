@@ -1,4 +1,4 @@
-const CACHE = "pa-shell-v50";
+const CACHE = "pa-shell-v52";
 const OFFLINE_URL = "/offline";
 const CORE = [
   OFFLINE_URL,
@@ -16,7 +16,7 @@ self.addEventListener("install", (event) => {
 self.addEventListener("activate", (event) => {
   event.waitUntil((async()=>{
     const keys=await caches.keys();
-    await Promise.all(keys.filter((key)=>key!==CACHE).map((key)=>caches.delete(key)));
+    await Promise.all(keys.filter((key)=>key.startsWith("pa-shell-")&&key!==CACHE).map((key)=>caches.delete(key)));
     // Claim clients only. PwaClient owns the single controlled reload after a worker update.
     // Navigating clients here as well caused duplicate reloads during PWA route changes.
     await self.clients.claim();
@@ -54,27 +54,18 @@ self.addEventListener("fetch", (event) => {
   }
 
   if (!["style", "script", "image", "font"].includes(event.request.destination)) return;
+  // Browser HTTP cache handles images and other non-versioned resources.
+  if (!url.pathname.startsWith("/_next/static/")) return;
 
-  const immutableNextAsset=url.pathname.startsWith("/_next/static/");
-  if(immutableNextAsset){
-    event.respondWith(
-      caches.match(event.request).then((cached)=>cached||fetch(event.request).then((response)=>{
-        if(response.ok){const clone=response.clone();caches.open(CACHE).then((cache)=>cache.put(event.request,clone));}
-        return response;
-      }))
-    );
-    return;
-  }
-
-  event.respondWith((async()=>{
-    const cached=await caches.match(event.request);
-    const networkPromise=fetch(event.request).then((response)=>{
-      if(response.ok){const clone=response.clone();caches.open(CACHE).then((cache)=>cache.put(event.request,clone));}
+  event.respondWith(
+    caches.match(event.request).then(cached => cached || fetch(event.request).then(response => {
+      if (response.ok) {
+        const clone = response.clone();
+        event.waitUntil(caches.open(CACHE).then(cache => cache.put(event.request, clone)).catch(() => {}));
+      }
       return response;
-    }).catch(()=>null);
-    if(cached){event.waitUntil(networkPromise.then(()=>undefined));return cached;}
-    return (await networkPromise)||new Response("",{status:504,statusText:"Offline"});
-  })());
+    }))
+  );
 });
 
 self.addEventListener("push", (event) => {

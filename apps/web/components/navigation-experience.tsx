@@ -124,7 +124,8 @@ export function NavigationExperience(){
   },[router]);
 
   useEffect(()=>{
-    if(!standaloneMode())return;
+    // Android navigation must not trigger an accidental full-page reload.
+    if(!standaloneMode()||/Android/i.test(navigator.userAgent))return;
     const threshold=84;
     function onStart(event:TouchEvent){
       healStaleBodyScrollLock();
