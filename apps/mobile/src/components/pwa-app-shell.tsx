@@ -49,7 +49,7 @@ async function expoPushToken(requestPermission:boolean){
 }
 
 type NativeInsets={top:number;right:number;bottom:number;left:number};
-const NATIVE_UI_REVISION='2026-09-26-android-scroll-safearea-v2';
+const NATIVE_UI_REVISION='2026-10-28-android-scroll-zoom-v3';
 
 function buildBootstrapScript(insets:NativeInsets){
   const platformClass=Platform.OS==='ios'?'pa-native-ios':'pa-native-android';
@@ -61,6 +61,13 @@ function buildBootstrapScript(insets:NativeInsets){
   return `
 (function(){
   try{
+    // onLoadEnd re-injects this script as an Android fallback. Avoid adding
+    // duplicate focus/visibility listeners on every navigation.
+    if(window.__PA_NATIVE_BOOTSTRAP_INSTALLED__){
+      if(window.__PA_APPLY_NATIVE_UI__)window.__PA_APPLY_NATIVE_UI__();
+      return;
+    }
+    window.__PA_NATIVE_BOOTSTRAP_INSTALLED__=true;
     window.__PA_NATIVE_SHELL__=true;
     window.__PA_NATIVE_PLATFORM__='${platformName}';
     window.__PA_NATIVE_UI_REVISION__='${NATIVE_UI_REVISION}';
@@ -87,6 +94,7 @@ function buildBootstrapScript(insets:NativeInsets){
       }
       window.dispatchEvent(new CustomEvent('pa:native-ui-sync',{detail:{platform:'${platformName}',revision:'${NATIVE_UI_REVISION}',safeArea:{top:${top},right:${right},bottom:${bottom},left:${left}}}}));
     };
+    window.__PA_APPLY_NATIVE_UI__=applyNativeUi;
     if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',applyNativeUi,{once:true});
     else applyNativeUi();
     var sendAuth=function(){
@@ -213,8 +221,9 @@ export function PwaAppShell({initialPath='/'}:{initialPath?:string}){
       javaScriptEnabled
       domStorageEnabled
       scrollEnabled
-      nestedScrollEnabled
-      overScrollMode="always"
+      nestedScrollEnabled={false}
+      overScrollMode="never"
+      textZoom={100}
       showsVerticalScrollIndicator={false}
       sharedCookiesEnabled
       thirdPartyCookiesEnabled

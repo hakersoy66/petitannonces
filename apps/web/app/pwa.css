@@ -356,3 +356,27 @@ html.pa-native-shell .pwa-push-overlay{padding-left:max(12px,env(safe-area-inset
 .pwa-ios-home-mock{position:absolute;inset:50px 8px 8px;display:grid;place-items:center;align-content:center;gap:13px;border-radius:18px;background:linear-gradient(145deg,#7064ff,#4e42d9)}.pwa-ios-home-mock>div{display:grid;justify-items:center;gap:5px;color:#fff}.pwa-ios-home-mock img{width:56px;height:56px;border-radius:15px;box-shadow:0 8px 20px rgba(0,0,0,.18)}.pwa-ios-home-mock small{font-size:8px}.pwa-ios-home-mock>i{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:#fff;color:#159466;font-style:normal}
 .pwa-ios-share-callout{position:static;transform:none;display:flex;align-items:center;justify-content:center;gap:6px;margin-top:7px;color:#5145c2;white-space:nowrap}.pwa-ios-share-callout span{font-size:16px;line-height:1;transform:rotate(180deg);animation:paIosArrowBounce .9s ease-in-out infinite}.pwa-ios-share-callout strong{font-size:10px}.pwa-ios-installer .pwa-ios-sheet-head{text-align:left}.pwa-ios-installer .pwa-ios-sheet-head>span{font-size:9px}.pwa-ios-installer .pwa-ios-sheet-head h2{font-size:22px;margin-top:4px}.pwa-ios-installer .pwa-ios-sheet-head p{max-width:none;margin:0;color:#666474;font-size:13px;line-height:1.55}
 @keyframes paIosSharePulse{50%{transform:scale(1.08);box-shadow:0 0 0 8px rgba(91,76,240,.07)}}@keyframes paIosArrowBounce{50%{transform:rotate(180deg) translateY(-4px)}}@media(max-width:420px){.pwa-ios-guide-visual{min-height:246px}.pwa-ios-phone{width:148px;height:205px}.pwa-ios-installer-brand>span{display:none}}
+
+/* 2026-10-28 Android scroll/zoom stability.
+   Preserve actual body scrolling (CSS sticky header), pinch zoom, and form overlays. */
+@media(max-width:760px){
+  html:not(:has(body.pa-messages-page)){
+    overflow-x:clip!important;
+  }
+  body:not(.pa-messages-page):not([data-pa-scroll-lock-count]){
+    overflow-x:clip!important;
+    overflow-y:visible!important;
+  }
+  html.pa-native-shell body:not(.pa-messages-page):not([data-pa-scroll-lock-count]){
+    overflow-x:clip!important;
+    overflow-y:visible!important;
+  }
+  a,button,[role="button"],[role="tab"],[role="menuitem"],summary,
+  input[type="submit"],input[type="button"]{
+    touch-action:manipulation;
+  }
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="hidden"]):not([type="submit"]):not([type="button"]),
+  textarea,select,[contenteditable="true"]{
+    font-size:max(16px,1em)!important;
+  }
+}

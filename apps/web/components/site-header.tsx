@@ -144,6 +144,13 @@ export function SiteHeader({initialBrand,initialCategories}:{initialBrand?:Publi
   const anchor=stickyAnchorRef.current;
   const header=stickyHeaderRef.current;
   if(!anchor||!header)return;
+  // Mobile already uses CSS sticky. Toggling fixed/placeholder during a
+  // swipe shifts the layout and can trap Android scrolling at the threshold.
+  if(window.matchMedia("(max-width:760px)").matches){
+   setHeaderPinned(false);
+   setHeaderPinnedHeight(0);
+   return;
+  }
   let frame=0;
   const sync=()=>{
    const shouldPin=anchor.getBoundingClientRect().top<0;
