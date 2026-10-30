@@ -4,7 +4,7 @@ import {useEffect,useMemo,useState} from "react";
 import {AppIcon} from "./app-icon";
 import styles from "./listing-wizard.module.css";
 
-type PromotionOffer={id:string;code:string;type:string;name:string;description:string|null;priceMinor:number;currency:string;durationHours:number|null};
+type PromotionOffer={id:string;code:string;type:string;name:string;description:string|null;priceMinor:number;salePriceMinor?:number|null;blackFriday2026?:boolean;currency:string;durationHours:number|null};
 type WalletReply={wallet?:{balanceMinor:number;currency:string}};
 
 const api=()=> (process.env.NEXT_PUBLIC_API_URL??"/api").replace(/\/$/,"");
@@ -38,7 +38,7 @@ export function ListingVisibilityStep({
 
  const recommended=useMemo(()=>products.find(p=>p.type==="FEATURED")??products[0]??null,[products]);
  const selected=products.find(p=>p.code===selectedCode)??null;
- const covered=Boolean(selected&&balance>=selected.priceMinor);
+ const covered=Boolean(selected&&balance>=(selected.salePriceMinor??selected.priceMinor));
 
  return <section className={styles.card}>
   <div className={styles.cardHead}><div><span className={styles.kicker}>Étape 5 sur 6</span><h2>Donnez plus de visibilité à votre annonce</h2><p>Cette étape est facultative. Choisissez une mise en avant ou continuez gratuitement. Aucune option payante n’est sélectionnée automatiquement.</p></div><span className={styles.headIcon}><AppIcon name="sparkles"/></span></div>
@@ -50,17 +50,17 @@ export function ListingVisibilityStep({
     <div><span className={styles.visibilityChoiceTop}><strong>Sans option</strong><em>Gratuit</em></span><p>Votre annonce passe normalement en modération, sans mise en avant payante.</p></div>
    </button>
    {loading?<div className={styles.visibilityLoading}>Chargement des options…</div>:products.map(product=>{
-    const active=selectedCode===product.code;const isRecommended=recommended?.code===product.code;const canUseCredit=balance>=product.priceMinor;
+    const active=selectedCode===product.code;const isRecommended=recommended?.code===product.code;const canUseCredit=balance>=(product.salePriceMinor??product.priceMinor);
     return <button type="button" key={product.id} className={styles.visibilityChoice+" "+(active?styles.visibilityChoiceActive:"")} onClick={()=>onSelect(product.code,product.name)}>
      <span className={styles.visibilityChoiceIcon}><AppIcon name={product.type==="URGENT"?"bolt":"sparkles"}/></span>
-     <div><span className={styles.visibilityChoiceTop}><strong>{product.name}</strong><em>{money(product.priceMinor,product.currency)}</em></span>
-      <span className={styles.visibilityMeta}>{isRecommended&&<b>Recommandé</b>}<small>{duration(product.durationHours)}</small>{canUseCredit&&<small className={styles.visibilityCreditTag}>Payable avec votre crédit</small>}</span>
+     <div><span className={styles.visibilityChoiceTop}><strong>{product.name}</strong><em>{product.salePriceMinor!=null?<><del style={{color:"#928b94",fontSize:12,marginRight:6}}>{money(product.priceMinor,product.currency)}</del>{money(product.salePriceMinor,product.currency)}</>:money(product.priceMinor,product.currency)}</em></span>
+      <span className={styles.visibilityMeta}>{product.blackFriday2026&&<b>Black Friday -30 %</b>}{isRecommended&&<b>Recommandé</b>}<small>{duration(product.durationHours)}</small>{canUseCredit&&<small className={styles.visibilityCreditTag}>Payable avec votre crédit</small>}</span>
       <p>{product.description||"Améliore la visibilité de votre annonce pendant la durée choisie."}</p>
      </div>
     </button>
    })}
   </div>
-  {selected&&<div className={covered?styles.visibilityPaymentReady:styles.visibilityPaymentInfo}><AppIcon name={covered?"wallet":"credit-card"}/><div><strong>{covered?"Votre crédit couvrira cette option":"Paiement nécessaire après vérification"}</strong><span>{covered?money(selected.priceMinor,selected.currency)+" seront débités de votre crédit après votre confirmation finale.":"Votre solde est de "+money(balance,currency)+". L’option sera réglée via le paiement sécurisé après votre confirmation finale."}</span></div></div>}
+  {selected&&<div className={covered?styles.visibilityPaymentReady:styles.visibilityPaymentInfo}><AppIcon name={covered?"wallet":"credit-card"}/><div><strong>{covered?"Votre crédit couvrira cette option":"Paiement nécessaire après vérification"}</strong><span>{covered?money(selected.salePriceMinor??selected.priceMinor,selected.currency)+" seront débités de votre crédit après votre confirmation finale.":"Votre solde est de "+money(balance,currency)+". L’option sera réglée via le paiement sécurisé après votre confirmation finale."}</span></div></div>}
   <div className={styles.footer}><button type="button" className={styles.secondary} onClick={onBack}><AppIcon name="arrow-left"/>Précédent</button><button type="button" onClick={onContinue}>Suivant : Vérification<AppIcon name="arrow-right"/></button></div>
  </section>;
 }

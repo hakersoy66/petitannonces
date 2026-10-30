@@ -220,3 +220,42 @@
 .mobileBlackFriday{border:1px solid #dfbc83;background:#fff3d7;color:#65451c;padding:12px 13px;border-radius:12px;font-weight:850;font-size:12px}
 .blackFridayAction:disabled,.mobileBlackFriday:disabled{opacity:.6;cursor:wait}
 @media(max-width:640px){.blackFridayInvite{display:grid;gap:12px;margin-top:14px;padding:16px}.blackFridayInvite a{text-align:center}.mobileBlackFriday{max-width:100%}}
+
+/* 2026-10-30 — compact Black Friday controls without clipped mobile actions */
+@media(max-width:700px){
+  .list,.card,.mainInfo,.mobileActions{min-width:0!important}
+  .card{max-width:100%;box-sizing:border-box;overflow:hidden!important}
+  .mainInfo .titleLine h2{overflow-wrap:anywhere;white-space:normal;min-width:0}
+  .mobileActions{
+    display:grid!important;
+    grid-template-columns:minmax(0,1fr) 46px!important;
+    grid-template-rows:minmax(44px,auto) auto;
+    column-gap:8px!important;row-gap:7px!important;
+    width:100%!important;max-width:100%!important;min-width:0!important;
+    align-items:center!important;
+  }
+  .mobileActions>.mobilePrimary,.mobileActions>.mobileState{
+    grid-column:1!important;grid-row:1!important;
+    min-width:0!important;max-width:100%!important;width:100%!important;
+    box-sizing:border-box!important;min-height:44px!important;
+    padding:8px 12px!important;line-height:1.2!important;
+    overflow-wrap:anywhere;text-wrap:balance!important;
+  }
+  .mobileActions>.mobileMoreButton{
+    grid-column:2!important;grid-row:1!important;
+    width:46px!important;max-width:46px!important;
+    min-width:46px!important;height:44px!important;
+  }
+  .mobileActions>.mobileBlackFriday{
+    grid-column:1/-1!important;grid-row:2!important;
+    justify-self:start!important;align-self:center!important;
+    display:inline-flex!important;align-items:center!important;justify-content:center!important;
+    min-height:34px!important;width:auto!important;max-width:100%!important;
+    padding:7px 13px!important;margin:0!important;box-sizing:border-box!important;
+    border:1px solid #e2bc7d!important;border-radius:999px!important;
+    background:#fff2d5!important;color:#6b4a21!important;
+    font-size:11px!important;font-weight:800!important;line-height:1.3!important;
+    white-space:normal!important;overflow-wrap:anywhere!important;
+    text-align:center!important;
+  }
+}

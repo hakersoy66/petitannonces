@@ -89,9 +89,9 @@ export async function registerAccountListingRoutes(app: FastifyInstance) {
     if (phase !== "active") return reply.send({ campaign: "BLACK_FRIDAY_2026", phase, items: [], total: 0 });
     const listings = await prisma.$queryRawUnsafe<Array<{
       id:string;slug:string;title:string;priceMinor:number;currency:string;city:string|null;
-      categoryName:string;categorySlug:string;enrolledAt:Date;imageUrl:string|null;
+      categoryName:string;categorySlug:string;enrolledAt:Date;imageUrl:string|null;publishedAt:Date|null;
     }>>(`
-      SELECT l."id",l."slug",l."title",l."priceMinor",l."currency",l."city",
+      SELECT l."id",l."slug",l."title",l."priceMinor",l."currency",l."city",l."publishedAt",
              c."name" AS "categoryName",c."slug" AS "categorySlug",
              bf."enrolledAt", photo."publicUrl" AS "imageUrl"
       FROM "BlackFridayEntry2026" bf
@@ -108,12 +108,43 @@ export async function registerAccountListingRoutes(app: FastifyInstance) {
         AND c."domain"='GENERAL' AND u."status"='ACTIVE'
       ORDER BY bf."enrolledAt" DESC LIMIT 60
     `);
+    const history= listings.length?await prisma.$queryRawUnsafe<Array<{
+      listingId:string;oldPriceMinor:number;newPriceMinor:number;changedAt:Date;
+    }>>(
+      'SELECT "listingId","oldPriceMinor","newPriceMinor","changedAt" FROM "ListingPriceHistory" WHERE "listingId"=ANY($1::text[]) AND "changedAt" > CURRENT_TIMESTAMP - INTERVAL \'65 days\' ORDER BY "listingId","changedAt" ASC',
+      listings.map(item=>item.id)
+    ):[];
+    const historyByListing=new Map<string,typeof history>();
+    for(const row of history){
+      const rows=historyByListing.get(row.listingId)??[];
+      rows.push(row);historyByListing.set(row.listingId,rows);
+    }
+    function priorPriceLowest30Days(item:(typeof listings)[number]){
+      const changes=historyByListing.get(item.id)??[];
+      const last=changes[changes.length-1];
+      if(!last||last.newPriceMinor!==item.priceMinor||last.newPriceMinor>=last.oldPriceMinor)return null;
+      const threshold=last.changedAt.getTime()-30*86400_000;
+      // Require an unbroken 30-day listing history and price-change audit.
+      if(!item.publishedAt||item.publishedAt.getTime()>threshold
+        ||last.changedAt.getTime()<Date.parse("2026-10-10T00:00:00Z"))return null;
+      const window=changes.filter(change=>change.changedAt.getTime()>=threshold&&change.changedAt<=last.changedAt);
+      if(!window.length)return null;
+      const previous=window.flatMap(change=>[
+        change.oldPriceMinor,
+        ...(change===last?[]:[change.newPriceMinor]),
+      ]);
+      const lowest=Math.min(...previous);
+      if(!Number.isSafeInteger(lowest)||lowest<=item.priceMinor||lowest<=0)return null;
+      // Reference represents the lowest recorded price before the latest reduction.
+      return lowest;
+    }
     reply.header("cache-control", "public, max-age=60");
     return reply.send({
       campaign: "BLACK_FRIDAY_2026", phase, total: listings.length,
       items: listings.map(item=>({
         id:item.id,slug:item.slug,title:item.title,priceMinor:item.priceMinor,
         currency:item.currency,city:item.city,imageUrl:item.imageUrl,
+        referencePriceMinor:priorPriceLowest30Days(item),
         category:{name:item.categoryName,slug:item.categorySlug},
       })),
     });
