@@ -8,6 +8,7 @@ import { handlePromotionStripeEvent } from "./growth.js";
 import { completePaidListingRenewal, getListingLifecycles, isListingRenewable, LISTING_RENEWAL_COST_MINOR, LISTING_RENEWAL_CURRENCY, renewExpiredListingInTransaction } from "./listing-lifecycle.js";
 import { animalCessionRequiresProductionApproval } from "./animal-cession-gate.js";
 import { z } from "zod";
+import {getBlackFridaySettings,blackFridayPhase,blackFridayPublic} from "./black-friday-settings.js";
 import { consumeSiteCreditInTransaction, ensureSiteCreditSchema, getSiteCreditPackages, grantPurchasedSiteCredit } from "./site-credit.js";
 import { nativeExternalDigitalBillingEnabled, nativeExternalProBillingEnabled } from "./native-billing-policy.js";
 import { notifyListingIndexNow } from "./indexnow.js";
@@ -16,10 +17,7 @@ import { notifyProCancellationScheduled, notifyProPaymentFailed, notifyProPaymen
 const TOLERANCE_SECONDS = 300;
 
 const SESSION_COOKIE = "pa_session";
-const PRO_BF_START=Date.parse("2026-11-19T23:00:00Z");
-const PRO_BF_END=Date.parse("2026-11-30T23:00:00Z");
 const PRO_BF_PROVIDER="stripe_black_friday_2026";
-function proBlackFridayOpen(time=Date.now()){return time>=PRO_BF_START&&time<PRO_BF_END;}
 function addCalendarMonths(date:Date,count:number){
   const d=new Date(date);
   const day=d.getUTCDate();
@@ -182,7 +180,7 @@ async function handleProBlackFridayCheckoutEvent(eventType:string,session:Stripe
     const purchase=purchases[0];
     if(!purchase||purchase.checkoutSessionId!==sessionId||
        purchase.userId!==metadata.pa_user_id||purchase.paidMonths!==Number(metadata.pa_paid_months)||
-       purchase.giftMonths!==purchase.paidMonths||purchase.currency!==currency||
+       purchase.giftMonths!==Number(metadata.pa_gift_months)||purchase.currency!==currency||
        purchase.amountMinor!==amount||purchase.amountMinor!==Number(metadata.pa_amount_minor)){
       throw new Error("bf_pro_payment_mismatch");
     }
@@ -420,17 +418,21 @@ export async function registerStripeBillingRoutes(app: FastifyInstance) {
     });
   });
 
-  app.get("/billing/stripe/pro/black-friday", async (_request,reply)=>{
+  app.get("/billing/stripe/pro/black-friday",async(_request,reply)=>{
     reply.header("cache-control","no-store");
-    return reply.send({campaign:"BLACK_FRIDAY_2026",active:proBlackFridayOpen(),startsAt:new Date(PRO_BF_START).toISOString(),
-      endsAt:new Date(PRO_BF_END).toISOString(),minMonths:1,maxMonths:12,bonusMultiplier:1});
+    const settings=await getBlackFridaySettings();
+    return reply.send({...blackFridayPublic(settings),minMonths:1,maxMonths:settings.maxPrepaidMonths,
+      bonusMultiplier:settings.giftMonthsMultiplier});
   });
 
   app.post("/billing/stripe/pro/black-friday/checkout",async(request,reply)=>{
     const user=await requireUser(request,reply);if(!user)return;
-    const body=z.object({planCode:z.string().regex(/^[A-Z0-9_-]{2,60}$/),months:z.number().int().min(1).max(12)}).safeParse(request.body);
+    const body=z.object({planCode:z.string().regex(/^[A-Z0-9_-]{2,60}$/),months:z.number().int().min(1).max(24)}).safeParse(request.body);
     if(!body.success)return reply.code(400).send({error:"invalid_request"});
-    if(!proBlackFridayOpen())return reply.code(409).send({error:"black_friday_not_active"});
+    const settings=await getBlackFridaySettings();
+    if(blackFridayPhase(settings)!=="active")return reply.code(409).send({error:"black_friday_not_active"});
+    if(body.data.months>settings.maxPrepaidMonths||settings.giftMonthsMultiplier<1)
+      return reply.code(400).send({error:"black_friday_months_unavailable"});
     await ensurePlans();
     const plan=await prisma.professionalPlan.findUnique({where:{code:body.data.planCode}});
     if(!plan||!plan.isActive||plan.currency!=="EUR")return reply.code(404).send({error:"professional_plan_not_found"});
@@ -447,9 +449,10 @@ export async function registerStripeBillingRoutes(app: FastifyInstance) {
     if(activePrepaid&&activePrepaid.planId!==plan.id)return reply.code(409).send({error:"existing_prepaid_different_plan"});
     const amountMinor=plan.monthlyPriceMinor*body.data.months;
     const purchaseId=randomUUID();
+    const giftMonths=body.data.months*settings.giftMonthsMultiplier;
     await prisma.$executeRawUnsafe(
-      `INSERT INTO "BlackFridayProPurchase2026" ("id","userId","planId","paidMonths","giftMonths","amountMinor","currency") VALUES ($1,$2,$3,$4,$4,$5,'EUR')`,
-      purchaseId,user.id,plan.id,body.data.months,amountMinor
+      `INSERT INTO "BlackFridayProPurchase2026" ("id","userId","planId","paidMonths","giftMonths","amountMinor","currency","edition") VALUES ($1,$2,$3,$4,$5,$6,'EUR',$7)`,
+      purchaseId,user.id,plan.id,body.data.months,giftMonths,amountMinor,settings.edition
     );
     try{
       const params=new URLSearchParams();
@@ -462,20 +465,22 @@ export async function registerStripeBillingRoutes(app: FastifyInstance) {
       params.set("line_items[0][quantity]","1");
       params.set("line_items[0][price_data][currency]","eur");
       params.set("line_items[0][price_data][unit_amount]",String(amountMinor));
-      params.set("line_items[0][price_data][product_data][name]",("Petit Annonces Pro "+plan.name+" · "+body.data.months+" mois achetés + "+body.data.months+" mois offerts").slice(0,120));
+      params.set("line_items[0][price_data][product_data][name]",("Petit Annonces Pro "+plan.name+" · "+body.data.months+" mois achetés + "+giftMonths+" mois offerts").slice(0,120));
       params.set("metadata[pa_black_friday_pro_2026]","true");
       params.set("metadata[pa_purchase_id]",purchaseId);
       params.set("metadata[pa_user_id]",user.id);
       params.set("metadata[pa_plan_code]",plan.code);
       params.set("metadata[pa_paid_months]",String(body.data.months));
+      params.set("metadata[pa_gift_months]",String(giftMonths));
+      params.set("metadata[pa_campaign_edition]",String(settings.edition));
       params.set("metadata[pa_amount_minor]",String(amountMinor));
       const stripe=await stripeRequest("/v1/checkout/sessions",{method:"POST",body:params.toString(),headers:{"idempotency-key":"bfpro-2026-"+purchaseId}});
       const sessionId=typeof stripe.payload.id==="string"?stripe.payload.id:null;
       const url=typeof stripe.payload.url==="string"?stripe.payload.url:null;
       if(!sessionId||!url)throw new Error("stripe_checkout_session_missing");
       await prisma.$executeRawUnsafe(`UPDATE "BlackFridayProPurchase2026" SET "checkoutSessionId"=$2 WHERE "id"=$1`,purchaseId,sessionId);
-      return reply.send({url,purchaseId,paidMonths:body.data.months,giftMonths:body.data.months,
-        totalMonths:body.data.months*2,amountMinor,currency:"EUR",recurring:false});
+      return reply.send({url,purchaseId,paidMonths:body.data.months,giftMonths,
+        totalMonths:body.data.months+giftMonths,amountMinor,currency:"EUR",recurring:false});
     }catch(error){
       request.log.error({error,purchaseId},"Black Friday Pro checkout failed");
       await prisma.$executeRawUnsafe(`UPDATE "BlackFridayProPurchase2026" SET "status"='CANCELED' WHERE "id"=$1 AND "status"='PENDING'`,purchaseId).catch(()=>undefined);

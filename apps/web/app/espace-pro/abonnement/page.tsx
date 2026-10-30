@@ -13,7 +13,7 @@ type Invoice={id:string;number:string|null;status:string|null;amountDueMinor:num
 type PaymentMethodSummary={type:string;brand:string|null;last4:string|null;expMonth:number|null;expYear:number|null};
 type UpcomingInvoice={amountDueMinor:number;currency:string;chargeAt:string|null;periodStart:string|null;periodEnd:string|null};
 type PendingChange={planCode:PlanCode;effectiveAt:string|null;scheduleId:string};
-type BFOffer={campaign:string;active:boolean;startsAt:string;endsAt:string;minMonths:number;maxMonths:number;bonusMultiplier:number};
+type BFOffer={campaign:string;enabled:boolean;visible:boolean;active:boolean;edition:number;startsAt:string;endsAt:string;minMonths:number;maxMonths:number;bonusMultiplier:number};
 type BillingSummary={stripeReachable:boolean;paymentMethod:PaymentMethodSummary|null;upcomingInvoice:UpcomingInvoice|null;invoices:Invoice[];pendingChange:PendingChange|null};
 
 function api(){return (process.env.NEXT_PUBLIC_API_URL??"/api").replace(/\/$/,"")}
@@ -57,7 +57,7 @@ export default function Abonnement(){
     if(b)setMe(b.professional);
     if(c)setBilling({stripeReachable:Boolean(c.stripeReachable),paymentMethod:c.paymentMethod??null,upcomingInvoice:c.upcomingInvoice??null,invoices:Array.isArray(c.invoices)?c.invoices:[],pendingChange:c.pendingChange??null});
     const bf=await fetch(api()+"/billing/stripe/pro/black-friday",{cache:"no-store"}).then(r=>r.ok?r.json():null).catch(()=>null);
-    if(bf)setBFOffer(bf as BFOffer);
+    if(bf){setBFOffer(bf as BFOffer);setBFMonths(x=>Math.min(x,Number(bf.maxMonths??12)));}
   }
 
   async function startCheckout(planCode:PlanCode){
@@ -77,7 +77,7 @@ export default function Abonnement(){
   }
 
   async function startBFCheckout(planCode:PlanCode){
-    if(!bfOffer?.active){setCheckoutMsg("L’offre sera disponible du 20 au 30 novembre 2026.");return}
+    if(!bfOffer?.active){setCheckoutMsg("L’offre est réservée à la période indiquée dans la campagne.");return}
     if(bfBusy)return;
     setBFBusy(planCode);setCheckoutMsg("");
     try{
@@ -90,7 +90,7 @@ export default function Abonnement(){
       const errors:Record<string,string>={
         stripe_subscription_already_active:"Votre abonnement mensuel se renouvelle encore automatiquement. Programmez d’abord la résiliation à échéance pour profiter de l’offre prépayée sans perdre vos jours déjà payés.",
         existing_prepaid_different_plan:"Vous avez déjà une formule Black Friday prépayée différente. Vous pourrez choisir une autre formule à sa fin.",
-        black_friday_not_active:"Cette offre est disponible uniquement du 20 au 30 novembre 2026.",
+        black_friday_not_active:"Cette offre est disponible seulement pendant les dates de la campagne.",
         professional_plan_not_found:"Formule indisponible.",
       };
       setCheckoutMsg(errors[p.error??""]??"Impossible d’ouvrir le paiement sécurisé pour le moment.");
@@ -231,38 +231,38 @@ export default function Abonnement(){
     {current?.cancelAtPeriodEnd&&!bfPrepaid&&<div className={styles.notice}>Votre abonnement est programmé pour s’arrêter à la fin de la période en cours.</div>}
     {current&&!bfPrepaid&&<div className={styles.notice}>Un changement de formule utilise toujours votre abonnement Stripe existant afin d’éviter toute double facturation.</div>}
 
-    <section className={styles.section} style={{border:"1px solid #e7c480",background:"linear-gradient(115deg,#fff9ec,#fffdf9)"}}>
+    {bfOffer?.visible&&bfOffer.bonusMultiplier>0&&<section className={styles.section} style={{border:"1px solid #e7c480",background:"linear-gradient(115deg,#fff9ec,#fffdf9)"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:18,flexWrap:"wrap",marginBottom:14}}>
-        <div><span className={styles.kickerDark}>BLACK FRIDAY 2026 · 20–30 NOVEMBRE</span>
-          <h2 style={{margin:"6px 0"}}>1 mois acheté = 1 mois offert</h2>
+        <div><span className={styles.kickerDark}>BLACK FRIDAY {bfOffer.edition} · OFFRE LIMITÉE</span>
+          <h2 style={{margin:"6px 0"}}>1 mois acheté = {bfOffer.bonusMultiplier} mois offert{bfOffer.bonusMultiplier>1?"s":""}</h2>
           <p style={{margin:0,color:"#625947"}}>Choisissez entre 1 et 12 mois : pour chaque mois payé, nous ajoutons un mois gratuit. Paiement unique, sans renouvellement automatique.</p>
         </div>
-        <strong style={{background:"#272126",color:"#f0d095",padding:"9px 14px",borderRadius:12,fontSize:13}}>JUSQU’À 12 MOIS OFFERTS</strong>
+        <strong style={{background:"#272126",color:"#f0d095",padding:"9px 14px",borderRadius:12,fontSize:13}}>JUSQU’À {bfOffer.maxMonths*bfOffer.bonusMultiplier} MOIS OFFERTS</strong>
       </div>
       <label style={{display:"grid",gap:7,maxWidth:340,fontWeight:800,fontSize:13}}>
         Durée achetée
         <select className={styles.input} value={bfMonths} onChange={e=>setBFMonths(Number(e.target.value))}>
-          {Array.from({length:12},(_,i)=>i+1).map(m=><option value={m} key={m}>{m} mois payés + {m} mois offerts = {m*2} mois</option>)}
+          {Array.from({length:bfOffer.maxMonths},(_,i)=>i+1).map(m=><option value={m} key={m}>{m} mois payés + {m*bfOffer.bonusMultiplier} mois offerts = {m*(1+bfOffer.bonusMultiplier)} mois</option>)}
         </select>
       </label>
-      {!bfOffer?.active&&<p style={{fontSize:13,margin:"12px 0",color:"#8a6525",fontWeight:700}}>Les achats Black Friday ouvriront le 20 novembre à 00 h (heure de Paris).</p>}
+      {!bfOffer?.active&&<p style={{fontSize:13,margin:"12px 0",color:"#8a6525",fontWeight:700}}>Les achats ouvriront le {new Date(bfOffer.startsAt).toLocaleString("fr-FR",{timeZone:"Europe/Paris",dateStyle:"medium",timeStyle:"short"})}.</p>}
       {!bfCurrentAllowed&&<p style={{fontSize:13,margin:"12px 0",color:"#9b522f",fontWeight:700}}>Votre formule Stripe se renouvelle encore automatiquement. Programmez sa résiliation en fin de période, puis vous pourrez acheter une formule Black Friday sans perdre vos jours déjà payés.</p>}
       {current?.externalProvider==="stripe"&&current.cancelAtPeriodEnd&&<p style={{fontSize:13,margin:"12px 0",color:"#3d7658",fontWeight:800}}>Renouvellement arrêté : le forfait Black Friday démarrera après le {date(current.currentPeriodEnd)}.</p>}
       <div className={styles.plans} style={{marginTop:15}}>
         {plans.map(p=><article className={styles.plan} key={"bf-"+p.id} style={{border:"1px solid #e6d4af",background:"#fff"}}>
-          <span className={styles.kicker}>BLACK FRIDAY · 1 + 1</span>
+          <span className={styles.kicker}>BLACK FRIDAY · 1 + {bfOffer.bonusMultiplier}</span>
           <h3 style={{margin:"8px 0 12px",fontSize:20}}>{p.name}</h3>
           <strong style={{display:"block",fontSize:28,color:"#28212a"}}>{money(p.monthlyPriceMinor*bfMonths,p.currency)}</strong>
-          <small style={{display:"block",margin:"7px 0 12px",color:"#785a30",fontWeight:750}}>{bfMonths} mois payés + {bfMonths} mois offerts · {bfMonths*2} mois d’accès</small>
+          <small style={{display:"block",margin:"7px 0 12px",color:"#785a30",fontWeight:750}}>{bfMonths} mois payés + {bfMonths*bfOffer.bonusMultiplier} mois offerts · {bfMonths*(1+bfOffer.bonusMultiplier)} mois d’accès</small>
           <button type="button" className={styles.button}
             disabled={!bfOffer?.active||!bfCurrentAllowed||(bfPrepaid&&current?.plan.code!==p.code)||bfBusy!==""}
             onClick={()=>void startBFCheckout(p.code)}>
-              {bfBusy===p.code?"Préparation…":bfPrepaid&&current?.plan.code!==p.code?"Autre formule indisponible":bfOffer?.active?"Profiter de l’offre":"Dès le 20 novembre"}
+              {bfBusy===p.code?"Préparation…":bfPrepaid&&current?.plan.code!==p.code?"Autre formule indisponible":bfOffer?.active?"Profiter de l’offre":"Bientôt disponible"}
           </button>
         </article>)}
       </div>
       <small style={{display:"block",marginTop:12,color:"#847663"}}>Offre valable sur les formules Essentiel, Professionnel et Premium. Si votre abonnement mensuel Stripe est programmé pour s’arrêter, les mois prépayés commencent après votre période déjà payée.</small>
-    </section>
+    </section>}
 
     <details className={styles.section} open={!current}>
       <summary style={{cursor:"pointer",fontWeight:850}}>{current?"Comparer et changer de formule":"Choisir une formule professionnelle"}</summary>

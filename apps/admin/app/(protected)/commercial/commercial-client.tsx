@@ -101,7 +101,7 @@ export default function CommercialClient(){
  }
 
  return <>
-  <div className="admin-page-head">
+  <div style={{marginBottom:12}}><a className="admin-btn primary" href="/commercial/black-friday">Gérer Black Friday →</a></div><div className="admin-page-head">
    <div><p>Monétisation</p><h1>Offres & monétisation</h1><span className="subtitle">Gérez les options de visibilité, les formules professionnelles et les campagnes depuis une interface unique.</span></div>
    <div className="admin-page-actions"><button type="button" className="admin-btn" onClick={()=>void load()} disabled={busy}><AdminIcon name="clock"/>{busy?"Actualisation…":"Actualiser"}</button></div>
   </div>

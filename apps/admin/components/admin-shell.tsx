@@ -12,7 +12,7 @@ const groups:NavGroup[]=[
  {label:"Pilotage",items:[["dashboard","Tableau de bord","/"],["shield","Modération","/moderation"],["shield","Signalements DSA","/dsa"],["users","Utilisateurs bloqués","/blocked-users"],["shield","Centre de risque","/risk"],["list","Annonces","/listings"],["users","Utilisateurs","/users"],["store","Professionnels & vitrines","/professionals"]]},
  {label:"Opérations",items:[["wallet","Finance","/finance"],["briefcase","Réservations HBX","/hbx-bookings"],["store","Fournisseurs & produits neufs","/suppliers"],["bell","Boîte e-mail","/inbox"],["support","Support","/support"],["chart","Analytics","/analytics"],["chart","Santé de la marketplace","/marketplace-health"],["briefcase","Suivi Emploi","/emploi-analytics"],["list","Santé des imports","/imports"],["search","SEO & Google","/seo"],["growth","Croissance","/growth"]]},
  {label:"Marketing",items:[["campaign","Influenceurs & partenariats","/influenceurs"]]},
- {label:"Configuration",items:[["categories","Catégories","/categories"],["content","Navigation & contenu","/content"],["campaign","Offres & campagnes","/commercial"],["bell","E-mails & notifications","/notifications"],["settings","Site & Apparence","/settings"],["plug","Intégrations & API","/integrations"],["server","Interface application","/mobile-ui"],["server","Publication Android","/mobile-release"],["server","État du système","/system"],["audit","Journal admin","/audit"]]},
+ {label:"Configuration",items:[["categories","Catégories","/categories"],["content","Navigation & contenu","/content"],["campaign","Offres & campagnes","/commercial"],["campaign","Black Friday","/commercial/black-friday"],["bell","E-mails & notifications","/notifications"],["settings","Site & Apparence","/settings"],["plug","Intégrations & API","/integrations"],["server","Interface application","/mobile-ui"],["server","Publication Android","/mobile-release"],["server","État du système","/system"],["audit","Journal admin","/audit"]]},
 ];
 const mobileItems:NavItem[]=[["dashboard","Accueil","/"],["shield","Modération","/moderation"],["list","Annonces","/listings"],["users","Utilisateurs","/users"]];
 function activePath(path:string,href:string){return href==="/"?path==="/":path.startsWith(href)}
@@ -26,7 +26,7 @@ export function AdminShell({user,children}:{user:User;children:React.ReactNode})
  useEffect(()=>{setOpen(false)},[path]);
  useEffect(()=>{if(!open)return;const previous=document.body.style.overflow;document.body.style.overflow="hidden";const onKey=(event:KeyboardEvent)=>{if(event.key==="Escape")setOpen(false)};window.addEventListener("keydown",onKey);return()=>{document.body.style.overflow=previous;window.removeEventListener("keydown",onKey)}},[open]);
  async function logout(){await fetch("/api/auth/logout",{method:"POST",credentials:"include"}).catch(()=>{});location.href="/connexion"}
- const current=displayedGroups.flatMap(g=>g.items).find(([, ,href])=>activePath(path,href));
+ const current=displayedGroups.flatMap(g=>g.items).filter(([, ,href])=>activePath(path,href)).sort((a,b)=>b[2].length-a[2].length)[0];
  return <div className="admin-app">
   {open&&<button type="button" aria-label="Fermer le menu" className="admin-overlay" onClick={()=>setOpen(false)}/>}
   <aside className={`admin-sidebar ${open?"open":""}`} aria-label="Navigation administration">

@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import {getBlackFridaySettings,blackFridayDiscount} from "./black-friday-settings.js";
 import { prisma } from "@pa/database";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
@@ -23,18 +24,10 @@ async function stripeRequest(path:string,params:URLSearchParams,idempotencyKey?:
 function referralCode(userId:string){return`PA${createHash("sha256").update(userId).digest("hex").slice(0,8).toUpperCase()}`}
 function maskReferralEmail(value:string|null|undefined){const email=String(value??"").trim();const at=email.indexOf("@");if(at<=0)return"";const local=email.slice(0,at),domain=email.slice(at+1);const shown=local.slice(0,Math.min(2,local.length));return`${shown}${"*".repeat(Math.max(2,Math.min(6,local.length-shown.length)))}@${domain}`}
 
-const BLACK_FRIDAY_2026_START=Date.parse("2026-11-19T23:00:00Z");
-const BLACK_FRIDAY_2026_END=Date.parse("2026-11-30T23:00:00Z");
-const BLACK_FRIDAY_2026_PRODUCTS=new Set(["BUMP_NOW","URGENT_7D","GALLERY_7D","FEATURED_7D","SPONSORED_7D"]);
-function blackFriday2026Discount(product:{code:string;currency:string;priceMinor:number},at=Date.now()){
-  if(at<BLACK_FRIDAY_2026_START||at>=BLACK_FRIDAY_2026_END||!BLACK_FRIDAY_2026_PRODUCTS.has(product.code)||String(product.currency).toUpperCase()!=="EUR")return 0;
-  const amount=Number(product.priceMinor);
-  if(!Number.isSafeInteger(amount)||amount<=0)return 0;
-  return amount-Math.floor(amount/2); // Checkout price is <= 50% of ordinary price, including odd cents
-}
 async function productByCode(code:string){const rows=await prisma.$queryRawUnsafe<Array<any>>(`SELECT * FROM "PromotionProduct" WHERE "code"=$1 AND "isActive"=TRUE LIMIT 1`,code);return rows[0]??null}
 async function preparePromotionPurchase(userId:string,listingId:string,product:any,couponCode?:string){
   const promotionId=randomUUID();
+  const bfSettings=await getBlackFridaySettings();
   return prisma.$transaction(async(tx:any)=>{
     let coupon:any=null;let discountMinor=0;
     if(couponCode){
@@ -50,7 +43,7 @@ async function preparePromotionPurchase(userId:string,listingId:string,product:a
       discountMinor=coupon.type==="PERCENT"?Math.min(Number(product.priceMinor),Math.round(Number(product.priceMinor)*Math.min(100,Number(coupon.value))/100)):Math.min(Number(product.priceMinor),Number(coupon.value));
     }
     // Never stack discounts. Always honor at least the advertised Black Friday price.
-    const bfAvailable=blackFriday2026Discount(product);
+    const bfAvailable=blackFridayDiscount(product,bfSettings);
     const blackFridayDiscountMinor=bfAvailable>=discountMinor?bfAvailable:0;
     if(blackFridayDiscountMinor){coupon=null;discountMinor=blackFridayDiscountMinor;}
     const payableMinor=Math.max(0,Number(product.priceMinor)-discountMinor);const marker=coupon?`coupon:${coupon.id}:${discountMinor}`:null;
@@ -127,9 +120,10 @@ export async function registerGrowthRoutes(app:FastifyInstance){
       id:string;code:string;type:string;name:string;description:string|null;
       priceMinor:number;currency:string;durationHours:number|null;
     }>>('SELECT "id","code","type","name","description","priceMinor","currency","durationHours" FROM "PromotionProduct" WHERE "isActive"=TRUE ORDER BY "priceMinor" ASC');
+    const campaign=await getBlackFridaySettings();
     reply.header("cache-control","no-store");
     return reply.send({products:rows.map(p=>{
-      const discount=blackFriday2026Discount(p);
+      const discount=blackFridayDiscount(p,campaign);
       return {...p,salePriceMinor:discount?p.priceMinor-discount:null,blackFriday2026:discount>0};
     })});
   });

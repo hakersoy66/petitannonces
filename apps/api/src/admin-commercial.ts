@@ -3,6 +3,7 @@ import { prisma } from "@pa/database";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { requireAdminRoles } from "./rbac.js";
+import {blackFridaySettingsSchema,blackFridaySettingsValid,getBlackFridaySettings,blackFridayPublic} from "./black-friday-settings.js";
 import { createPresignedUpload, makeStoredObjectPublic, publicObjectUrl, storageConfigured, uploadStoredObject, verifyStoredObject } from "./storage.js";
 
 const ROLES=["SUPER_ADMIN","ADMIN","MARKETING","FINANCE"] as const;
@@ -40,6 +41,57 @@ async function loadBanners(){const rows=await prisma.$queryRawUnsafe<Array<{valu
 async function saveBanners(value:z.infer<typeof bannersSchema>,request:any){const actor=await actorId(request);await prisma.$executeRawUnsafe(`INSERT INTO "AdminSetting" ("key","value","updatedByUserId","updatedAt") VALUES ('marketing.banners',$1::jsonb,$2,CURRENT_TIMESTAMP) ON CONFLICT ("key") DO UPDATE SET "value"=EXCLUDED."value","updatedByUserId"=EXCLUDED."updatedByUserId","updatedAt"=CURRENT_TIMESTAMP`,JSON.stringify(value),actor)}
 
 export async function registerAdminCommercialRoutes(app:FastifyInstance){
+  app.get("/public/campaigns/black-friday",async(_request,reply)=>{
+    reply.header("cache-control","no-store");
+    return reply.send(blackFridayPublic(await getBlackFridaySettings()));
+  });
+  app.get("/admin/commercial/black-friday",{preHandler:requireAdminRoles([...ROLES])},async(_request,reply)=>{
+    reply.header("cache-control","no-store");
+    const config=await getBlackFridaySettings();
+    const [enrollments,purchases,redemptions]=await Promise.all([
+      prisma.$queryRawUnsafe<Array<{total:bigint}>>('SELECT COUNT(*)::bigint AS total FROM "BlackFridayEntry2026" WHERE "edition"=$1',config.edition),
+      prisma.$queryRawUnsafe<Array<{pending:bigint;paid:bigint;months:bigint}>>(
+        `SELECT COUNT(*) FILTER (WHERE "status"='PENDING')::bigint AS pending,
+           COUNT(*) FILTER (WHERE "status"='PAID')::bigint AS paid,
+           COALESCE(SUM("giftMonths") FILTER (WHERE "status"='PAID'),0)::bigint AS months
+           FROM "BlackFridayProPurchase2026" WHERE "edition"=$1`,config.edition),
+      prisma.$queryRawUnsafe<Array<{count:bigint}>>(
+        'SELECT COUNT(*)::bigint AS count FROM "BlackFridayPromotionDiscount2026" WHERE "createdAt">=$1 AND "createdAt"<$2',
+        new Date(config.startsAt),new Date(config.endsAt)),
+    ]);
+    return reply.send({settings:config,public: blackFridayPublic(config),
+      stats:{enrollments:Number(enrollments[0]?.total??0n),paidProPurchases:Number(purchases[0]?.paid??0n),
+        pendingProPurchases:Number(purchases[0]?.pending??0n),giftMonthsGranted:Number(purchases[0]?.months??0n),
+        discountedPromotions:Number(redemptions[0]?.count??0n)}});
+  });
+  app.put("/admin/commercial/black-friday",{preHandler:requireAdminRoles(["SUPER_ADMIN","ADMIN"])},async(request,reply)=>{
+    const body=blackFridaySettingsSchema.safeParse(request.body);
+    if(!body.success||!blackFridaySettingsValid(body.data))return reply.code(400).send({error:"invalid_black_friday_settings"});
+    if(new Set(body.data.promotionCodes).size!==body.data.promotionCodes.length)return reply.code(400).send({error:"duplicate_product_codes"});
+    const existing=await getBlackFridaySettings();
+    const redeemed=await prisma.$queryRawUnsafe<Array<{count:bigint}>>(
+      `SELECT COUNT(*)::bigint AS count FROM "BlackFridayProPurchase2026" WHERE "edition"=$1 AND "status"='PAID'`,existing.edition);
+    // Historical paid purchases remain immutable. Edition may only advance, never go backwards.
+    if(body.data.edition<existing.edition)return reply.code(409).send({error:"edition_must_increase"});
+    if(body.data.edition===existing.edition&&Number(redeemed[0]?.count??0n)>0
+       &&(body.data.giftMonthsMultiplier!==existing.giftMonthsMultiplier||
+          body.data.maxPrepaidMonths!==existing.maxPrepaidMonths||
+          body.data.startsAt!==existing.startsAt))
+      return reply.code(409).send({error:"paid_purchases_settings_locked_for_this_edition"});
+    const actor=await actorId(request);
+    await prisma.$executeRawUnsafe(
+      `INSERT INTO "AdminSetting" ("key","value","updatedByUserId","updatedAt")
+       VALUES ('campaign.black-friday',$1::jsonb,$2,CURRENT_TIMESTAMP)
+       ON CONFLICT ("key") DO UPDATE SET "value"=EXCLUDED."value",
+         "updatedByUserId"=EXCLUDED."updatedByUserId","updatedAt"=CURRENT_TIMESTAMP`,
+       JSON.stringify(body.data),actor
+    );
+    await audit(request,"BLACK_FRIDAY_SETTINGS_UPDATED","MARKETING","campaign.black-friday",
+      {before:existing,after:body.data});
+    reply.header("cache-control","no-store");
+    return reply.send({saved:true,settings:body.data,public:blackFridayPublic(body.data)});
+  });
+
   app.get("/public/banners",async(request,reply)=>{const q=z.object({placement:placementSchema}).safeParse(request.query);if(!q.success)return reply.code(400).send({error:"invalid_placement"});const now=Date.now();const banners=(await loadBanners()).filter(b=>b.enabled&&b.placement===q.data.placement&&(!b.startsAt||new Date(b.startsAt).getTime()<=now)&&(!b.endsAt||new Date(b.endsAt).getTime()>now)).sort((a,b)=>a.sortOrder-b.sortOrder);return reply.send({banners})});
 
   app.get("/admin/commercial",{preHandler:requireAdminRoles([...ROLES])},async(_request,reply)=>{await ensurePlans();const [promotions,plans,banners]=await Promise.all([

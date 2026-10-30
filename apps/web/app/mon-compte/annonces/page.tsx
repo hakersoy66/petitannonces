@@ -56,7 +56,12 @@ export default function MyListingsPage() {
   const [proAutoRenew, setProAutoRenew] = useState(false);
   const [actionListingId, setActionListingId] = useState<string | null>(null);
   const [blackFridayBusy,setBlackFridayBusy]=useState<string|null>(null);
-  const blackFridayOpen=Date.now()<Date.parse("2026-11-30T23:00:00.000Z");
+  const [blackFridayCampaign,setBlackFridayCampaign]=useState<{visible:boolean;edition:number;startsAt:string;endsAt:string}|null>(null);
+  const blackFridayOpen=Boolean(blackFridayCampaign?.visible);
+  const blackFridayDates=blackFridayCampaign
+    ?new Intl.DateTimeFormat("fr-FR",{timeZone:"Europe/Paris",day:"numeric",month:"long"}).format(new Date(blackFridayCampaign.startsAt))
+      +" – "+new Intl.DateTimeFormat("fr-FR",{timeZone:"Europe/Paris",day:"numeric",month:"long"}).format(new Date(Date.parse(blackFridayCampaign.endsAt)-1000))
+    :"";
   const actionListing = listings.find(item => item.id === actionListingId) ?? null;
 
   useEffect(() => {
@@ -95,6 +100,14 @@ export default function MyListingsPage() {
   useEffect(() => { const requested = new URLSearchParams(window.location.search).get("status"); if (status === "ALL" && requested && requested !== "ALL" && Object.prototype.hasOwnProperty.call(labels, requested)) return; void load(); }, [status]);
   useEffect(() => { const target = new URLSearchParams(window.location.search).get("listingId"); if (target && listings.some(item => item.id === target)) window.requestAnimationFrame(() => document.getElementById(`annonce-${target}`)?.scrollIntoView({ block: "center" })); }, [listings]);
   useEffect(()=>{const params=new URLSearchParams(window.location.search);const requested=params.get("status");if(requested&&requested!=="ALL"&&Object.prototype.hasOwnProperty.call(labels,requested))setStatus(requested as Status);const q=params.get("renewal");if(q==="success")setMessage("Paiement confirmé. La prolongation sera visible après validation Stripe.");else if(q==="cancelled")setMessage("Paiement de prolongation annulé.");else if(params.get("submitted")==="1")setMessage("Annonce envoyée en vérification. Vous recevrez une notification dès qu’une décision sera prise.");else if(params.get("editing")==="moderation")setMessage("Cette annonce est déjà en cours de vérification. Attendez la décision de modération avant de la modifier.")},[]);
+  useEffect(()=>{
+    let alive=true;
+    fetch(apiBase()+"/public/campaigns/black-friday",{cache:"no-store"})
+      .then(r=>r.ok?r.json():null)
+      .then(c=>{if(alive&&c)setBlackFridayCampaign(c)})
+      .catch(()=>{});
+    return()=>{alive=false};
+  },[]);
   useEffect(() => { fetch(`${apiBase()}/pro/me`, { credentials: "include", cache: "no-store" }).then(async r => r.ok ? r.json() : null).then(p => {setProStores((p?.professional?.stores ?? []).map((x:any)=>({id:x.id,name:x.name})));const subscription=p?.professional?.subscriptions?.[0];setProAutoRenew(Boolean(subscription&&["ACTIVE","TRIALING"].includes(String(subscription.status))&&subscription.plan?.autoRenewListings===true));}).catch(()=>{}); }, []);
 
   function blackFridayEligible(item:Listing){return item.blackFridayEligible2026===true;}
@@ -111,7 +124,7 @@ export default function MyListingsPage() {
       if(!response.ok)throw new Error();
       const participating=!item.blackFriday2026;
       setListings(previous=>previous.map(x=>x.id===item.id?{...x,blackFriday2026:participating}:x));
-      setMessage(participating?"Votre annonce est inscrite à la sélection Black Friday du 20 au 30 novembre. Aucun rabais n’est ajouté automatiquement.":"Votre annonce a été retirée de la sélection Black Friday.");
+      setMessage(participating?"Votre annonce est inscrite à la sélection Black Friday. Aucun rabais n’est ajouté automatiquement.":"Votre annonce a été retirée de la sélection Black Friday.");
     }catch{
       setMessage("Impossible de modifier votre participation pour le moment. Vérifiez que l’annonce est active et éligible.");
     }finally{setBlackFridayBusy(null)}
@@ -196,7 +209,7 @@ export default function MyListingsPage() {
             </form>
           </div>
 
-          <div className={styles.blackFridayInvite}><div><small>ÉVÉNEMENT · 20–30 NOVEMBRE</small><strong>Black Friday 2026</strong><span>Inscrivez gratuitement vos annonces éligibles dans la sélection spéciale.</span></div><a href="/black-friday">Voir l’événement →</a></div>
+          {blackFridayOpen&&<div className={styles.blackFridayInvite}><div><small>ÉVÉNEMENT · {blackFridayDates.toUpperCase()}</small><strong>Black Friday {blackFridayCampaign?.edition}</strong><span>Inscrivez gratuitement vos annonces éligibles dans la sélection spéciale.</span></div><a href="/black-friday">Voir l’événement →</a></div>}
           {message && <div className={styles.notice}>{message}</div>}
           {loading ? <div className={`${styles.empty} ${styles.loadingReserve}`} aria-busy="true"><b>Chargement de vos annonces…</b><span>Préparation de votre espace d’annonces.</span></div> : listings.length === 0 ? (
             <div className={styles.empty}><b>Aucune annonce dans cette section.</b><span>Créez une nouvelle annonce ou changez de filtre.</span></div>
@@ -214,7 +227,7 @@ export default function MyListingsPage() {
                       <span className={`${styles.badge} ${styles[item.status.toLowerCase()]}`}>{labels[item.status]}</span>
                     </div>
                     <strong className={styles.price}>{formatListingPrice(item.priceMinor,item.currency,{domain:item.category.domain,transactionType:item.property?.transactionType??null},"Prix non défini")}</strong>
-                    {item.blackFriday2026&&<span className={styles.blackFridayTag}>✦ Inscrite à la sélection Black Friday</span>}
+                    {blackFridayOpen&&item.blackFriday2026&&<span className={styles.blackFridayTag}>✦ Inscrite à la sélection Black Friday</span>}
                     <div className={styles.meta}>
                       <span>{item.city ?? "Localisation à compléter"}</span>
                       <span>Mis à jour le {new Date(item.updatedAt).toLocaleDateString("fr-FR")}</span>

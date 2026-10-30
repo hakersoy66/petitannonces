@@ -41,6 +41,7 @@ export const adminNavGroups:AdminNavGroup[]=[
   {icon:"search",label:"SEO & Google",href:"/seo",roles:marketing},
   {icon:"briefcase",label:"Suivi Emploi",href:"/emploi-analytics",roles:operations},
   {icon:"campaign",label:"Offres & campagnes",href:"/commercial",roles:campaigns},
+  {icon:"campaign",label:"Black Friday",href:"/commercial/black-friday",roles:campaigns},
  ]},
  {label:"Configuration",items:[
   {icon:"categories",label:"Catégories",href:"/categories",roles:top},
