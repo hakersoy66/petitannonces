@@ -4,7 +4,8 @@ import {useState} from "react";
 
 type SeoCity={city:string;slug:string};
 const links=[
- {href:"/categorie/vehicules",label:"Véhicules d’occasion"},
+ {href:"/categorie/vehicules",label:"Voitures et véhicules d’occasion"},
+ {href:"/categorie/emploi",label:"Offres d’emploi en France"},
  {href:"/categorie/immobilier",label:"Immobilier"},
  {href:"/categorie/high-tech",label:"High-tech"},
  {href:"/categorie/maison-jardin",label:"Maison & jardin"},

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { AccountSidebar } from "../../components/account-sidebar";
 import { AppIcon } from "../../components/app-icon";
 import styles from "./page.module.css";
@@ -29,6 +30,9 @@ function modifiedLabel(value:string){const d=new Date(value);return Number.isNaN
 
 export default function AccountDashboardPage() {
   const [data, setData] = useState<DashboardData>(preview); const [loading,setLoading]=useState(true); const [loadError,setLoadError]=useState(""); const [filter, setFilter] = useState<"ALL" | ListingStatus>("ALL"); const [actionMessage,setActionMessage]=useState("");
+  const [actionListingId,setActionListingId]=useState<string|null>(null);
+  const actionListing=data.recentListings.find(item=>item.id===actionListingId)??null;
+  useEffect(()=>{if(!actionListingId)return;const prior=document.body.style.overflow;document.body.style.overflow="hidden";const onEscape=(event:KeyboardEvent)=>{if(event.key==="Escape")setActionListingId(null)};window.addEventListener("keydown",onEscape);return()=>{document.body.style.overflow=prior;window.removeEventListener("keydown",onEscape)}},[actionListingId]);
   async function refreshDashboard(){
     setLoadError("");
     const load=async()=>{
@@ -73,10 +77,66 @@ export default function AccountDashboardPage() {
       <div className={styles.statsGrid}><article><span className={styles.statIcon}><AppIcon name="list"/></span><div><small>Annonces en ligne</small><strong>{data.stats.listings.PUBLISHED}</strong><em>{data.stats.totalListings} au total</em></div></article><article><span className={styles.statIcon}><AppIcon name="comments"/></span><div><small>Messages non lus</small><strong>{data.stats.unreadConversations}</strong><em>À consulter</em></div></article><article><span className={styles.statIcon}><AppIcon name="handshake"/></span><div><small>Offres reçues</small><strong>{data.stats.pendingOffers}</strong><em>En attente de réponse</em></div></article><article><span className={styles.statIcon}><AppIcon name="bell"/></span><div><small>Notifications</small><strong>{data.stats.unreadNotifications}</strong><em>Non lues</em></div></article></div>
       <section className={styles.commerceOverview}><a href="/commandes"><span><AppIcon name="credit-card"/></span><div><small>Achats & ventes</small><strong>{data.commerce.purchases} achat(s) · {data.commerce.sales} vente(s)</strong><em>{data.commerce.active} transaction(s) en cours</em></div><i>›</i></a><a href="/mon-compte/portefeuille"><span><AppIcon name="wallet"/></span><div><small>Crédit Petit Annonces</small><strong>{new Intl.NumberFormat("fr-FR",{style:"currency",currency:data.commerce.creditCurrency}).format(data.commerce.creditBalanceMinor/100)}</strong><em>Utilisable pour vos services Petit Annonces</em></div><i>›</i></a></section>
       {data.stats.listings.EXPIRED > 0 && <a className={styles.renewalBanner} href="/mon-compte/annonces?status=EXPIRED"><span><strong>{data.stats.listings.EXPIRED} annonce{data.stats.listings.EXPIRED > 1 ? "s" : ""} expirée{data.stats.listings.EXPIRED > 1 ? "s" : ""}</strong><small>Votre première prolongation de 30 jours est gratuite. Retrouvez vos annonces à renouveler.</small></span><b>Renouveler →</b></a>}
-      <div className={styles.mainGrid}><section className={styles.panel}><div className={styles.panelHeader}><div><span className={styles.eyebrow}>Mes annonces</span><h2>Mes annonces récentes</h2></div><a href="/mon-compte/annonces">Tout voir →</a></div><div className={styles.filters}>{(["PUBLISHED","ALL","PENDING","DRAFT","SOLD"] as const).map((item) => {const count=item==="ALL"?data.stats.totalListings:data.stats.listings[item];return <button type="button" key={item} aria-pressed={filter===item} onClick={()=>setFilter(item)} className={filter===item?styles.filterActive:undefined}><span>{item==="ALL"?"Toutes":statusLabels[item]}</span><b>{count}</b></button>})}</div>{actionMessage&&<div className={styles.actionNotice}>{actionMessage}</div>}<div className={styles.listings}>{listings.length === 0 ? <div className={styles.empty}>Aucune annonce dans cette catégorie.</div> : listings.map((listing, index) => <article className={styles.listingRow} key={listing.id}><div className={`${styles.thumb} ${styles[`thumb${index % 3}`]}`}>{listing.imageUrl?<img src={listing.imageUrl} alt={listing.title??"Annonce"}/>:<span>{listing.category.name.charAt(0)}</span>}</div><div className={styles.listingInfo}><div className={styles.titleLine}><strong>{listing.title ?? "Annonce sans titre"}</strong><span className={`${styles.status} ${styles[`status${listing.status}`]}`}>{statusLabels[listing.status]}</span></div><p>{listing.category.name} · {listing.city ?? "France"}</p><div className={styles.listingMeta}><b>{formatListingPrice(listing.priceMinor,listing.currency,{domain:listing.category.domain,transactionType:listing.property?.transactionType??null},"Prix non défini")}</b><span>{modifiedLabel(listing.updatedAt)}</span></div></div><details className={styles.actionMenu}><summary className={styles.more} aria-label="Plus d'actions">•••</summary><div className={styles.actionMenuPanel}>{listing.status==="PUBLISHED"&&listing.slug?<a href={`/annonce/${listing.slug}`}>Voir l’annonce</a>:<a href={`/deposer-une-annonce?listingId=${encodeURIComponent(listing.id)}`}>Prévisualiser</a>}<a href={`/deposer-une-annonce?listingId=${encodeURIComponent(listing.id)}`}>Modifier</a>{listing.status==="PUBLISHED"&&<a className={styles.boostAction} href={`/promouvoir?listingId=${encodeURIComponent(listing.id)}`}>Booster l’annonce</a>}{listing.status==="PUBLISHED"&&<button type="button" onClick={()=>void changeListingStatus(listing.id,"SUSPENDED")}>Mettre en pause</button>}{listing.status==="PUBLISHED"&&<button type="button" onClick={()=>void changeListingStatus(listing.id,"SOLD")}>Marquer vendue</button>}{listing.status==="SUSPENDED"&&<button type="button" onClick={()=>void changeListingStatus(listing.id,"PENDING")}>Republier</button>}{listing.status==="EXPIRED"&&<a className={styles.boostAction} href={`/mon-compte/annonces?status=EXPIRED&listingId=${encodeURIComponent(listing.id)}`}>Prolonger +30 jours</a>}<button type="button" className={styles.deleteAction} onClick={()=>void deleteListing(listing.id,listing.title)}>Supprimer définitivement</button></div></details></article>)}</div></section>
+      <div className={styles.mainGrid}><section className={styles.panel}><div className={styles.panelHeader}><div><span className={styles.eyebrow}>Mes annonces</span><h2>Mes annonces récentes</h2></div><a href="/mon-compte/annonces">Tout voir →</a></div><div className={styles.filters}>{(["PUBLISHED","ALL","PENDING","DRAFT","SOLD"] as const).map((item) => {const count=item==="ALL"?data.stats.totalListings:data.stats.listings[item];return <button type="button" key={item} aria-pressed={filter===item} onClick={()=>setFilter(item)} className={filter===item?styles.filterActive:undefined}><span>{item==="ALL"?"Toutes":statusLabels[item]}</span><b>{count}</b></button>})}</div>{actionMessage&&<div className={styles.actionNotice}>{actionMessage}</div>}<div className={styles.recentCards}>
+  {listings.length===0?<div className={styles.empty}>Aucune annonce dans cette catégorie.</div>:listings.map(listing=>(
+    <article className={styles.recentCard} key={listing.id}>
+      <div className={styles.recentThumb}>
+        {listing.imageUrl?<img src={listing.imageUrl} alt={listing.title??"Annonce"} width={96} height={74} loading="lazy"/>:<span>{listing.category.name.charAt(0)}</span>}
+      </div>
+      <div className={styles.recentInfo}>
+        <div className={styles.recentHeading}>
+          <div><small>{listing.category.name}</small><h3>{listing.title??"Annonce sans titre"}</h3></div>
+          <span className={styles["recentStatus"+listing.status]}>{statusLabels[listing.status]}</span>
+        </div>
+        <strong className={styles.recentPrice}>{formatListingPrice(listing.priceMinor,listing.currency,{domain:listing.category.domain,transactionType:listing.property?.transactionType??null},"Prix non défini")}</strong>
+        <div className={styles.recentMeta}><span>{listing.city??"France"}</span><span>{modifiedLabel(listing.updatedAt)}</span></div>
+      </div>
+      <div className={styles.recentActions}>
+        {listing.status==="PUBLISHED"&&listing.slug&&<a className={styles.recentPrimary} href={"/annonce/"+listing.slug}>Voir l’annonce</a>}
+        {listing.status==="DRAFT"&&<a className={styles.recentPrimary} href={"/deposer-une-annonce?listingId="+encodeURIComponent(listing.id)}>Continuer</a>}
+        {listing.status==="SUSPENDED"&&<a className={styles.recentPrimary} href={"/deposer-une-annonce?listingId="+encodeURIComponent(listing.id)}>Corriger</a>}
+        {listing.status==="EXPIRED"&&<a className={styles.recentPrimary} href={"/mon-compte/annonces?status=EXPIRED&listingId="+encodeURIComponent(listing.id)}>Prolonger l’annonce</a>}
+        {listing.status==="PENDING"&&<span className={styles.recentState}>En cours de vérification</span>}
+        {listing.status==="SOLD"&&<span className={styles.recentState}>Annonce vendue</span>}
+        <button type="button" className={styles.recentMore} aria-label={"Actions pour "+(listing.title??"cette annonce")} aria-haspopup="dialog" aria-expanded={actionListingId===listing.id} onClick={()=>setActionListingId(listing.id)}>
+          <svg viewBox="0 0 24 24" fill="currentColor" width="21" height="21" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>
+        </button>
+      </div>
+    </article>
+  ))}
+</div></section>
         <aside className={styles.rightColumn}><section className={`${styles.panel} ${styles.quickPanel}`}><div className={styles.panelHeader}><div><span className={styles.eyebrow}>Raccourcis</span><h2>Actions rapides</h2></div></div><div className={styles.quickLinks}><a href="/deposer-une-annonce"><span><AppIcon name="plus"/></span><div><strong>Créer une annonce</strong><small>Publier en quelques minutes</small></div><i>›</i></a><a href="/mon-compte/annonces"><span><AppIcon name="list"/></span><div><strong>Gérer mes annonces</strong><small>Modifier, mettre en pause ou marquer vendue</small></div><i>›</i></a><a href="/messages"><span><AppIcon name="comments"/></span><div><strong>Répondre aux messages</strong><small>{data.stats.unreadConversations} conversation(s) à lire</small></div><i>›</i></a><a href="/mon-compte/notifications"><span><AppIcon name="bell"/></span><div><strong>Voir mes notifications</strong><small>{data.stats.unreadNotifications} notification(s) non lue(s)</small></div><i>›</i></a><a href="/mon-compte/reputation"><span><AppIcon name="star"/></span><div><strong>Réputation & badges</strong><small>Suivre mes badges et ma progression</small></div><i>›</i></a><a href="/assistance"><span><AppIcon name="user-shield"/></span><div><strong>Besoin d’aide ?</strong><small>Contacter le support Petit Annonces</small></div><i>›</i></a></div></section>
           <section className={`${styles.panel} ${styles.accountHealth}`}><div className={styles.healthTop}><div><span className={styles.eyebrow}>Confiance</span><h2>Votre profil</h2></div><b>{data.profileHealth.completion}%</b></div><div className={styles.progress}><span style={{width:`${data.profileHealth.completion}%`}}/></div><ul><li className={data.profileHealth.emailVerified?styles.done:undefined}>{data.profileHealth.emailVerified?"✓":"○"} E-mail vérifié</li><li className={data.profileHealth.profileComplete?styles.done:undefined}>{data.profileHealth.profileComplete?"✓":"○"} Profil complet</li><li className={data.profileHealth.phoneVerified?styles.done:undefined}>{data.profileHealth.phoneVerified?"✓":"○"} Téléphone vérifié</li><li className={data.profileHealth.defaultAddress?styles.done:undefined}>{data.profileHealth.defaultAddress?"✓":"○"} Adresse principale</li><li className={data.profileHealth.twoFactorEnabled?styles.done:undefined}>{data.profileHealth.twoFactorEnabled?"✓":"○"} Double authentification</li></ul><div className={styles.healthLinks}><a href="/mon-compte/profil">Compléter mon profil</a><a href="/mon-compte/securite">Sécuriser mon compte</a></div></section></aside>
       </div></>}
     </section>
-  </main></div>;
+  </main>
+  {actionListing&&typeof document!=="undefined"&&createPortal(
+    <div className={styles.recentActionOverlay}>
+      <button type="button" className={styles.recentActionBackdrop} aria-label="Fermer le menu" onClick={()=>setActionListingId(null)}/>
+      <section className={styles.recentActionSheet} role="dialog" aria-modal="true" aria-labelledby="recent-actions-heading">
+        <div className={styles.recentActionHandle} aria-hidden="true"/>
+        <div className={styles.recentActionHead}>
+          <div>
+            <small>Actions de l’annonce</small>
+            <h2 id="recent-actions-heading">{actionListing.title||"Mon annonce"}</h2>
+            <span>{statusLabels[actionListing.status]}</span>
+          </div>
+          <button type="button" className={styles.recentActionClose} aria-label="Fermer" onClick={()=>setActionListingId(null)}>×</button>
+        </div>
+        <div className={styles.recentActionItems}>
+          {actionListing.status==="PUBLISHED"&&actionListing.slug&&<a href={"/annonce/"+actionListing.slug} onClick={()=>setActionListingId(null)}>Voir l’annonce</a>}
+          {actionListing.status!=="PUBLISHED"&&<a href={"/deposer-une-annonce?listingId="+encodeURIComponent(actionListing.id)} onClick={()=>setActionListingId(null)}>Prévisualiser</a>}
+          <a href={"/deposer-une-annonce?listingId="+encodeURIComponent(actionListing.id)+(actionListing.status==="PUBLISHED"?"&resumeStep=0&mode=edit":"")} onClick={()=>setActionListingId(null)}>Modifier</a>
+          {actionListing.status==="PUBLISHED"&&<a href={"/mon-compte/visibilite?listingId="+encodeURIComponent(actionListing.id)} onClick={()=>setActionListingId(null)}>Booster l’annonce</a>}
+          {actionListing.status==="PUBLISHED"&&<button type="button" onClick={()=>{setActionListingId(null);void changeListingStatus(actionListing.id,"SUSPENDED")}}>Mettre en pause</button>}
+          {actionListing.status==="PUBLISHED"&&<button type="button" onClick={()=>{setActionListingId(null);void changeListingStatus(actionListing.id,"SOLD")}}>Marquer comme vendue</button>}
+          {actionListing.status==="SUSPENDED"&&<button type="button" onClick={()=>{setActionListingId(null);void changeListingStatus(actionListing.id,"PENDING")}}>Republier</button>}
+          {actionListing.status==="EXPIRED"&&<a className={styles.recentActionRenew} href={"/mon-compte/annonces?status=EXPIRED&listingId="+encodeURIComponent(actionListing.id)} onClick={()=>setActionListingId(null)}>Prolonger +30 jours</a>}
+          {actionListing.status==="PENDING"&&<p className={styles.recentActionHint}>Cette annonce est en cours de vérification.</p>}
+          <button type="button" className={styles.recentActionDelete} onClick={()=>{setActionListingId(null);void deleteListing(actionListing.id,actionListing.title)}}>Supprimer définitivement</button>
+        </div>
+      </section>
+    </div>,document.body
+  )}
+  </div>;
 }

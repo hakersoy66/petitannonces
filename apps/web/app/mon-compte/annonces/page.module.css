@@ -181,3 +181,33 @@
     flex:0 0 auto!important;
   }
 }
+
+
+/* 2026-10-24: single accessible mobile actions sheet; no nested <details> overlays. */
+.mobileMoreButton{display:none}
+.actionOverlay{position:fixed;inset:0;z-index:6000;isolation:isolate}
+.actionBackdrop{position:absolute;inset:0;width:100%;height:100%;padding:0;border:0;background:rgba(17,16,38,.44);cursor:pointer}
+.actionSheet{position:absolute;left:50%;bottom:calc(88px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:1;width:min(480px,calc(100vw - 20px));max-height:calc(100dvh - 112px - env(safe-area-inset-bottom));overflow-y:auto;overscroll-behavior:contain;padding:8px 17px 17px;border:1px solid #e6e3f0;border-radius:23px;background:#fff;box-shadow:0 20px 64px rgba(20,18,56,.28);box-sizing:border-box}
+.actionHandle{width:37px;height:4px;margin:1px auto 13px;border-radius:999px;background:#d7d3e6}
+.actionSheetHead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:0 2px 15px;border-bottom:1px solid #eeedf3}
+.actionSheetHead>div{min-width:0;flex:1}
+.actionSheetHead small{display:block;color:#736a90;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em}
+.actionSheetHead h2{margin:5px 0 7px;color:#19182e;font-size:18px;line-height:1.3;overflow-wrap:anywhere}
+.actionSheetHead span{display:inline-block;color:#797789;font-size:12px;font-weight:700}
+.actionClose{flex:0 0 auto;display:grid;place-items:center;width:38px;height:38px;border:0;border-radius:12px;background:#f3f1f8;color:#4b4763;font:inherit;font-size:24px;line-height:1;cursor:pointer}
+.actionSheetItems{display:grid;gap:7px;padding-top:14px}
+.actionSheetItems>a,.actionSheetItems>button{display:flex;align-items:center;justify-content:flex-start;min-height:46px;width:100%;padding:10px 14px;border:1px solid #e8e7f0;border-radius:13px;background:#f8f8fb;color:#2c293d;font:inherit;font-size:14px;font-weight:750;text-decoration:none;text-align:left;cursor:pointer;box-sizing:border-box}
+.actionSheetItems>a:active,.actionSheetItems>button:active{background:#efecff}
+.actionSheetItems>.actionRenew{color:#5846cf;background:#f1edff;border-color:#ede7ff;font-weight:850}
+.actionSheetItems>.actionDelete{color:#a52f44;background:#fff;border-color:#f0e4e7;font-weight:800}
+.actionHint{margin:2px 3px;padding:10px 12px;border-radius:11px;background:#fff9ec;color:#775a26;font-size:12px;line-height:1.5}
+@media(max-width:700px){
+ .mobileActions{display:grid!important;grid-template-columns:minmax(0,1fr) 46px!important;gap:8px!important;align-items:center!important;width:100%!important}
+ .mobileActions .mobileState{grid-column:1!important;min-width:0!important;padding:0 8px!important}
+ .mobileMoreButton{display:flex!important;align-items:center;justify-content:center;grid-column:2!important;width:46px!important;min-width:46px!important;max-width:46px!important;height:44px!important;min-height:44px!important;margin:0!important;padding:0!important;border:1px solid #ddd9ee!important;border-radius:12px!important;background:#f4f1ff!important;color:#5949db!important;cursor:pointer;justify-self:end!important}
+ .mobileMoreButton svg{display:block;flex-shrink:0}
+ .mobileMoreButton:focus-visible{outline:3px solid #b9b0fc;outline-offset:2px}
+}
+@media(min-width:701px){
+ .actionSheet{bottom:24px}
+}

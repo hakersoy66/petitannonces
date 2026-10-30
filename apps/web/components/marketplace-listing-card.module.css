@@ -46,3 +46,7 @@
   }
   .badges { max-width:calc(100% - 59px); }
 }
+
+/* Professional listing: readable PRO label instead of storefront icon. */
+.proIconBadge{font-size:9px;font-weight:950;letter-spacing:-.025em}
+@media(max-width:700px),(display-mode:standalone){.proIconBadge{font-size:8px}}

@@ -66,6 +66,7 @@ export function PremiumCategoryIntro({name,slug,domain,intro,total,related}:Prop
           <span><AppIcon name="list"/>Filtres adaptés</span>
           <span><AppIcon name="shield"/>Annonces modérées</span>
           <a href="#annonces">{total.toLocaleString("fr-FR")} annonce{total>1?"s":""} <AppIcon name="arrow-right"/></a>
+          <a href="/deposer-annonce-gratuite">Déposer une annonce gratuite <AppIcon name="plus"/></a>
         </div>
       </div>
     </section>

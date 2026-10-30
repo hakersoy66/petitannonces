@@ -36,6 +36,7 @@ export function SearchViewControls({view}:Props){
       <button type="button" className={view==="map"?styles.active:""} onClick={()=>switchView("map")}><AppIcon name="map"/>Carte</button>
     </div>
     <button type="button" className={styles.around} disabled={locating} onClick={()=>void aroundMe()}><AppIcon name="location"/>{locating?"Localisation…":"Autour de moi"}</button>
+    <a href="/deposer-annonce-gratuite" className={styles.around} style={{textDecoration:"none",marginLeft:"auto"}}><AppIcon name="plus"/>Déposer une annonce</a>
     {error&&<span className={styles.error}>{error}</span>}
   </div>
 }

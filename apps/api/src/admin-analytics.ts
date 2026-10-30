@@ -148,6 +148,23 @@ export async function registerAdminAnalyticsRoutes(app:FastifyInstance){
   const s=summary[0]??{},aud=audience[0]??{};return reply.send({days,summary:{...s,gmvMinor:Number(s.gmvMinor??0),revenueMinor:Number(s.revenueMinor??0)},audience:{visitors:Number(aud.visitors??0),sessions:Number(aud.sessions??0),pageViews:Number(aud.pageViews??0),pwaSessions:Number(aud.pwaSessions??0),source:"PETIT_ANNONCES_FIRST_PARTY"},dailyAudience:dailyAudience.map(r=>({d:r.d instanceof Date?r.d.toISOString().slice(0,10):String(r.d).slice(0,10),visitors:Number(r.visitors??0),sessions:Number(r.sessions??0),pageViews:Number(r.pageViews??0),metaVisitors:Number(r.metaVisitors??0),metaSessions:Number(r.metaSessions??0)})),trafficSources:trafficSources.map(r=>({source:String(r.source||"other"),visitors:Number(r.visitors??0),sessions:Number(r.sessions??0),pageViews:Number(r.pageViews??0)})),signupSourcesToday:signupSourcesToday.map(r=>({source:String(r.source||"unknown"),count:Number(r.count??0)})),recentSignupSourcesToday:recentSignupSourcesToday.map(r=>({createdAt:r.createdAt instanceof Date?r.createdAt.toISOString():String(r.createdAt),kind:String(r.kind||"PARTICULIER"),status:String(r.status||""),source:String(r.source||"unknown"),medium:String(r.medium||"none"),campaign:r.campaign?String(r.campaign):null,landingPath:r.landingPath?String(r.landingPath):null})),meta:metaStatus,ga4:{...ga4,tagConfigured:true,reportingConnected:ga4.connected,consentRequired:true,keyEventAdmin:keyEvents},organic:mergeOrganic(gsc,ga4Organic,firstPartyOrganic),series:series.map(r=>({...r,d:r.d instanceof Date?r.d.toISOString().slice(0,10):String(r.d).slice(0,10),gmvMinor:Number(r.gmvMinor??0),revenueMinor:Number(r.revenueMinor??0)})),listingStatuses,userKinds});
  });
 
+ app.get("/admin/analytics/growth-diagnostics",{preHandler:requireAdminRoles([...ROLES])},async(_request,reply)=>{
+  const rows=await prisma.$queryRawUnsafe<Array<any>>(`
+  WITH periods AS (SELECT 'previous7' AS period,(NOW() AT TIME ZONE 'Europe/Paris')::date-14 AS a,(NOW() AT TIME ZONE 'Europe/Paris')::date-7 AS b
+  UNION ALL SELECT 'recent7',(NOW() AT TIME ZONE 'Europe/Paris')::date-7,(NOW() AT TIME ZONE 'Europe/Paris')::date)
+  SELECT p.period,p.a AS "startDate",(p.b-1) AS "endDate",
+  (SELECT COALESCE(SUM(x."entries"),0)::int FROM "SiteAudienceAggregate" x WHERE x."bucket">=(p.a::timestamp AT TIME ZONE 'Europe/Paris') AND x."bucket"<(p.b::timestamp AT TIME ZONE 'Europe/Paris')) AS entries,
+  (SELECT COALESCE(SUM(x."pageViews"),0)::int FROM "SiteAudienceAggregate" x WHERE x."bucket">=(p.a::timestamp AT TIME ZONE 'Europe/Paris') AND x."bucket"<(p.b::timestamp AT TIME ZONE 'Europe/Paris')) AS views,
+  (SELECT COUNT(DISTINCT x."visitorId")::int FROM "SiteAnalyticsSession" x WHERE x."startedAt">=(p.a::timestamp AT TIME ZONE 'Europe/Paris') AND x."startedAt"<(p.b::timestamp AT TIME ZONE 'Europe/Paris')) AS consented,
+  (SELECT COUNT(*)::int FROM "User" x WHERE x."createdAt">=(p.a::timestamp AT TIME ZONE 'Europe/Paris') AND x."createdAt"<(p.b::timestamp AT TIME ZONE 'Europe/Paris')) AS users,
+  (SELECT COUNT(*)::int FROM "Listing" x WHERE x."createdAt">=(p.a::timestamp AT TIME ZONE 'Europe/Paris') AND x."createdAt"<(p.b::timestamp AT TIME ZONE 'Europe/Paris')) AS listings,
+  (SELECT COUNT(DISTINCT x."sellerId")::int FROM "Listing" x WHERE x."createdAt">=(p.a::timestamp AT TIME ZONE 'Europe/Paris') AND x."createdAt"<(p.b::timestamp AT TIME ZONE 'Europe/Paris')) AS sellers,
+  (SELECT COUNT(*)::int FROM "Listing" x WHERE x."createdAt">=(p.a::timestamp AT TIME ZONE 'Europe/Paris') AND x."createdAt"<(p.b::timestamp AT TIME ZONE 'Europe/Paris') AND EXISTS(SELECT 1 FROM "ListingImportLog" i WHERE i."listingId"=x."id")) AS imported
+  FROM periods p ORDER BY p.a`);
+  reply.header("Cache-Control","private, no-store");
+  return reply.send({periodDays:7,method:"complete_days_paris",periods:rows.map(r=>({period:String(r.period),startDate:String(r.startDate instanceof Date?r.startDate.toISOString().slice(0,10):r.startDate),endDate:String(r.endDate instanceof Date?r.endDate.toISOString().slice(0,10):r.endDate),estimatedEntries:Number(r.entries),aggregatePageViews:Number(r.views),consentedVisitors:Number(r.consented),newUsers:Number(r.users),newListings:Number(r.listings),activeSellers:Number(r.sellers),importedListings:Number(r.imported),manualListings:Math.max(0,Number(r.listings)-Number(r.imported))}))});
+ });
+
  app.post("/admin/analytics/ga4/key-events/sync",{preHandler:requireAdminRoles(["SUPER_ADMIN","ADMIN","MARKETING"])},async(_request,reply)=>{
   try{return reply.send(await ensureGa4KeyEvents(KEY_EVENTS))}catch(error){return reply.code(502).send({error:"ga4_key_event_sync_failed",message:String((error as Error)?.message??error).slice(0,300)})}
  });

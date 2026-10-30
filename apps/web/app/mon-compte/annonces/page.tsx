@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { AccountSidebar } from "../../../components/account-sidebar";
 import styles from "./page.module.css";
 import { formatListingPrice } from "../../../lib/listing-price";
@@ -51,6 +52,22 @@ export default function MyListingsPage() {
   const [counts, setCounts] = useState<Record<Status | "ALL",number>>({ALL:0,DRAFT:0,PENDING:0,PUBLISHED:0,SUSPENDED:0,SOLD:0,EXPIRED:0});
   const [proStores, setProStores] = useState<Array<{id:string;name:string}>>([]);
   const [proAutoRenew, setProAutoRenew] = useState(false);
+  const [actionListingId, setActionListingId] = useState<string | null>(null);
+  const actionListing = listings.find(item => item.id === actionListingId) ?? null;
+
+  useEffect(() => {
+    if (!actionListingId) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setActionListingId(null);
+    };
+    window.addEventListener("keydown", onEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onEscape);
+    };
+  }, [actionListingId]);
 
   async function load() {
     setLoading(true);
@@ -206,16 +223,18 @@ export default function MyListingsPage() {
                     {(item.status === "EXPIRED" || item.lifecycle?.renewalRequired || item.lifecycle?.renewalAvailable) && <button type="button" className={styles.mobilePrimary} onClick={() => void renewListing(item)}>{item.lifecycle?.freeRenewalAvailable!==false?"Prolonger gratuitement":"Prolonger l’annonce"}</button>}
                     {item.status === "PENDING" && <span className={styles.mobileState}>En cours de vérification</span>}
                     {item.status === "SOLD" && <span className={styles.mobileState}>Annonce vendue</span>}
-                    <details className={styles.mobileMore}><summary>Autres actions</summary><div>
-                      {item.status === "PUBLISHED" && <a href={`/deposer-une-annonce?listingId=${encodeURIComponent(item.id)}&resumeStep=0&mode=edit`}>Modifier</a>}
-                      {item.status === "PUBLISHED" && <a href={`/mon-compte/visibilite?listingId=${encodeURIComponent(item.id)}`}>Booster</a>}
-                      {item.status === "PUBLISHED" && <button type="button" onClick={() => void changeStatus(item.id, "SUSPENDED")}>Mettre en pause</button>}
-                      {item.status === "PUBLISHED" && <button type="button" onClick={() => void changeStatus(item.id, "SOLD")}>Marquer vendue</button>}
-                      {item.status === "DRAFT" && item.lifecycle?.renewalRequired && <a href={`/deposer-une-annonce?listingId=${encodeURIComponent(item.id)}`}>Continuer les modifications</a>}
-                      {item.status === "DRAFT" && <a href={`/deposer-une-annonce?listingId=${encodeURIComponent(item.id)}`}>Compléter les informations</a>}
-                      {item.status === "EXPIRED" && <a href={`/deposer-une-annonce?listingId=${encodeURIComponent(item.id)}&resumeStep=0&mode=edit`}>Modifier</a>}
-                      <button type="button" className={styles.danger} onClick={() => void deleteListing(item)}>Supprimer définitivement</button>
-                    </div></details>
+                    <button
+                      type="button"
+                      className={styles.mobileMoreButton}
+                      aria-label={`Actions pour ${item.title ?? "cette annonce"}`}
+                      aria-haspopup="dialog"
+                      aria-expanded={actionListingId === item.id}
+                      onClick={() => setActionListingId(item.id)}
+                    >
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                        <circle cx="5" cy="12" r="1.7" /><circle cx="12" cy="12" r="1.7" /><circle cx="19" cy="12" r="1.7" />
+                      </svg>
+                    </button>
                   </div>
                 </article>
               ))}
@@ -223,6 +242,44 @@ export default function MyListingsPage() {
           )}
         </section>
       </main>
+      {actionListing && typeof document !== "undefined" && createPortal(
+        <div className={styles.actionOverlay}>
+          <button type="button" className={styles.actionBackdrop} aria-label="Fermer le menu des actions" onClick={() => setActionListingId(null)} />
+          <section className={styles.actionSheet} role="dialog" aria-modal="true" aria-labelledby="listing-actions-heading">
+            <div className={styles.actionHandle} aria-hidden="true" />
+            <div className={styles.actionSheetHead}>
+              <div>
+                <small>Actions de l’annonce</small>
+                <h2 id="listing-actions-heading">{actionListing.title || "Mon annonce"}</h2>
+                <span>{labels[actionListing.status]}</span>
+              </div>
+              <button className={styles.actionClose} type="button" onClick={() => setActionListingId(null)} aria-label="Fermer">×</button>
+            </div>
+            <div className={styles.actionSheetItems}>
+              {actionListing.status === "PUBLISHED" && actionListing.slug &&
+                <a href={`/annonce/${actionListing.slug}`} onClick={() => setActionListingId(null)}>Voir l’annonce</a>}
+              {actionListing.status === "DRAFT" &&
+                <a href={`/deposer-une-annonce?listingId=${encodeURIComponent(actionListing.id)}`} onClick={() => setActionListingId(null)}>Continuer mon annonce</a>}
+              {actionListing.status === "SUSPENDED" &&
+                <a href={`/deposer-une-annonce?listingId=${encodeURIComponent(actionListing.id)}`} onClick={() => setActionListingId(null)}>Corriger mon annonce</a>}
+              {(actionListing.status === "PUBLISHED" || actionListing.status === "EXPIRED") &&
+                <a href={`/deposer-une-annonce?listingId=${encodeURIComponent(actionListing.id)}&resumeStep=0&mode=edit`} onClick={() => setActionListingId(null)}>Modifier</a>}
+              {actionListing.status === "PUBLISHED" &&
+                <a href={`/mon-compte/visibilite?listingId=${encodeURIComponent(actionListing.id)}`} onClick={() => setActionListingId(null)}>Booster l’annonce</a>}
+              {actionListing.status === "PUBLISHED" &&
+                <button type="button" onClick={() => { setActionListingId(null); void changeStatus(actionListing.id, "SUSPENDED"); }}>Mettre en pause</button>}
+              {actionListing.status === "PUBLISHED" &&
+                <button type="button" onClick={() => { setActionListingId(null); void changeStatus(actionListing.id, "SOLD"); }}>Marquer comme vendue</button>}
+              {(actionListing.status === "EXPIRED" || actionListing.lifecycle?.renewalRequired || actionListing.lifecycle?.renewalAvailable) &&
+                <button type="button" className={styles.actionRenew} onClick={() => { setActionListingId(null); void renewListing(actionListing); }}>
+                  {actionListing.lifecycle?.freeRenewalAvailable !== false ? "Prolonger gratuitement +30 jours" : "Prolonger +30 jours"}
+                </button>}
+              {actionListing.status === "PENDING" && <p className={styles.actionHint}>Cette annonce est en cours de vérification.</p>}
+              <button type="button" className={styles.actionDelete} onClick={() => { setActionListingId(null); void deleteListing(actionListing); }}>Supprimer définitivement</button>
+            </div>
+          </section>
+        </div>, document.body
+      )}
     </div>
   );
 }

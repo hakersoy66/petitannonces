@@ -13,6 +13,7 @@ type Row = {
   revenueMinor: number;
 };
 
+type TrafficQuality={periodDays:number;consentChoices:{accepted:number;rejected:number};botDaily:Array<{day:string;requests:number;knownBotRequests:number;searchRequests:number;http4xx:number;http5xx:number}>;logUpdatedAt:string|null};
 type AnonymousAudience={today:{estimatedEntries:number;pageViews:number};period:{days:number;estimatedEntries:number;pageViews:number;daily:Array<{day:string;entries:number;views:number}>};live:{onlineTabsApprox:number};firstMeasuredAt:string|null;comparison?:{recent7:number;previous7:number;period:string}};
 type Audience = {
   visitors: number;
@@ -93,6 +94,9 @@ type CheckoutRecovery = {
   items:Array<{id:string;orderNumber:string;status:string;paymentProvider:string|null;currency:string;totalAmountMinor:number;createdAt:string;paidAt:string|null;title:string|null;firstReminderAt:string|null;secondReminderAt:string|null}>;
 };
 
+type GrowthPeriod={period:string;startDate:string;endDate:string;estimatedEntries:number;aggregatePageViews:number;consentedVisitors:number;newUsers:number;newListings:number;activeSellers:number;importedListings:number;manualListings:number};
+type GrowthDiagnostics={periodDays:number;method:string;periods:GrowthPeriod[]};
+
 type Data = {
   days: number;
   summary: {
@@ -139,6 +143,8 @@ export default function AnalyticsClient() {
   const [days, setDays] = useState(30);
   const [data, setData] = useState<Data | null>(null);
   const [aggregate,setAggregate]=useState<AnonymousAudience|null>(null);
+  const [trafficQuality,setTrafficQuality]=useState<TrafficQuality|null>(null);
+  const [growthDiagnostics,setGrowthDiagnostics]=useState<GrowthDiagnostics|null>(null);
   const [recovery,setRecovery]=useState<CheckoutRecovery|null>(null);
   const [recoveryBusy,setRecoveryBusy]=useState(false);
   const [loading, setLoading] = useState(false);
@@ -153,6 +159,14 @@ export default function AnalyticsClient() {
       .then(async r=>r.ok?(await r.json()) as AnonymousAudience:null)
       .then(v=>{if(active)setAggregate(v)})
       .catch(()=>{if(active)setAggregate(null)});
+    fetch(`/api/admin/analytics/traffic-quality?days=${days}`,{credentials:"include",cache:"no-store"})
+      .then(async r=>r.ok?(await r.json()) as TrafficQuality:null)
+      .then(v=>{if(active)setTrafficQuality(v)})
+      .catch(()=>{if(active)setTrafficQuality(null)});
+    fetch("/api/admin/analytics/growth-diagnostics",{credentials:"include",cache:"no-store"})
+      .then(async r=>r.ok?(await r.json()) as GrowthDiagnostics:null)
+      .then(v=>{if(active)setGrowthDiagnostics(v)})
+      .catch(()=>{if(active)setGrowthDiagnostics(null)});
     fetch(`/api/admin/checkout-recovery?days=${Math.min(days,90)}`, { credentials: "include", cache: "no-store" }).then(async r=>r.ok?(await r.json()) as CheckoutRecovery:null).then(payload=>{if(active)setRecovery(payload)}).catch(()=>{if(active)setRecovery(null)});
     fetch(`/api/admin/analytics/overview?days=${days}`, { credentials: "include", cache: "no-store" })
       .then(async (r) => {
@@ -179,8 +193,19 @@ export default function AnalyticsClient() {
   const max = useMemo(() => Math.max(1, ...(data?.series ?? []).map((r) => Math.max(r.newUsers, r.publishedListings, r.paidOrders))), [data]);
   const pagesPerVisit = data?.audience?.sessions ? data.audience.pageViews / data.audience.sessions : 0;
   const todayAudience = data?.dailyAudience?.[data.dailyAudience.length - 1];
+  const previousGrowth=growthDiagnostics?.periods.find(p=>p.period==="previous7");
+  const recentGrowth=growthDiagnostics?.periods.find(p=>p.period==="recent7");
   const parisToday=new Date().toLocaleDateString("sv-SE",{timeZone:"Europe/Paris"});
   const completedAggregateDays=(aggregate?.period.daily??[]).filter(row=>row.day<parisToday);
+  const qualityStart=new Date(Date.parse(parisToday+"T12:00:00Z")-(days-1)*86400000).toISOString().slice(0,10);
+  const qualityLogRows=(trafficQuality?.botDaily??[]).filter(row=>row.day>=qualityStart&&row.day<=parisToday);
+  const qualityLog=qualityLogRows.reduce((acc,row)=>({
+    requests:acc.requests+row.requests,
+    bots:acc.bots+row.knownBotRequests,
+    searches:acc.searches+row.searchRequests
+  }),{requests:0,bots:0,searches:0});
+  const consentDecisions=(trafficQuality?.consentChoices.accepted??0)+(trafficQuality?.consentChoices.rejected??0);
+
   const maxAudience=Math.max(1,...completedAggregateDays.map(row=>row.entries));
   const weekOverWeek=aggregate?.comparison?.previous7
     ?(aggregate.comparison.recent7-aggregate.comparison.previous7)/aggregate.comparison.previous7*100:null;
@@ -236,6 +261,38 @@ export default function AnalyticsClient() {
        <article className="admin-card admin-kpi"><small>Tendance · 7 jours complets</small><strong>{weekOverWeek===null?"—":`${weekOverWeek>0?"+":""}${weekOverWeek.toLocaleString("fr-FR",{maximumFractionDigits:1})}%`}</strong><p>{aggregate?.comparison?`${n(aggregate.comparison.recent7)} entrées estimées contre ${n(aggregate.comparison.previous7)} les 7 jours précédents`:"Historique comparatif indisponible"}</p></article>
       </div>
       {aggregate?.firstMeasuredAt&&<p style={{fontSize:12,color:"#777",marginTop:10}}>Mesure démarrée le {new Date(aggregate.firstMeasuredAt).toLocaleString("fr-FR",{timeZone:"Europe/Paris"})} ; historique antérieur indisponible.</p>}
+    </section>
+
+    <section className="admin-card admin-section" style={{marginTop:16}}>
+      <div className="admin-section-head"><div><h2>Qualité des mesures et trafic automatique</h2>
+        <p>Trois unités différentes : décisions de consentement, sessions des personnes consentantes et requêtes HTTP. Ne jamais les additionner.</p>
+      </div><span className="admin-badge green">Diagnostic serveur</span></div>
+      <div className="admin-grid admin-kpis">
+        <article className="admin-card admin-kpi"><small>Choix Analytics acceptés · {days} j</small><strong>{trafficQuality?n(trafficQuality.consentChoices.accepted):"—"}</strong><p>{consentDecisions?pct(trafficQuality?.consentChoices.accepted??0,consentDecisions)+" des décisions enregistrées":"Aucun choix sur la période"} · pas des visiteurs uniques</p></article>
+        <article className="admin-card admin-kpi"><small>Choix Analytics refusés · {days} j</small><strong>{trafficQuality?n(trafficQuality.consentChoices.rejected):"—"}</strong><p>Navigation conservée, suivi individuel facultatif désactivé</p></article>
+        <article className="admin-card admin-kpi"><small>Requêtes robots reconnaissables</small><strong>{qualityLogRows.length?n(qualityLog.bots):"—"}</strong><p>{qualityLog.requests?pct(qualityLog.bots,qualityLog.requests)+" des requêtes HTTP": "Journal indisponible"} · signature user-agent seulement</p></article>
+        <article className="admin-card admin-kpi"><small>Requêtes sur /recherche</small><strong>{qualityLogRows.length?n(qualityLog.searches):"—"}</strong><p>Inclut robots et humains ; ce ne sont pas des recherches uniques</p></article>
+      </div>
+      <p style={{margin:"12px 0 0",fontSize:12,color:"var(--muted)"}}>Journaux HTTP disponibles sur {qualityLogRows.length} jour(s) de la période choisie. {trafficQuality?.logUpdatedAt?"Dernière synthèse : "+new Date(trafficQuality.logUpdatedAt).toLocaleString("fr-FR",{timeZone:"Europe/Paris"})+". ":""}Des robots peuvent imiter un navigateur : les chiffres « robots » sont des minimums indicatifs. Aucune IP n’est enregistrée dans la synthèse.</p>
+    </section>
+
+    <section className="admin-card admin-section" style={{marginTop:16}}>
+      <div className="admin-section-head"><div><h2>Diagnostic croissance · deux semaines comparables</h2><p>Comparaison de deux périodes de 7 jours complets, à l'heure de Paris. Entrées anonymes et visiteurs consentants ne mesurent pas la même chose.</p></div><span className="admin-badge green">Base de données interne</span></div>
+      {previousGrowth&&recentGrowth?<>
+        <p style={{fontSize:12,color:"var(--muted)",marginBottom:12}}>Avant : {previousGrowth.startDate} → {previousGrowth.endDate} · Après : {recentGrowth.startDate} → {recentGrowth.endDate}</p>
+        <div className="admin-grid admin-kpis">
+          {([
+            {key:"estimatedEntries" as const,label:"Entrées estimées (non uniques)"},
+            {key:"aggregatePageViews" as const,label:"Pages vues anonymes"},
+            {key:"newUsers" as const,label:"Nouveaux membres"},
+            {key:"newListings" as const,label:"Nouvelles annonces"},
+            {key:"manualListings" as const,label:"Annonces manuelles"},
+            {key:"importedListings" as const,label:"Annonces importées"},
+            {key:"activeSellers" as const,label:"Vendeurs publiants"},
+          ]).map(({key,label})=>{const before=previousGrowth[key],after=recentGrowth[key];const delta=before>0?(after-before)/before*100:null;return <article className="admin-card admin-kpi" key={key}><small>{label}</small><strong>{n(after)}</strong><p>Précédent : {n(before)} · {delta===null?"Base nulle":(delta>0?"+":"")+delta.toLocaleString("fr-FR",{maximumFractionDigits:1})+" %"}</p></article>})}
+        </div>
+        <p style={{fontSize:12,color:"var(--muted)",marginTop:12}}>Les entrées sont des ouvertures estimées et non des personnes uniques. Les annonces manuelles excluent celles présentes dans le journal d'import. Les mesures détaillées ci-dessous exigent le consentement et ne doivent pas être additionnées aux entrées anonymes.</p>
+      </>:<p>Données de diagnostic non disponibles pour le moment.</p>}
     </section>
 
     <section className="admin-card admin-section" style={{marginTop:16}}>

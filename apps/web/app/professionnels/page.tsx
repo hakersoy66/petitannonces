@@ -3,13 +3,13 @@ import { AppIcon } from "../../components/app-icon";
 import styles from "./page.module.css";
 
 export const metadata: Metadata = {
-  title: { absolute: "Annonces pour professionnels & boutiques Pro | Petit Annonces" },
-  description: "Commerçants, magasins et agences : diffusez vos annonces professionnelles, importez votre catalogue et créez votre boutique Pro. Offre de lancement de 90 jours sans carte bancaire.",
+  title: { absolute: "Annonces professionnelles en France | Boutiques Pro" },
+  description: "Déposez des annonces professionnelles et créez votre boutique en ligne en France. Pour commerçants, agences et revendeurs : essai Pro de 90 jours sans carte bancaire.",
   alternates: { canonical: "/professionnels" },
   openGraph: {
     type: "website",
     url: "/professionnels",
-    title: "Annonces pour professionnels & boutiques Pro | Petit Annonces",
+    title: "Annonces professionnelles en France | Boutiques Pro",
     description: "Découvrez les boutiques et entreprises par secteur ou diffusez vos annonces professionnelles avec 90 jours Pro offerts, sans carte bancaire.",
   },
 };
@@ -273,11 +273,11 @@ export default async function ProfessionalsPage({ searchParams }: { searchParams
             {visibleStores.length > 0 ? <div className={styles.storeGrid}>
               {visibleStores.map((store) => <article className={styles.storeCard} key={store.id}>
                 <a className={styles.storeCover} href={`/boutique/${store.slug}`} aria-label={`Voir la boutique ${store.name}`}>
-                  <img src={store.coverUrl || DEFAULT_STORE_COVER} alt="" />
+                  <img src={store.coverUrl || DEFAULT_STORE_COVER} alt="" width={960} height={360} loading="lazy" decoding="async" />
                   {store.verified && <span className={styles.verifiedBadge}><AppIcon name="circle-check" /> Vérifié</span>}
                 </a>
                 <div className={styles.storeBody}>
-                  <a className={styles.storeLogo} href={`/boutique/${store.slug}`}><img src={store.logoUrl || DEFAULT_STORE_LOGO} alt={`Logo ${store.name}`} /></a>
+                  <a className={styles.storeLogo} href={`/boutique/${store.slug}`}><img src={store.logoUrl || DEFAULT_STORE_LOGO} alt={`Logo ${store.name}`} width={68} height={68} loading="lazy" decoding="async" /></a>
                   <div className={styles.storeTitleRow}><div><h3><a href={`/boutique/${store.slug}`}>{store.name}</a></h3><p>{[store.postalCode, store.city].filter(Boolean).join(" ") || "France"}</p></div><strong>{store.activeListings}<span> annonces</span></strong></div>
                   <div className={styles.storeTags}>
                     {store.primarySector && store.city ? <a href={`/professionnels/${store.primarySector.slug}/${slugify(store.city)}`}>{store.primarySector.name} · {store.city}</a> : store.primarySector && <span>{store.primarySector.name}</span>}

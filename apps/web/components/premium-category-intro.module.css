@@ -76,3 +76,52 @@
  .types i{width:43px;height:43px;flex-basis:43px;border-radius:12px}
  .types i svg{width:20px;height:20px}
 }
+
+/* 2026-10-24 | Premium category mobile containment.
+   Vehicle and real-estate pages share this component. On phones keep
+   the full hero inside the category shell instead of overflowing 100vw. */
+@media (max-width:700px) {
+  .hero {
+    left:auto;
+    width:100%;
+    max-width:100%;
+    margin:0;
+    box-sizing:border-box;
+    border:1px solid #e6e9f0;
+    border-radius:18px;
+    overflow:hidden;
+  }
+  .hero .inner {
+    width:100%;
+    max-width:100%;
+    min-width:0;
+    padding:20px 15px 19px;
+    margin:0;
+    box-sizing:border-box;
+  }
+  .intro,.search,.assurance {
+    max-width:100%;
+    min-width:0;
+    box-sizing:border-box;
+  }
+  .intro h1 {
+    max-width:100%;
+    overflow-wrap:break-word;
+    word-break:normal;
+    font-size:clamp(27px,7.3vw,36px);
+  }
+  .intro p { overflow-wrap:break-word; }
+  .search {
+    width:100%;
+    min-width:0;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+  .search label,.search label>div { min-width:0;max-width:100%; }
+  .search input { min-width:0;max-width:100%;box-sizing:border-box; }
+  .search label svg { flex-shrink:0; }
+  .search button { width:100%;max-width:100%; }
+  .assurance { flex-wrap:wrap; }
+}
+@media (max-width:350px) {
+  .hero .inner { padding:17px 12px; }
+}

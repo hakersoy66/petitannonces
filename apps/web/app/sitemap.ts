@@ -11,12 +11,11 @@ function flatten(nodes:any[]):any[]{return nodes.flatMap(n=>[n,...flatten(n.chil
 function citySlug(city:string){return city.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");}
 const slugify=citySlug;
 export default async function sitemap():Promise<MetadataRoute.Sitemap>{
-  const now=new Date();
   const staticPages=[
     ["/",1,"daily"],["/categorie/emploi",0.83,"daily"],["/blog",0.7,"weekly"],["/vendre-voiture",0.82,"weekly"],["/deposer-annonce-gratuite",0.82,"weekly"],["/ouvrir-boutique-pro",0.78,"weekly"],["/pro/automobile",0.76,"weekly"],["/pro/immobilier",0.76,"weekly"],["/pro/high-tech",0.76,"weekly"],["/pro/occasion",0.76,"weekly"],["/vacances",0.85,"daily"],["/professionnels",0.7,"weekly"],["/observatoire",0.74,"daily"],["/blog/vendre-objet-occasion",0.68,"monthly"],["/blog/vendre-entre-particuliers",0.68,"monthly"],["/blog/rediger-annonce-efficace",0.68,"monthly"],["/blog/acheter-occasion-securite",0.68,"monthly"],["/blog/rediger-annonce-immobiliere",0.68,"monthly"],["/blog/acheter-smartphone-occasion",0.68,"monthly"],["/presse",0.56,"monthly"],["/presse/petit-annonces-marketplace-francaise",0.62,"monthly"],["/qui-sommes-nous",0.58,"monthly"],["/conditions-generales",0.3,"monthly"],
     ["/confidentialite",0.3,"monthly"],["/cookies",0.25,"monthly"],["/conformite",0.3,"monthly"],["/articles-interdits",0.3,"monthly"],["/classement-referencement",0.3,"monthly"],["/retractation",0.2,"monthly"],["/mentions-legales",0.2,"monthly"],["/assistance",0.3,"monthly"]
   ] as const;
-  const rows:MetadataRoute.Sitemap=staticPages.map(([path,priority,changeFrequency])=>({url:BASE+path,...(path==="/"?{lastModified:now}:{}),priority,changeFrequency}));
+  const rows:MetadataRoute.Sitemap=staticPages.map(([path,priority,changeFrequency])=>({url:BASE+path,priority,changeFrequency}));
   try{
     const r=await fetch(`${apiBase()}/seo/sitemap-data`,{cache:"no-store"});
     if(r.ok){
@@ -37,7 +36,7 @@ export default async function sitemap():Promise<MetadataRoute.Sitemap>{
   try{
     for(const config of Object.values(PRODUCT_LONGTAILS)){
       const data=await fetchProductLongtail(config);
-      if(data.total>=3)rows.push({url:`${BASE}/occasion/${config.slug}`,lastModified:now,changeFrequency:"daily",priority:0.7});
+      if(data.total>=3)rows.push({url:`${BASE}/occasion/${config.slug}`,changeFrequency:"daily",priority:0.7});
     }
   }catch{}
   try{
@@ -73,7 +72,7 @@ export default async function sitemap():Promise<MetadataRoute.Sitemap>{
           return data.enabled===true&&Array.isArray(data.items)&&data.items.length>0;
         }catch{return false}
       }));
-      batch.forEach((item,index)=>{if(active[index])rows.push({url:BASE+emploiLocalHref(item),lastModified:now,changeFrequency:"daily",priority:0.69})});
+      batch.forEach((item,index)=>{if(active[index])rows.push({url:BASE+emploiLocalHref(item),changeFrequency:"daily",priority:0.69})});
     }
   }catch{}
   // A category may appear in both the editorial/static set and the live facet set.

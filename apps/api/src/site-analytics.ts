@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { prisma } from "@pa/database";
@@ -10,7 +11,7 @@ const vitalSchema=z.object({visitorId:z.string().trim().min(8).max(120),sessionI
 const eventSchema=z.object({
   visitorId:z.string().trim().min(8).max(120),
   sessionId:z.string().trim().min(8).max(120),
-  event:z.enum(["PAGE_VIEW","HEARTBEAT","PWA_INSTALLED","PWA_STANDALONE","PWA_ONBOARDING_STARTED","PWA_ONBOARDING_COMPLETED","PWA_PUSH_PROMPTED","PWA_PUSH_ACCEPTED","PWA_PUSH_DECLINED","SIGN_UP_COMPLETED","PHONE_VERIFIED","LISTING_SUBMITTED","MESSAGE_SENT","CHECKOUT_STARTED","PURCHASE_COMPLETED","PRO_TRIAL_STARTED","LANDING_CTA_CLICKED","JOB_SEARCHED","JOB_APPLY_CLICKED","JOB_RESOURCE_CLICKED","PHOTO_UPLOAD_FAILED","LISTING_PUBLISH_FAILED","CHECKOUT_FAILED"]),
+  event:z.enum(["PAGE_VIEW","HEARTBEAT","PWA_INSTALLED","PWA_STANDALONE","PWA_ONBOARDING_STARTED","PWA_ONBOARDING_COMPLETED","PWA_INSTALL_GUIDE_OPENED","PWA_PUSH_PROMPTED","PWA_PUSH_ACCEPTED","PWA_PUSH_DECLINED","SIGN_UP_COMPLETED","PHONE_VERIFIED","LISTING_SUBMITTED","MESSAGE_SENT","CHECKOUT_STARTED","PURCHASE_COMPLETED","PRO_TRIAL_STARTED","LANDING_CTA_CLICKED","JOB_SEARCHED","JOB_APPLY_CLICKED","JOB_RESOURCE_CLICKED","PHOTO_UPLOAD_FAILED","LISTING_PUBLISH_CLICKED","LISTING_PUBLISH_SUCCEEDED","LISTING_PUBLISH_FAILED","CHECKOUT_FAILED"]),
   path:z.string().trim().min(1).max(500).default("/"),
   referrer:z.string().trim().max(1000).optional(),
   source:z.string().trim().max(120).optional(),
@@ -109,6 +110,27 @@ export async function registerSiteAnalyticsRoutes(app:FastifyInstance){
     const x=parsed.data;const userId=await currentUserId(request);
     await prisma.$executeRawUnsafe(`INSERT INTO "SiteWebVital" ("visitorId","sessionId","userId","path","name","value","delta","rating","navigationType") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,x.visitorId,x.sessionId,userId,x.path,x.name,x.value,x.delta??null,x.rating??null,x.navigationType??null);
     return reply.code(204).send();
+  });
+
+  // Consent choices, measured sessions and server requests are separate metrics.
+  app.get("/admin/analytics/traffic-quality",{preHandler:requireAdminRoles([...ADMIN_ROLES])},async(request,reply)=>{
+    const parsed=z.object({days:z.coerce.number().int().min(1).max(90).default(7)}).safeParse(request.query);
+    if(!parsed.success)return reply.code(400).send({error:"invalid_period"});
+    const days=parsed.data.days;
+    const consent=await prisma.$queryRawUnsafe<Array<{granted:boolean;count:number}>>(
+      'SELECT "granted",COUNT(*)::int AS count FROM "CookieConsent" WHERE "purpose"=\'ANALYTICS\' AND "recordedAt">=NOW()::timestamp-($1::int||\' days\')::interval GROUP BY "granted"',days
+    );
+    type BotRow={day:string;requests:number;knownBotRequests:number;searchRequests:number;http4xx:number;http5xx:number};
+    let botDaily:BotRow[]=[];
+    let logUpdatedAt:string|null=null;
+    try{
+      const raw=JSON.parse(await readFile("/var/www/petitannonces/shared/traffic-quality.json","utf8")) as {updatedAt?:string;daily?:BotRow[]};
+      botDaily=(raw.daily??[]).filter(row=>typeof row.day==="string"&&/^\d{4}-\d\d-\d\d$/.test(row.day));
+      logUpdatedAt=raw.updatedAt??null;
+    }catch{ /* Optional summarized server-log snapshot */ }
+    reply.header("Cache-Control","private, no-store");
+    return {periodDays:days,consentChoices:{accepted:consent.find(row=>row.granted)?.count??0,rejected:consent.find(row=>!row.granted)?.count??0},botDaily,logUpdatedAt,
+      note:"Choix enregistrés, pas utilisateurs uniques. Requêtes de robots reconnues par user-agent : classification indicative."};
   });
 
   app.get("/admin/analytics/live",{preHandler:requireAdminRoles([...ADMIN_ROLES])},async(_request,reply)=>{

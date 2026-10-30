@@ -1,3 +1,4 @@
+import "./professional-card-label.css";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { config, type IconDefinition } from "@fortawesome/fontawesome-svg-core";
 import {
