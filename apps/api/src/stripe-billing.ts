@@ -16,6 +16,19 @@ import { notifyProCancellationScheduled, notifyProPaymentFailed, notifyProPaymen
 const TOLERANCE_SECONDS = 300;
 
 const SESSION_COOKIE = "pa_session";
+const PRO_BF_START=Date.parse("2026-11-19T23:00:00Z");
+const PRO_BF_END=Date.parse("2026-11-30T23:00:00Z");
+const PRO_BF_PROVIDER="stripe_black_friday_2026";
+function proBlackFridayOpen(time=Date.now()){return time>=PRO_BF_START&&time<PRO_BF_END;}
+function addCalendarMonths(date:Date,count:number){
+  const d=new Date(date);
+  const day=d.getUTCDate();
+  const first=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+count,1,d.getUTCHours(),d.getUTCMinutes(),d.getUTCSeconds(),d.getUTCMilliseconds()));
+  const max=new Date(Date.UTC(first.getUTCFullYear(),first.getUTCMonth()+1,0)).getUTCDate();
+  first.setUTCDate(Math.min(day,max));
+  return first;
+}
+
 function sha256(value: string) { return createHmac("sha256", "").update(value).digest("hex"); }
 async function requireUser(request: FastifyRequest, reply: FastifyReply) {
   const authHeader=typeof request.headers.authorization==="string"?request.headers.authorization.trim():"";
@@ -146,6 +159,85 @@ async function handleCheckoutCompleted(session: StripeObject) {
   }
 }
 
+
+async function handleProBlackFridayCheckoutEvent(eventType:string,session:StripeObject){
+  const metadata=session.metadata as Record<string,unknown>|undefined;
+  if(metadata?.pa_black_friday_pro_2026!=="true")return false;
+  const purchaseId=typeof metadata.pa_purchase_id==="string"?metadata.pa_purchase_id:"";
+  const sessionId=typeof session.id==="string"?session.id:"";
+  if(!purchaseId||!sessionId)throw new Error("bf_pro_missing_identity");
+  if(eventType==="checkout.session.expired"||eventType==="checkout.session.async_payment_failed"){
+    await prisma.$executeRawUnsafe(`UPDATE "BlackFridayProPurchase2026" SET "status"='CANCELED' WHERE "id"=$1 AND "checkoutSessionId"=$2 AND "status"='PENDING'`,purchaseId,sessionId);
+    return true;
+  }
+  if(eventType!=="checkout.session.completed"&&eventType!=="checkout.session.async_payment_succeeded")return true;
+  if(session.payment_status!=="paid")return true; // Async payment remains pending.
+  const amount=Number(session.amount_total);
+  const currency=String(session.currency??"").toUpperCase();
+  await prisma.$transaction(async tx=>{
+    const purchases=await tx.$queryRawUnsafe<Array<{
+      id:string;userId:string;planId:string;paidMonths:number;giftMonths:number;
+      amountMinor:number;currency:string;checkoutSessionId:string|null;status:string;
+    }>>('SELECT * FROM "BlackFridayProPurchase2026" WHERE "id"=$1 FOR UPDATE',purchaseId);
+    const purchase=purchases[0];
+    if(!purchase||purchase.checkoutSessionId!==sessionId||
+       purchase.userId!==metadata.pa_user_id||purchase.paidMonths!==Number(metadata.pa_paid_months)||
+       purchase.giftMonths!==purchase.paidMonths||purchase.currency!==currency||
+       purchase.amountMinor!==amount||purchase.amountMinor!==Number(metadata.pa_amount_minor)){
+      throw new Error("bf_pro_payment_mismatch");
+    }
+    if(purchase.status==="PAID")return;
+    if(purchase.status!=="PENDING")throw new Error("bf_pro_invalid_status");
+    const [user,plan]=await Promise.all([
+      tx.user.findUnique({where:{id:purchase.userId},select:{id:true,status:true,kind:true}}),
+      tx.professionalPlan.findUnique({where:{id:purchase.planId}}),
+    ]);
+    if(!user||user.status!=="ACTIVE"||!plan||plan.code!==metadata.pa_plan_code||
+       plan.currency!==currency )
+       throw new Error("bf_pro_purchase_invalid");
+    // Serialize per user to prevent simultaneous paid checkouts losing extension time.
+    await tx.$queryRawUnsafe('SELECT "id" FROM "User" WHERE "id"=$1 FOR UPDATE',purchase.userId);
+    const now=new Date();
+    const oldRecurring=await tx.professionalSubscription.findFirst({
+      where:{userId:user.id,externalProvider:"stripe",status:{in:["ACTIVE","TRIALING","PAST_DUE"]}},
+      select:{cancelAtPeriodEnd:true,currentPeriodEnd:true},
+    });
+    if(oldRecurring&&(!oldRecurring.cancelAtPeriodEnd||!oldRecurring.currentPeriodEnd||oldRecurring.currentPeriodEnd<=now))
+      throw new Error("bf_pro_recurring_subscription_not_cancelled");
+    const existing=await tx.professionalSubscription.findFirst({
+      where:{userId:user.id,externalProvider:PRO_BF_PROVIDER,status:"ACTIVE",currentPeriodEnd:{gt:now}},
+      orderBy:{currentPeriodEnd:"desc"},
+    });
+    if(existing&&existing.planId!==plan.id)throw new Error("bf_pro_plan_change_unsupported");
+    const priorEntitlement=await tx.professionalSubscription.findFirst({
+      where:{
+        userId:user.id,
+        externalProvider:{notIn:["stripe",PRO_BF_PROVIDER]},
+        OR:[
+          {status:"TRIALING",trialEndsAt:{gt:now}},
+          {status:"ACTIVE",currentPeriodEnd:{gt:now}},
+        ],
+      },
+      orderBy:{createdAt:"desc"},
+      select:{status:true,trialEndsAt:true,currentPeriodEnd:true},
+    });
+    const trialOrPlanEnd=priorEntitlement?.status==="TRIALING"
+      ?priorEntitlement.trialEndsAt:priorEntitlement?.currentPeriodEnd;
+    const start=[now,oldRecurring?.currentPeriodEnd??now,existing?.currentPeriodEnd??now,trialOrPlanEnd??now]
+      .reduce((max,date)=>date>max?date:max,now);
+    const end=addCalendarMonths(start,purchase.paidMonths+purchase.giftMonths);
+    const subscription=existing
+      ?await tx.professionalSubscription.update({where:{id:existing.id},data:{currentPeriodEnd:end}})
+      :await tx.professionalSubscription.create({data:{
+        userId:user.id,planId:plan.id,status:"ACTIVE",externalProvider:PRO_BF_PROVIDER,
+        currentPeriodStart:start,currentPeriodEnd:end,cancelAtPeriodEnd:true,
+      }});
+    if(user.kind!=="PROFESSIONNEL")await tx.user.update({where:{id:user.id},data:{kind:"PROFESSIONNEL"}});
+    await tx.$executeRawUnsafe(`UPDATE "BlackFridayProPurchase2026" SET "subscriptionId"=$2,"status"='PAID',"paidAt"=CURRENT_TIMESTAMP WHERE "id"=$1`,
+      purchase.id,subscription.id);
+  });
+  return true;
+}
 
 async function handleSiteCreditCheckoutEvent(eventType:string,session:StripeObject){
   const metadata=session.metadata as Record<string,unknown>|undefined;
@@ -328,12 +420,77 @@ export async function registerStripeBillingRoutes(app: FastifyInstance) {
     });
   });
 
+  app.get("/billing/stripe/pro/black-friday", async (_request,reply)=>{
+    reply.header("cache-control","no-store");
+    return reply.send({campaign:"BLACK_FRIDAY_2026",active:proBlackFridayOpen(),startsAt:new Date(PRO_BF_START).toISOString(),
+      endsAt:new Date(PRO_BF_END).toISOString(),minMonths:1,maxMonths:12,bonusMultiplier:1});
+  });
+
+  app.post("/billing/stripe/pro/black-friday/checkout",async(request,reply)=>{
+    const user=await requireUser(request,reply);if(!user)return;
+    const body=z.object({planCode:z.string().regex(/^[A-Z0-9_-]{2,60}$/),months:z.number().int().min(1).max(12)}).safeParse(request.body);
+    if(!body.success)return reply.code(400).send({error:"invalid_request"});
+    if(!proBlackFridayOpen())return reply.code(409).send({error:"black_friday_not_active"});
+    await ensurePlans();
+    const plan=await prisma.professionalPlan.findUnique({where:{code:body.data.planCode}});
+    if(!plan||!plan.isActive||plan.currency!=="EUR")return reply.code(404).send({error:"professional_plan_not_found"});
+    const activeStripe=await prisma.professionalSubscription.findFirst({
+      where:{userId:user.id,externalProvider:"stripe",status:{in:["ACTIVE","TRIALING","PAST_DUE"]}},
+      select:{id:true,cancelAtPeriodEnd:true,currentPeriodEnd:true},
+    });
+    if(activeStripe&&(!activeStripe.cancelAtPeriodEnd||!activeStripe.currentPeriodEnd||activeStripe.currentPeriodEnd<=new Date()))
+      return reply.code(409).send({error:"stripe_subscription_already_active",message:"Programmez d’abord l’arrêt du renouvellement mensuel Stripe pour éviter un double prélèvement."});
+    const activePrepaid=await prisma.professionalSubscription.findFirst({
+      where:{userId:user.id,externalProvider:PRO_BF_PROVIDER,status:"ACTIVE",currentPeriodEnd:{gt:new Date()}},
+      select:{planId:true},
+    });
+    if(activePrepaid&&activePrepaid.planId!==plan.id)return reply.code(409).send({error:"existing_prepaid_different_plan"});
+    const amountMinor=plan.monthlyPriceMinor*body.data.months;
+    const purchaseId=randomUUID();
+    await prisma.$executeRawUnsafe(
+      `INSERT INTO "BlackFridayProPurchase2026" ("id","userId","planId","paidMonths","giftMonths","amountMinor","currency") VALUES ($1,$2,$3,$4,$4,$5,'EUR')`,
+      purchaseId,user.id,plan.id,body.data.months,amountMinor
+    );
+    try{
+      const params=new URLSearchParams();
+      params.set("mode","payment");
+      params.set("client_reference_id",user.id);
+      params.set("customer_email",user.email);
+      params.set("expires_at",String(Math.floor(Date.now()/1000)+1800));
+      params.set("success_url","https://petitannonces.fr/espace-pro/abonnement?stripe=success&bfpro=1");
+      params.set("cancel_url","https://petitannonces.fr/espace-pro/abonnement?stripe=cancelled&bfpro=1");
+      params.set("line_items[0][quantity]","1");
+      params.set("line_items[0][price_data][currency]","eur");
+      params.set("line_items[0][price_data][unit_amount]",String(amountMinor));
+      params.set("line_items[0][price_data][product_data][name]",("Petit Annonces Pro "+plan.name+" · "+body.data.months+" mois achetés + "+body.data.months+" mois offerts").slice(0,120));
+      params.set("metadata[pa_black_friday_pro_2026]","true");
+      params.set("metadata[pa_purchase_id]",purchaseId);
+      params.set("metadata[pa_user_id]",user.id);
+      params.set("metadata[pa_plan_code]",plan.code);
+      params.set("metadata[pa_paid_months]",String(body.data.months));
+      params.set("metadata[pa_amount_minor]",String(amountMinor));
+      const stripe=await stripeRequest("/v1/checkout/sessions",{method:"POST",body:params.toString(),headers:{"idempotency-key":"bfpro-2026-"+purchaseId}});
+      const sessionId=typeof stripe.payload.id==="string"?stripe.payload.id:null;
+      const url=typeof stripe.payload.url==="string"?stripe.payload.url:null;
+      if(!sessionId||!url)throw new Error("stripe_checkout_session_missing");
+      await prisma.$executeRawUnsafe(`UPDATE "BlackFridayProPurchase2026" SET "checkoutSessionId"=$2 WHERE "id"=$1`,purchaseId,sessionId);
+      return reply.send({url,purchaseId,paidMonths:body.data.months,giftMonths:body.data.months,
+        totalMonths:body.data.months*2,amountMinor,currency:"EUR",recurring:false});
+    }catch(error){
+      request.log.error({error,purchaseId},"Black Friday Pro checkout failed");
+      await prisma.$executeRawUnsafe(`UPDATE "BlackFridayProPurchase2026" SET "status"='CANCELED' WHERE "id"=$1 AND "status"='PENDING'`,purchaseId).catch(()=>undefined);
+      return reply.code(503).send({error:"bf_pro_checkout_unavailable"});
+    }
+  });
+
   app.post("/billing/stripe/subscription/checkout", async (request, reply) => {
     const user=await requireUser(request,reply);if(!user)return;
     const body=z.object({planCode:z.string().trim().min(2).max(60).regex(/^[A-Z0-9_-]+$/),returnMode:z.enum(["WEB","NATIVE"]).optional().default("WEB"),appScheme:z.enum(["petitannonces","petitannonces-development","petitannonces-preview"]).optional().default("petitannonces")}).safeParse(request.body);if(!body.success)return reply.code(400).send({error:"invalid_request"});
     if(body.data.returnMode==="NATIVE"&&!nativeExternalProBillingEnabled())return reply.code(403).send({error:"native_external_billing_disabled"});
     await ensurePlans();
     const active=await prisma.professionalSubscription.findFirst({where:{userId:user.id,externalProvider:"stripe",status:{in:["TRIALING","ACTIVE","PAST_DUE"]}},select:{id:true}});if(active)return reply.code(409).send({error:"stripe_subscription_already_active"});
+    const prepaid=await prisma.professionalSubscription.findFirst({where:{userId:user.id,externalProvider:PRO_BF_PROVIDER,status:"ACTIVE",currentPeriodEnd:{gt:new Date()}},select:{id:true}});
+    if(prepaid)return reply.code(409).send({error:"prepaid_membership_active"});
     const plan=await prisma.professionalPlan.findUnique({where:{code:body.data.planCode}});if(!plan||!plan.isActive)return reply.code(404).send({error:"professional_plan_not_found"});
     try{
       const params=new URLSearchParams();
@@ -483,6 +640,11 @@ export async function registerStripeBillingRoutes(app: FastifyInstance) {
     const user=await requireUser(request,reply);if(!user)return;
     const local=await prisma.professionalSubscription.findFirst({where:{userId:user.id,externalProvider:"stripe",externalSubscriptionId:{not:null},status:{in:["TRIALING","ACTIVE","PAST_DUE"]}},orderBy:{createdAt:"desc"}});
     if(!local?.externalSubscriptionId)return reply.code(404).send({error:"stripe_subscription_not_found"});
+    const prepaid=await prisma.professionalSubscription.findFirst({
+      where:{userId:user.id,externalProvider:PRO_BF_PROVIDER,status:"ACTIVE",currentPeriodEnd:{gt:new Date()}},
+      select:{id:true},
+    });
+    if(prepaid)return reply.code(409).send({error:"prepaid_membership_scheduled",message:"Une formule prépayée Black Friday est déjà prévue. Le réabonnement mensuel provoquerait un double paiement."});
     try{
       const sub=await stripeRequest(`/v1/subscriptions/${encodeURIComponent(local.externalSubscriptionId)}`);
       if(!Boolean(sub.payload.cancel_at_period_end)){await syncSubscriptionById(sub.payload);return reply.send({reactivated:true,alreadyActive:true});}
@@ -572,7 +734,13 @@ export async function registerStripeBillingRoutes(app: FastifyInstance) {
       const promotionCheckoutEvent=["checkout.session.completed","checkout.session.async_payment_succeeded","checkout.session.expired","checkout.session.async_payment_failed"].includes(event.type);
       if (!vacationEvent && !marketplaceEvent && promotionCheckoutEvent) {
         const handledPromotion=await handlePromotionStripeEvent(event.type,obj);
-        if(!handledPromotion){const handledCredit=await handleSiteCreditCheckoutEvent(event.type,obj);if(!handledCredit&&(event.type==="checkout.session.completed"||event.type==="checkout.session.async_payment_succeeded")){const handledRenewal=await handleListingRenewalCheckoutCompleted(obj);if(!handledRenewal)await handleCheckoutCompleted(obj)}}
+        if(!handledPromotion){const handledCredit=await handleSiteCreditCheckoutEvent(event.type,obj);if(!handledCredit){
+          const handledProBF=await handleProBlackFridayCheckoutEvent(event.type,obj);
+          if(!handledProBF&&(event.type==="checkout.session.completed"||event.type==="checkout.session.async_payment_succeeded")){
+            const handledRenewal=await handleListingRenewalCheckoutCompleted(obj);
+            if(!handledRenewal)await handleCheckoutCompleted(obj);
+          }
+        }}
       }
       else if (!marketplaceEvent && (event.type === "customer.subscription.created" || event.type === "customer.subscription.updated" || event.type === "customer.subscription.deleted")) await syncSubscriptionById(obj);
       else if (event.type === "invoice.paid" || event.type === "invoice.payment_failed") {

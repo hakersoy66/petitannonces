@@ -54,7 +54,7 @@ export function ListingVisibilityStep({
     return <button type="button" key={product.id} className={styles.visibilityChoice+" "+(active?styles.visibilityChoiceActive:"")} onClick={()=>onSelect(product.code,product.name)}>
      <span className={styles.visibilityChoiceIcon}><AppIcon name={product.type==="URGENT"?"bolt":"sparkles"}/></span>
      <div><span className={styles.visibilityChoiceTop}><strong>{product.name}</strong><em>{product.salePriceMinor!=null?<><del style={{color:"#928b94",fontSize:12,marginRight:6}}>{money(product.priceMinor,product.currency)}</del>{money(product.salePriceMinor,product.currency)}</>:money(product.priceMinor,product.currency)}</em></span>
-      <span className={styles.visibilityMeta}>{product.blackFriday2026&&<b>Black Friday -30 %</b>}{isRecommended&&<b>Recommandé</b>}<small>{duration(product.durationHours)}</small>{canUseCredit&&<small className={styles.visibilityCreditTag}>Payable avec votre crédit</small>}</span>
+      <span className={styles.visibilityMeta}>{product.blackFriday2026&&<b>Black Friday -50 %</b>}{isRecommended&&<b>Recommandé</b>}<small>{duration(product.durationHours)}</small>{canUseCredit&&<small className={styles.visibilityCreditTag}>Payable avec votre crédit</small>}</span>
       <p>{product.description||"Améliore la visibilité de votre annonce pendant la durée choisie."}</p>
      </div>
     </button>

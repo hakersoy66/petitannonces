@@ -91,3 +91,12 @@
  .proConversionHead{display:grid;gap:17px;padding:0 0 18px}.proConversionHead h2{font-size:2rem}.proConversionHead>a{width:100%}
  .proConversionGrid{grid-template-columns:1fr}.proConversionGrid article{padding:14px}
 }
+
+/* Black Friday Pro 2026: visible on public professional discovery pages */
+.bfProRibbon{padding:12px 0;background:#faf7f2}
+.bfProRibbon .shell{display:flex;align-items:center;justify-content:space-between;gap:20px;max-width:1380px;padding:19px 25px;border-radius:18px;background:linear-gradient(105deg,#1c1b24,#443329);border:1px solid #856443;color:#fff}
+.bfProRibbon small{color:#f2ca85;font-size:11px;font-weight:900;letter-spacing:.12em}
+.bfProRibbon h2{font-size:clamp(18px,2.4vw,25px);letter-spacing:-.04em;margin:3px 0 5px}
+.bfProRibbon p{font-size:12px;color:#e6dac9;margin:0;line-height:1.5}
+.bfProRibbon a{padding:12px 17px;background:#efca84;color:#24212a;border-radius:12px;font-weight:850;font-size:13px;white-space:nowrap}
+@media(max-width:700px){.bfProRibbon .shell{width:min(100% - 20px,1380px);display:grid;padding:17px 18px;gap:13px}.bfProRibbon a{text-align:center}.bfProRibbon h2{font-size:19px}}

@@ -25,12 +25,12 @@ function maskReferralEmail(value:string|null|undefined){const email=String(value
 
 const BLACK_FRIDAY_2026_START=Date.parse("2026-11-19T23:00:00Z");
 const BLACK_FRIDAY_2026_END=Date.parse("2026-11-30T23:00:00Z");
-const BLACK_FRIDAY_2026_PRODUCTS=new Set(["URGENT_7D","FEATURED_7D"]);
+const BLACK_FRIDAY_2026_PRODUCTS=new Set(["BUMP_NOW","URGENT_7D","GALLERY_7D","FEATURED_7D","SPONSORED_7D"]);
 function blackFriday2026Discount(product:{code:string;currency:string;priceMinor:number},at=Date.now()){
   if(at<BLACK_FRIDAY_2026_START||at>=BLACK_FRIDAY_2026_END||!BLACK_FRIDAY_2026_PRODUCTS.has(product.code)||String(product.currency).toUpperCase()!=="EUR")return 0;
   const amount=Number(product.priceMinor);
   if(!Number.isSafeInteger(amount)||amount<=0)return 0;
-  return Math.min(amount-1,Math.round(amount*0.30));
+  return amount-Math.floor(amount/2); // Checkout price is <= 50% of ordinary price, including odd cents
 }
 async function productByCode(code:string){const rows=await prisma.$queryRawUnsafe<Array<any>>(`SELECT * FROM "PromotionProduct" WHERE "code"=$1 AND "isActive"=TRUE LIMIT 1`,code);return rows[0]??null}
 async function preparePromotionPurchase(userId:string,listingId:string,product:any,couponCode?:string){

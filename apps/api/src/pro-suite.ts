@@ -106,6 +106,11 @@ export async function getProfessionalSector(ownerUserId:string):Promise<Professi
 
 export async function resolveProfessionalContext(userId:string):Promise<ProfessionalAccessContext|null>{
  await ensureProSuiteSchema();
+ // Prepaid BF memberships do not renew via Stripe. Expire on access as well as by operations sweep.
+ await prisma.professionalSubscription.updateMany({
+   where:{externalProvider:"stripe_black_friday_2026",status:"ACTIVE",currentPeriodEnd:{lte:new Date()}},
+   data:{status:"EXPIRED"},
+ });
  const membership=await prisma.$queryRawUnsafe<Array<{ownerUserId:string;role:string}>>(`SELECT "ownerUserId","role" FROM "ProTeamMember" WHERE "userId"=$1 AND "status"='ACTIVE' ORDER BY "acceptedAt" DESC NULLS LAST LIMIT 1`,userId);
  if(membership[0]){
   const role=(teamRoles.includes(membership[0].role as any)?membership[0].role:"SALES") as ProRole;const sector=await getProfessionalSector(membership[0].ownerUserId);

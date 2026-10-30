@@ -180,6 +180,12 @@ export default async function ProfessionalsPage({ searchParams }: { searchParams
     <div className={styles.page}>
       
       <main>
+        <section className={styles.bfProRibbon} aria-label="Offre Black Friday Pro">
+          <div className={styles.shell}>
+            <div><small>BLACK FRIDAY PRO · 20–30 NOVEMBRE</small><h2>1 mois payé = 1 mois offert.</h2><p>Jusqu’à 12 mois achetés + 12 mois offerts. Paiement unique, sans renouvellement automatique. Les jours de votre formule actuelle sont conservés.</p></div>
+            <a href="/espace-pro/abonnement">Voir l’offre spéciale →</a>
+          </div>
+        </section>
         <section className={styles.hero}>
           <div className={styles.heroGlow} />
           <div className={styles.shell}>

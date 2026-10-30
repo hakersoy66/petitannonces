@@ -13,6 +13,7 @@ type Invoice={id:string;number:string|null;status:string|null;amountDueMinor:num
 type PaymentMethodSummary={type:string;brand:string|null;last4:string|null;expMonth:number|null;expYear:number|null};
 type UpcomingInvoice={amountDueMinor:number;currency:string;chargeAt:string|null;periodStart:string|null;periodEnd:string|null};
 type PendingChange={planCode:PlanCode;effectiveAt:string|null;scheduleId:string};
+type BFOffer={campaign:string;active:boolean;startsAt:string;endsAt:string;minMonths:number;maxMonths:number;bonusMultiplier:number};
 type BillingSummary={stripeReachable:boolean;paymentMethod:PaymentMethodSummary|null;upcomingInvoice:UpcomingInvoice|null;invoices:Invoice[];pendingChange:PendingChange|null};
 
 function api(){return (process.env.NEXT_PUBLIC_API_URL??"/api").replace(/\/$/,"")}
@@ -35,6 +36,10 @@ export default function Abonnement(){
   const[portalMsg,setPortalMsg]=useState("");
   const[checkoutBusy,setCheckoutBusy]=useState("");
   const[checkoutMsg,setCheckoutMsg]=useState("");
+  const[bfOffer,setBFOffer]=useState<BFOffer|null>(null);
+  const[bfMonths,setBFMonths]=useState(6);
+  const[bfBusy,setBFBusy]=useState("");
+
   const[changeTarget,setChangeTarget]=useState<Plan|null>(null);
   const[changeBusy,setChangeBusy]=useState(false);
   const[changeMsg,setChangeMsg]=useState("");
@@ -51,16 +56,46 @@ export default function Abonnement(){
     setPlans(a.plans??[]);
     if(b)setMe(b.professional);
     if(c)setBilling({stripeReachable:Boolean(c.stripeReachable),paymentMethod:c.paymentMethod??null,upcomingInvoice:c.upcomingInvoice??null,invoices:Array.isArray(c.invoices)?c.invoices:[],pendingChange:c.pendingChange??null});
+    const bf=await fetch(api()+"/billing/stripe/pro/black-friday",{cache:"no-store"}).then(r=>r.ok?r.json():null).catch(()=>null);
+    if(bf)setBFOffer(bf as BFOffer);
   }
 
   async function startCheckout(planCode:PlanCode){
+    // During Black Friday, route new professional purchases to prepaid + gift months.
+    if(bfOffer?.active&&!me?.subscriptions?.some(sub=>sub.externalProvider==="stripe"&&!sub.cancelAtPeriodEnd)){
+      await startBFCheckout(planCode);return;
+    }
     setCheckoutBusy(planCode);setCheckoutMsg("");
     const r=await fetch(`${api()}/billing/stripe/subscription/checkout`,{method:"POST",credentials:"include",headers:{"content-type":"application/json"},body:JSON.stringify({planCode})});
     const p=await r.json().catch(()=>({}));setCheckoutBusy("");
     if(r.ok&&p.url){window.location.href=p.url;return}
     if(p.error==="stripe_subscription_already_active")setCheckoutMsg("Un abonnement Stripe est déjà actif sur ce compte.");
+    else if(p.error==="prepaid_membership_active")setCheckoutMsg("Un forfait Black Friday prépayé est déjà actif. Prolongez-le depuis l’offre spéciale.");
     else if(p.error==="professional_plan_not_found")setCheckoutMsg("Cette formule n’est plus disponible.");
+    else if(p.error==="prepaid_membership_active")setCheckoutMsg("Votre formule Black Friday prépayée est déjà active. Vous pouvez la prolonger avec l’offre spéciale tant qu’elle est disponible.");
     else setCheckoutMsg("Impossible d’ouvrir le paiement Stripe pour le moment.");
+  }
+
+  async function startBFCheckout(planCode:PlanCode){
+    if(!bfOffer?.active){setCheckoutMsg("L’offre sera disponible du 20 au 30 novembre 2026.");return}
+    if(bfBusy)return;
+    setBFBusy(planCode);setCheckoutMsg("");
+    try{
+      const r=await fetch(api()+"/billing/stripe/pro/black-friday/checkout",{
+        method:"POST",credentials:"include",headers:{"content-type":"application/json"},
+        body:JSON.stringify({planCode,months:bfMonths}),
+      });
+      const p=await r.json().catch(()=>({})) as {url?:string;error?:string};
+      if(r.ok&&p.url){window.location.href=p.url;return}
+      const errors:Record<string,string>={
+        stripe_subscription_already_active:"Votre abonnement mensuel se renouvelle encore automatiquement. Programmez d’abord la résiliation à échéance pour profiter de l’offre prépayée sans perdre vos jours déjà payés.",
+        existing_prepaid_different_plan:"Vous avez déjà une formule Black Friday prépayée différente. Vous pourrez choisir une autre formule à sa fin.",
+        black_friday_not_active:"Cette offre est disponible uniquement du 20 au 30 novembre 2026.",
+        professional_plan_not_found:"Formule indisponible.",
+      };
+      setCheckoutMsg(errors[p.error??""]??"Impossible d’ouvrir le paiement sécurisé pour le moment.");
+    }catch{setCheckoutMsg("Impossible de joindre le service de paiement pour le moment.")}
+    finally{setBFBusy("")}
   }
 
   async function openPortal(){
@@ -116,7 +151,7 @@ export default function Abonnement(){
     setCancelBusy(true);setCancelMsg("");setCheckoutMsg("");
     const r=await fetch(`${api()}/billing/stripe/subscription/reactivate`,{method:"POST",credentials:"include"});
     const p=await r.json().catch(()=>({}));setCancelBusy(false);
-    if(!r.ok){setCancelMsg("La réactivation n’a pas pu être effectuée pour le moment.");return}
+    if(!r.ok){setCancelMsg(p.error==="prepaid_membership_scheduled"?"Une formule Black Friday prépayée est déjà prévue. Le renouvellement mensuel ne peut pas être réactivé.":"La réactivation n’a pas pu être effectuée pour le moment.");return}
     await load();
     setCheckoutMsg("Votre abonnement a été réactivé. Le renouvellement automatique est de nouveau actif.");
   }
@@ -128,12 +163,14 @@ export default function Abonnement(){
   },[]);
 
   const current=me?.subscriptions?.[0];
+  const bfPrepaid=current?.externalProvider==="stripe_black_friday_2026";
+  const bfCurrentAllowed=!current||bfPrepaid||current.externalProvider!=="stripe"||current.cancelAtPeriodEnd===true;
   const trialDays=daysLeft(current?.trialEndsAt??null);
   const subscriptionStart=current?.createdAt??current?.currentPeriodStart??null;
   const periodStart=current?.currentPeriodStart??current?.createdAt??null;
   const periodEnd=current?.currentPeriodEnd??current?.trialEndsAt??null;
   const remainingDays=daysLeft(periodEnd);
-  const nextDateLabel=current?.cancelAtPeriodEnd?"Fin de l’abonnement":current?.status==="TRIALING"?"Fin de l’essai":"Prochain renouvellement";
+  const nextDateLabel=bfPrepaid?"Fin de l’accès prépayé":current?.cancelAtPeriodEnd?"Fin de l’abonnement":current?.status==="TRIALING"?"Fin de l’essai":"Prochain renouvellement";
   const pendingPlan=billing?.pendingChange?plans.find(p=>p.code===billing.pendingChange?.planCode)??null:null;
   const isUpgrade=Boolean(current&&changeTarget&&changeTarget.monthlyPriceMinor>current.plan.monthlyPriceMinor);
   const isTrialChange=current?.status==="TRIALING";
@@ -144,14 +181,14 @@ export default function Abonnement(){
     <header className={styles.hero}><div><span className={styles.kicker}>Formule professionnelle</span><h1>Abonnement</h1><p>Consultez votre formule actuelle, vos dates de facturation et changez de formule sans créer un second abonnement.</p></div><span className={styles.status}>{current?.plan.name??"Aucune formule active"}</span></header>
 
     {current&&<section className={styles.section}>
-      <div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",flexWrap:"wrap"}}><h2 style={{margin:0}}>Votre abonnement</h2><button type="button" className={styles.button} onClick={()=>void openPortal()} disabled={portalBusy}>{portalBusy?"Ouverture…":"Gérer mon abonnement"}</button></div>
+      <div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",flexWrap:"wrap"}}><h2 style={{margin:0}}>Votre abonnement</h2>{bfPrepaid?<span style={{fontWeight:800,color:"#386c54"}}>✓ Prépayé · sans renouvellement automatique</span>:<button type="button" className={styles.button} onClick={()=>void openPortal()} disabled={portalBusy}>{portalBusy?"Ouverture…":"Gérer mon abonnement"}</button>}</div>
       <div className={styles.subscriptionOverview}>
-        <article><span>Formule actuelle</span><strong>{current.plan.name}</strong><small>{money(current.plan.monthlyPriceMinor,current.plan.currency)} / mois</small></article>
-        <article><span>Statut</span><strong>{statusLabel(current.status)}</strong><small>{current.status==="TRIALING"&&trialDays!=null?`${trialDays} jour${trialDays>1?"s":""} d’essai restant${trialDays>1?"s":""}`:current.cancelAtPeriodEnd?"Résiliation programmée":"Abonnement en cours"}</small></article>
+        <article><span>Formule actuelle</span><strong>{current.plan.name}</strong><small>{bfPrepaid?"Prix de référence : ":""}{money(current.plan.monthlyPriceMinor,current.plan.currency)} / mois</small></article>
+        <article><span>Statut</span><strong>{statusLabel(current.status)}</strong><small>{current.status==="TRIALING"&&trialDays!=null?`${trialDays} jour${trialDays>1?"s":""} d’essai restant${trialDays>1?"s":""}`:bfPrepaid?"Période prépayée, aucun renouvellement":current.cancelAtPeriodEnd?"Résiliation programmée":"Abonnement en cours"}</small></article>
         <article><span>Date d’activation</span><strong>{date(subscriptionStart)}</strong><small>Début de votre abonnement</small></article>
         <article><span>{nextDateLabel}</span><strong>{date(periodEnd)}</strong><small>{remainingDays!=null?`${remainingDays} jour${remainingDays>1?"s":""} restant${remainingDays>1?"s":""}`:"Date non disponible"}</small></article>
       </div>
-      <div className={styles.subscriptionMeta}><div><span>Renouvellement</span><b>{current.cancelAtPeriodEnd?"Arrêt programmé":"Automatique"}</b></div><div><span>Période</span><b>{periodStart&&periodEnd?`${date(periodStart)} → ${date(periodEnd)}`:"—"}</b></div>{current.status==="TRIALING"&&<div><span>Fin d’essai</span><b>{date(current.trialEndsAt)}</b></div>}</div>
+      <div className={styles.subscriptionMeta}><div><span>Renouvellement</span><b>{bfPrepaid?"Aucun renouvellement ni prélèvement automatique":current.cancelAtPeriodEnd?"Arrêt programmé":"Automatique"}</b></div><div><span>Période</span><b>{periodStart&&periodEnd?`${date(periodStart)} → ${date(periodEnd)}`:"—"}</b></div>{current.status==="TRIALING"&&<div><span>Fin d’essai</span><b>{date(current.trialEndsAt)}</b></div>}</div>
       {portalMsg&&<div className={`${styles.notice} ${styles.danger}`}>{portalMsg}</div>}
     </section>}
 
@@ -191,8 +228,41 @@ export default function Abonnement(){
     {stripeState==="cancelled"&&<div className={styles.notice}>Paiement annulé. Aucune nouvelle formule n’a été activée.</div>}
     {checkoutMsg&&<div className={styles.notice}>{checkoutMsg}</div>}
     {current?.status==="PAST_DUE"&&<div className={`${styles.notice} ${styles.danger}`}>Votre dernier paiement n’a pas abouti. Votre formule reste affichée, mais certaines fonctions pourront être limitées si la situation n’est pas régularisée.</div>}
-    {current?.cancelAtPeriodEnd&&<div className={styles.notice}>Votre abonnement est programmé pour s’arrêter à la fin de la période en cours.</div>}
-    {current&&<div className={styles.notice}>Un changement de formule utilise toujours votre abonnement Stripe existant afin d’éviter toute double facturation.</div>}
+    {current?.cancelAtPeriodEnd&&!bfPrepaid&&<div className={styles.notice}>Votre abonnement est programmé pour s’arrêter à la fin de la période en cours.</div>}
+    {current&&!bfPrepaid&&<div className={styles.notice}>Un changement de formule utilise toujours votre abonnement Stripe existant afin d’éviter toute double facturation.</div>}
+
+    <section className={styles.section} style={{border:"1px solid #e7c480",background:"linear-gradient(115deg,#fff9ec,#fffdf9)"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:18,flexWrap:"wrap",marginBottom:14}}>
+        <div><span className={styles.kickerDark}>BLACK FRIDAY 2026 · 20–30 NOVEMBRE</span>
+          <h2 style={{margin:"6px 0"}}>1 mois acheté = 1 mois offert</h2>
+          <p style={{margin:0,color:"#625947"}}>Choisissez entre 1 et 12 mois : pour chaque mois payé, nous ajoutons un mois gratuit. Paiement unique, sans renouvellement automatique.</p>
+        </div>
+        <strong style={{background:"#272126",color:"#f0d095",padding:"9px 14px",borderRadius:12,fontSize:13}}>JUSQU’À 12 MOIS OFFERTS</strong>
+      </div>
+      <label style={{display:"grid",gap:7,maxWidth:340,fontWeight:800,fontSize:13}}>
+        Durée achetée
+        <select className={styles.input} value={bfMonths} onChange={e=>setBFMonths(Number(e.target.value))}>
+          {Array.from({length:12},(_,i)=>i+1).map(m=><option value={m} key={m}>{m} mois payés + {m} mois offerts = {m*2} mois</option>)}
+        </select>
+      </label>
+      {!bfOffer?.active&&<p style={{fontSize:13,margin:"12px 0",color:"#8a6525",fontWeight:700}}>Les achats Black Friday ouvriront le 20 novembre à 00 h (heure de Paris).</p>}
+      {!bfCurrentAllowed&&<p style={{fontSize:13,margin:"12px 0",color:"#9b522f",fontWeight:700}}>Votre formule Stripe se renouvelle encore automatiquement. Programmez sa résiliation en fin de période, puis vous pourrez acheter une formule Black Friday sans perdre vos jours déjà payés.</p>}
+      {current?.externalProvider==="stripe"&&current.cancelAtPeriodEnd&&<p style={{fontSize:13,margin:"12px 0",color:"#3d7658",fontWeight:800}}>Renouvellement arrêté : le forfait Black Friday démarrera après le {date(current.currentPeriodEnd)}.</p>}
+      <div className={styles.plans} style={{marginTop:15}}>
+        {plans.map(p=><article className={styles.plan} key={"bf-"+p.id} style={{border:"1px solid #e6d4af",background:"#fff"}}>
+          <span className={styles.kicker}>BLACK FRIDAY · 1 + 1</span>
+          <h3 style={{margin:"8px 0 12px",fontSize:20}}>{p.name}</h3>
+          <strong style={{display:"block",fontSize:28,color:"#28212a"}}>{money(p.monthlyPriceMinor*bfMonths,p.currency)}</strong>
+          <small style={{display:"block",margin:"7px 0 12px",color:"#785a30",fontWeight:750}}>{bfMonths} mois payés + {bfMonths} mois offerts · {bfMonths*2} mois d’accès</small>
+          <button type="button" className={styles.button}
+            disabled={!bfOffer?.active||!bfCurrentAllowed||(bfPrepaid&&current?.plan.code!==p.code)||bfBusy!==""}
+            onClick={()=>void startBFCheckout(p.code)}>
+              {bfBusy===p.code?"Préparation…":bfPrepaid&&current?.plan.code!==p.code?"Autre formule indisponible":bfOffer?.active?"Profiter de l’offre":"Dès le 20 novembre"}
+          </button>
+        </article>)}
+      </div>
+      <small style={{display:"block",marginTop:12,color:"#847663"}}>Offre valable sur les formules Essentiel, Professionnel et Premium. Si votre abonnement mensuel Stripe est programmé pour s’arrêter, les mois prépayés commencent après votre période déjà payée.</small>
+    </section>
 
     <details className={styles.section} open={!current}>
       <summary style={{cursor:"pointer",fontWeight:850}}>{current?"Comparer et changer de formule":"Choisir une formule professionnelle"}</summary>
@@ -205,7 +275,7 @@ export default function Abonnement(){
           <span className={styles.kicker}>{isCurrent?"Formule actuelle":isPending?"Changement programmé":isDesired?"Votre choix":"Formule"}</span>
           <h2>{p.name}</h2><p className={styles.planPitch}>{planPitch(p.code)}</p><div className={styles.price}>{money(p.monthlyPriceMinor,p.currency)}<small>/mois</small></div>
           <ul className={styles.features}><li>{p.maxActiveListings??"Illimité"} annonces actives</li><li>{p.maxStores} boutique(s)</li><li>Analytics {p.analyticsEnabled?"avancés":"de base"}</li><li>Renouvellement automatique {p.autoRenewListings?"inclus":"non inclus"}</li>{p.featuredCreditsMonthly>0&&<li>{p.featuredCreditsMonthly} crédits À la une / mois</li>}{p.bulkImportEnabled&&<li>Import en masse</li>}{p.prioritySupport&&<li>Support prioritaire</li>}{p.apiFeedEnabled&&<li>Flux API</li>}</ul>
-          {isCurrent?<button type="button" className={styles.button} onClick={()=>void openPortal()} disabled={portalBusy}>{portalBusy?"Ouverture…":"Gérer cette formule"}</button>:current?<button type="button" className={styles.button} onClick={()=>current.externalProvider==="stripe"?setChangeTarget(p):void startCheckout(p.code)} disabled={current.cancelAtPeriodEnd||Boolean(billing?.pendingChange)||checkoutBusy!==""}>{current.cancelAtPeriodEnd?"Réactivez d’abord l’abonnement":isPending?"Changement programmé":billing?.pendingChange?"Un changement est déjà prévu":checkoutBusy===p.code?"Ouverture du paiement…":"Changer vers cette formule"}</button>:<button type="button" className={styles.button} onClick={()=>void startCheckout(p.code)} disabled={checkoutBusy!==""}>{checkoutBusy===p.code?"Ouverture du paiement…":"Choisir cette formule"}</button>}
+          {isCurrent?bfPrepaid?<span style={{fontSize:13,fontWeight:800,color:"#498061"}}>Formule prépayée · active jusqu’au {date(periodEnd)}</span>:<button type="button" className={styles.button} onClick={()=>void openPortal()} disabled={portalBusy}>{portalBusy?"Ouverture…":"Gérer cette formule"}</button>:current?bfPrepaid?<button className={styles.button} type="button" disabled>Changer après expiration de la formule</button>:<button type="button" className={styles.button} onClick={()=>current.externalProvider==="stripe"?setChangeTarget(p):void startCheckout(p.code)} disabled={current.cancelAtPeriodEnd||Boolean(billing?.pendingChange)||checkoutBusy!==""}>{current.cancelAtPeriodEnd?"Réactivez d’abord l’abonnement":isPending?"Changement programmé":billing?.pendingChange?"Un changement est déjà prévu":checkoutBusy===p.code?"Ouverture du paiement…":"Changer vers cette formule"}</button>:<button type="button" className={styles.button} onClick={()=>void startCheckout(p.code)} disabled={checkoutBusy!==""}>{checkoutBusy===p.code?"Ouverture du paiement…":"Choisir cette formule"}</button>}
         </article>
       })}</section>
     </details>

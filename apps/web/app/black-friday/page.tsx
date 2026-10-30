@@ -58,10 +58,19 @@ export default async function BlackFridayPage(){
         <div className={styles.boostCopy}>
           <span className={styles.sectionKicker}>OFFRE SPÉCIALE VENDEURS · 20–30 NOVEMBRE</span>
           <h2>Plus de visibilité pour vos annonces.</h2>
-          <p>Pendant l’événement, profitez de <strong>-30 % sur Urgent (7 jours) et À la une (7 jours)</strong>. Le tarif réduit est automatiquement appliqué au moment du paiement, du 20 au 30 novembre inclus, sans code promo. Non cumulable avec un autre code de réduction.</p>
-          <small>Urgent : 2,09 € au lieu de 2,99 € · À la une : 4,89 € au lieu de 6,99 €</small>
+          <p>Pendant l’événement, profitez de <strong>-50 % sur toutes les options de visibilité</strong>. Le tarif réduit est automatiquement appliqué au moment du paiement, du 20 au 30 novembre inclus, sans code promo. Non cumulable avec un autre code de réduction.</p>
+          <small>Urgent : 1,49 € au lieu de 2,99 € · À la une : 3,49 € au lieu de 6,99 €</small>
         </div>
         <a href="/mon-compte/visibilite">Découvrir les mises en avant →</a>
+      </section>
+      <section className={styles.proOffer}>
+        <div>
+          <span>BLACK FRIDAY · COMPTES PROFESSIONNELS</span>
+          <h2>Vous achetez des mois, on vous offre autant de mois !</h2>
+          <p>1 mois acheté + 1 mois offert · 3 mois achetés + 3 mois offerts · 6 mois achetés + 6 mois offerts · jusqu’à 12 mois achetés + 12 mois offerts.</p>
+          <small>Paiement unique à l’activation de l’offre, sans prélèvement mensuel automatique. Valable du 20 au 30 novembre 2026.</small>
+        </div>
+        <a href="/espace-pro/abonnement">Découvrir les formules Pro →</a>
       </section>
       <section className={styles.seller}><div><span>VOUS VENDEZ SUR PETIT ANNONCES ?</span><h2>Faites découvrir vos annonces pendant le Black Friday.</h2><p>La participation à cette sélection est gratuite. Seules les annonces actives éligibles sont présentées, et aucune réduction de prix n’est inventée.</p></div><a href="/mon-compte/annonces">Gérer mes participations →</a></section>
       <p className={styles.legal}>La participation à la sélection Black Friday ne garantit pas une réduction de prix. Les prix affichés restent fixés par les vendeurs. Pour toute annonce de réduction de prix, les professionnels doivent respecter notamment la règle du prix le plus bas des 30 jours précédents (<a href="https://www.economie.gouv.fr/dgccrf/les-fiches-pratiques/annonces-de-reduction-de-prix-ce-que-vous-devez-savoir">DGCCRF</a>). Les ventes restent soumises aux conditions habituelles de Petit Annonces.</p>

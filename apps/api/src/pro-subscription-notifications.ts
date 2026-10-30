@@ -120,6 +120,10 @@ export async function notifyProPaymentRecovered(args: { userId:string; subscript
 
 export async function runProSubscriptionReminderSweep() {
   const now = new Date();
+  await prisma.professionalSubscription.updateMany({
+    where:{status:"ACTIVE",externalProvider:"stripe_black_friday_2026",currentPeriodEnd:{lte:now}},
+    data:{status:"EXPIRED"},
+  });
   const until = new Date(now.getTime() + REMINDER_WINDOW_MS);
   const rows = await prisma.professionalSubscription.findMany({
     where: {
@@ -127,6 +131,7 @@ export async function runProSubscriptionReminderSweep() {
       OR: [
         { status:"TRIALING" },
         { status:"ACTIVE", externalProvider:"stripe", cancelAtPeriodEnd:false },
+        { status:"ACTIVE", externalProvider:"stripe_black_friday_2026" },
       ],
     },
     include: { plan:true },
@@ -137,14 +142,17 @@ export async function runProSubscriptionReminderSweep() {
   for (const row of rows) {
     if (!row.currentPeriodEnd) continue;
     const isTrial = row.status === "TRIALING";
+    const isPrepaid = row.externalProvider==="stripe_black_friday_2026";
     await send({
       userId: row.userId,
-      title: isTrial ? "Votre période d’essai Pro se termine bientôt" : "Renouvellement de votre abonnement Pro dans quelques jours",
-      body: isTrial
+      title: isPrepaid?"Votre formule Pro prépayée arrive à expiration":isTrial ? "Votre période d’essai Pro se termine bientôt" : "Renouvellement de votre abonnement Pro dans quelques jours",
+      body: isPrepaid
+        ? `Votre formule prépayée ${row.plan.name} prend fin le ${frDate(row.currentPeriodEnd)}. Aucun nouveau prélèvement ne sera effectué automatiquement.`
+        :isTrial
         ? `Votre essai de la formule ${row.plan.name} se termine le ${frDate(row.currentPeriodEnd)}. Consultez votre abonnement pour choisir la suite.`
         : `Votre formule ${row.plan.name} sera renouvelée automatiquement le ${frDate(row.currentPeriodEnd)}. Vous pouvez consulter votre formule et votre moyen de paiement depuis votre Espace Pro.`,
-      dedupeKey: `pro-subscription:${isTrial ? "trial-ending" : "renewal"}:${row.id}:${row.currentPeriodEnd.toISOString()}`,
-      metadata: { subscriptionId:row.id, planName:row.plan.name, currentPeriodEnd:row.currentPeriodEnd.toISOString(), reminder:isTrial ? "TRIAL_ENDING" : "RENEWAL" },
+      dedupeKey: `pro-subscription:${isPrepaid?"prepaid-ending":isTrial ? "trial-ending" : "renewal"}:${row.id}:${row.currentPeriodEnd.toISOString()}`,
+      metadata: { subscriptionId:row.id, planName:row.plan.name, currentPeriodEnd:row.currentPeriodEnd.toISOString(), reminder:isPrepaid?"PREPAID_EXPIRING":isTrial ? "TRIAL_ENDING" : "RENEWAL" },
     });
     queued += 1;
   }

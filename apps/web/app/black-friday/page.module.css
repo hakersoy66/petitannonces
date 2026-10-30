@@ -28,3 +28,6 @@
 @media(max-width:700px){.boost{display:grid;padding:22px 19px}.boost h2{font-size:23px}.boost a{text-align:center}.boost small{display:block;line-height:1.5}}
 
 .priceInfo{display:flex;align-items:baseline;flex-wrap:wrap;gap:6px}.priceInfo b{font-size:21px}.referencePrice{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.referencePrice del{color:#9a7e64;font-size:13px}.referencePrice em{font-style:normal;font-size:10px;color:#9c6940}
+
+.proOffer{display:flex;align-items:center;justify-content:space-between;gap:24px;margin:0 0 20px;border:1px solid #665034;background:linear-gradient(115deg,#24202c,#554031);border-radius:22px;color:#fff;padding:30px 34px}.proOffer>div{max-width:860px}.proOffer span{color:#f3ca80;font-size:11px;font-weight:900;letter-spacing:.14em}.proOffer h2{font-size:clamp(22px,3vw,29px);margin:9px 0;letter-spacing:-.04em}.proOffer p{font-size:14px;line-height:1.55;color:#f6ebe0;margin:0 0 8px}.proOffer small{color:#ddd1c0;font-size:12px}.proOffer a{background:#eec785;color:#231e26;padding:13px 18px;border-radius:12px;white-space:nowrap;font-weight:850;font-size:13px}
+@media(max-width:700px){.proOffer{display:grid;padding:23px 19px}.proOffer a{text-align:center;white-space:normal}.proOffer h2{font-size:23px}}
