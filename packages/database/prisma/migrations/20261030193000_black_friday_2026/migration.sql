@@ -1,0 +1,8 @@
+CREATE TABLE IF NOT EXISTS "BlackFridayEntry2026" (
+  "listingId" TEXT NOT NULL PRIMARY KEY,
+  "sellerId" TEXT NOT NULL,
+  "enrolledAt" TIMESTAMP(3) WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "BlackFridayEntry2026_listingId_fkey" FOREIGN KEY ("listingId") REFERENCES "Listing"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT "BlackFridayEntry2026_sellerId_fkey" FOREIGN KEY ("sellerId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+CREATE INDEX IF NOT EXISTS "BlackFridayEntry2026_enrolledAt_idx" ON "BlackFridayEntry2026" ("enrolledAt" DESC);

@@ -11,6 +11,25 @@ import { listingIndexUrls, notifyListingIndexNow, submitIndexNow } from "./index
 const statusSchema = z.enum(["DRAFT", "PENDING", "PUBLISHED", "SUSPENDED", "SOLD", "EXPIRED"]);
 const idParams = z.object({ id: z.string().min(1) });
 
+// Limit campaign enrollment to material-goods branches, including their subcategories.
+// This excludes property, vehicles, jobs, services, animals and travel.
+const blackFridayRoots2026=[
+  "high-tech","maison-jardin","mode","sports-loisirs","enfants-bebe",
+  "materiel-professionnel","agriculture","culture-billetterie",
+];
+async function blackFridayEligibleCategoryIds(){
+  const rows=await prisma.$queryRawUnsafe<Array<{id:string}>>(
+    `WITH RECURSIVE goods AS (
+       SELECT "id" FROM "Category" WHERE "slug"=ANY($1::text[])
+       UNION ALL
+       SELECT c."id" FROM "Category" c JOIN goods g ON c."parentId"=g."id"
+     ) SELECT DISTINCT "id" FROM goods`,
+    blackFridayRoots2026,
+  );
+  return new Set(rows.map(row=>row.id));
+}
+
+
 async function resolveListingSellerId(userId:string,reply:FastifyReply){
   const ctx=await resolveProfessionalContext(userId);
   if(!ctx)return userId;
@@ -60,6 +79,75 @@ const transitions: Record<string, string[]> = {
 };
 
 export async function registerAccountListingRoutes(app: FastifyInstance) {
+  // Black Friday 2026 is a curated listing selection, NOT a claimed price reduction.
+  // No strikethrough prices or discount percentages are published without a verified 30-day price history.
+  app.get("/public/black-friday", async (_request, reply) => {
+    const now = Date.now();
+    const start = Date.parse("2026-11-19T23:00:00.000Z"); // 20 November, 00:00 Europe/Paris
+    const end = Date.parse("2026-11-30T23:00:00.000Z"); // 1 December, 00:00 Europe/Paris
+    const phase = now < start ? "upcoming" : now >= end ? "ended" : "active";
+    if (phase !== "active") return reply.send({ campaign: "BLACK_FRIDAY_2026", phase, items: [], total: 0 });
+    const listings = await prisma.$queryRawUnsafe<Array<{
+      id:string;slug:string;title:string;priceMinor:number;currency:string;city:string|null;
+      categoryName:string;categorySlug:string;enrolledAt:Date;imageUrl:string|null;
+    }>>(`
+      SELECT l."id",l."slug",l."title",l."priceMinor",l."currency",l."city",
+             c."name" AS "categoryName",c."slug" AS "categorySlug",
+             bf."enrolledAt", photo."publicUrl" AS "imageUrl"
+      FROM "BlackFridayEntry2026" bf
+      JOIN "Listing" l ON l."id"=bf."listingId"
+      JOIN "Category" c ON c."id"=l."categoryId"
+      JOIN "User" u ON u."id"=l."sellerId"
+      LEFT JOIN LATERAL (
+        SELECT lm."publicUrl" FROM "ListingMedia" lm
+        WHERE lm."listingId"=l."id" AND lm."status"='READY' AND lm."publicUrl" IS NOT NULL
+        ORDER BY lm."isCover" DESC,lm."sortOrder" ASC,lm."createdAt" ASC LIMIT 1
+      ) photo ON TRUE
+      WHERE l."status"='PUBLISHED' AND l."slug" IS NOT NULL
+        AND l."priceMinor">0 AND l."currency"='EUR'
+        AND c."domain"='GENERAL' AND u."status"='ACTIVE'
+      ORDER BY bf."enrolledAt" DESC LIMIT 60
+    `);
+    reply.header("cache-control", "public, max-age=60");
+    return reply.send({
+      campaign: "BLACK_FRIDAY_2026", phase, total: listings.length,
+      items: listings.map(item=>({
+        id:item.id,slug:item.slug,title:item.title,priceMinor:item.priceMinor,
+        currency:item.currency,city:item.city,imageUrl:item.imageUrl,
+        category:{name:item.categoryName,slug:item.categorySlug},
+      })),
+    });
+  });
+
+  app.post("/account/listings/:id/black-friday", async (request, reply) => {
+    const user=await requireListingUser(request,reply);if(!user)return;
+    const sellerId=await resolveListingSellerId(user.id,reply);if(!sellerId)return;
+    const params=idParams.safeParse(request.params);
+    const body=z.object({participate:z.boolean()}).safeParse(request.body);
+    if(!params.success||!body.success)return reply.code(400).send({error:"invalid_request"});
+    if(body.data.participate&&Date.now()>=Date.parse("2026-11-30T23:00:00.000Z"))
+      return reply.code(409).send({error:"campaign_ended"});
+    const listing=await prisma.listing.findFirst({
+      where:{id:params.data.id,sellerId},
+      select:{id:true,status:true,slug:true,priceMinor:true,currency:true,category:{select:{id:true,domain:true,slug:true}}},
+    });
+    if(!listing)return reply.code(404).send({error:"listing_not_found"});
+    if(body.data.participate){
+      const eligibleCategories=await blackFridayEligibleCategoryIds();
+      if(listing.status!=="PUBLISHED"||!listing.slug||listing.priceMinor===null||listing.priceMinor<=0||
+        listing.currency!=="EUR"||listing.category.domain!=="GENERAL"||
+        !eligibleCategories.has(listing.category.id))
+        return reply.code(409).send({error:"listing_not_eligible"});
+      await prisma.$executeRawUnsafe(`
+        INSERT INTO "BlackFridayEntry2026" ("listingId","sellerId")
+        VALUES ($1,$2) ON CONFLICT ("listingId") DO NOTHING
+      `,listing.id,sellerId);
+    }else{
+      await prisma.$executeRawUnsafe(`DELETE FROM "BlackFridayEntry2026" WHERE "listingId"=$1 AND "sellerId"=$2`,listing.id,sellerId);
+    }
+    return reply.send({participating:body.data.participate,campaign:"BLACK_FRIDAY_2026"});
+  });
+
   app.get("/account/listings", async (request, reply) => {
     const user = await requireListingUser(request, reply);
     if (!user) return;
@@ -91,7 +179,7 @@ export async function registerAccountListingRoutes(app: FastifyInstance) {
         createdAt: true,
         updatedAt: true,
         publishedAt: true,
-        category: { select: { name: true, slug: true, domain: true } },
+        category: { select: { id: true, name: true, slug: true, domain: true } },
         property: { select: { transactionType: true } },
         store: { select: { id: true, name: true } },
       },
@@ -102,6 +190,11 @@ export async function registerAccountListingRoutes(app: FastifyInstance) {
     const statusCounts:Record<string,number>={ALL:0,DRAFT:0,PENDING:0,PUBLISHED:0,SUSPENDED:0,SOLD:0,EXPIRED:0};
     for(const row of statusGroups){statusCounts[row.status]=row._count._all;statusCounts.ALL=(statusCounts.ALL??0)+row._count._all}
     const ids = listings.map((listing) => listing.id);
+    const blackFridayRows=ids.length?await prisma.$queryRawUnsafe<Array<{listingId:string}>>(
+      `SELECT "listingId" FROM "BlackFridayEntry2026" WHERE "listingId"=ANY($1::text[])`,ids
+    ):[];
+    const blackFridayIds=new Set(blackFridayRows.map(row=>row.listingId));
+    const blackFridayEligibleCategories=await blackFridayEligibleCategoryIds();
     const [mediaRows, mediaCountRows, moderationRows, lifecycleRows, promotionRows] = await Promise.all([
       ids.length ? prisma.$queryRawUnsafe<Array<{ listingId:string; publicUrl:string }>>(`SELECT DISTINCT ON (lm."listingId") lm."listingId",lm."publicUrl" FROM "ListingMedia" lm WHERE lm."listingId" = ANY($1::text[]) AND lm."status"='READY' AND lm."publicUrl" IS NOT NULL ORDER BY lm."listingId",lm."isCover" DESC,lm."sortOrder" ASC,lm."createdAt" ASC`, ids) : [],
       ids.length ? prisma.$queryRawUnsafe<Array<{listingId:string;count:bigint}>>(`SELECT "listingId",COUNT(*)::bigint AS count FROM "ListingMedia" WHERE "listingId"=ANY($1::text[]) AND "status"='READY' GROUP BY "listingId"`,ids) : [],
@@ -134,6 +227,10 @@ export async function registerAccountListingRoutes(app: FastifyInstance) {
         return {
           ...listing,
           imageUrl: mediaByListing.get(listing.id) ?? null,
+          blackFriday2026: blackFridayIds.has(listing.id),
+          blackFridayEligible2026:listing.status==="PUBLISHED"&&Boolean(listing.slug)&&
+            listing.currency==="EUR"&&Number(listing.priceMinor)>0&&
+            blackFridayEligibleCategories.has(listing.category.id),
           quality: listingQuality({title:listing.title,description:listing.description,priceMinor:listing.priceMinor,city:listing.city,postalCode:listing.postalCode,photoCount:mediaCountByListing.get(listing.id)??0}),
           viewCount: viewCountsByListing.get(listing.id) ?? 0,
           performance: (()=>{const m=metricsByListing.get(listing.id) ?? {favorites:0,conversations:0,messages:0,offers:0,views7:0,views30:0};return {...m,...performanceScore(m),actions:performanceActions(listing.id,m)}})(),

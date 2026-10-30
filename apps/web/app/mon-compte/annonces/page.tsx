@@ -27,6 +27,8 @@ type Listing = {
   moderation?: { caseId:string; status:string; decisionAction:string|null; reasonCode:string|null; statement:string|null; decidedAt:string|null } | null;
   lifecycle?: { expiresAt:string; renewalRequired?:boolean; renewalAvailable?:boolean; freeRenewalAvailable:boolean; renewalCount:number; renewalCostMinor:number; renewalCurrency:string; lifetimeDays:number } | null;
   promotions?: Array<{id:string;code:string;type:string;name:string;startsAt:string|null;endsAt:string|null;status:string}>;
+  blackFriday2026?:boolean;
+  blackFridayEligible2026?:boolean;
 };
 
 const labels: Record<Status | "ALL", string> = {
@@ -53,6 +55,8 @@ export default function MyListingsPage() {
   const [proStores, setProStores] = useState<Array<{id:string;name:string}>>([]);
   const [proAutoRenew, setProAutoRenew] = useState(false);
   const [actionListingId, setActionListingId] = useState<string | null>(null);
+  const [blackFridayBusy,setBlackFridayBusy]=useState<string|null>(null);
+  const blackFridayOpen=Date.now()<Date.parse("2026-11-30T23:00:00.000Z");
   const actionListing = listings.find(item => item.id === actionListingId) ?? null;
 
   useEffect(() => {
@@ -92,6 +96,26 @@ export default function MyListingsPage() {
   useEffect(() => { const target = new URLSearchParams(window.location.search).get("listingId"); if (target && listings.some(item => item.id === target)) window.requestAnimationFrame(() => document.getElementById(`annonce-${target}`)?.scrollIntoView({ block: "center" })); }, [listings]);
   useEffect(()=>{const params=new URLSearchParams(window.location.search);const requested=params.get("status");if(requested&&requested!=="ALL"&&Object.prototype.hasOwnProperty.call(labels,requested))setStatus(requested as Status);const q=params.get("renewal");if(q==="success")setMessage("Paiement confirmé. La prolongation sera visible après validation Stripe.");else if(q==="cancelled")setMessage("Paiement de prolongation annulé.");else if(params.get("submitted")==="1")setMessage("Annonce envoyée en vérification. Vous recevrez une notification dès qu’une décision sera prise.");else if(params.get("editing")==="moderation")setMessage("Cette annonce est déjà en cours de vérification. Attendez la décision de modération avant de la modifier.")},[]);
   useEffect(() => { fetch(`${apiBase()}/pro/me`, { credentials: "include", cache: "no-store" }).then(async r => r.ok ? r.json() : null).then(p => {setProStores((p?.professional?.stores ?? []).map((x:any)=>({id:x.id,name:x.name})));const subscription=p?.professional?.subscriptions?.[0];setProAutoRenew(Boolean(subscription&&["ACTIVE","TRIALING"].includes(String(subscription.status))&&subscription.plan?.autoRenewListings===true));}).catch(()=>{}); }, []);
+
+  function blackFridayEligible(item:Listing){return item.blackFridayEligible2026===true;}
+
+  async function setBlackFridayParticipation(item:Listing){
+    if(blackFridayBusy)return;
+    setBlackFridayBusy(item.id);
+    setMessage("");
+    try{
+      const response=await fetch(apiBase()+"/account/listings/"+encodeURIComponent(item.id)+"/black-friday",{
+        method:"POST",credentials:"include",headers:{"content-type":"application/json"},
+        body:JSON.stringify({participate:!item.blackFriday2026}),
+      });
+      if(!response.ok)throw new Error();
+      const participating=!item.blackFriday2026;
+      setListings(previous=>previous.map(x=>x.id===item.id?{...x,blackFriday2026:participating}:x));
+      setMessage(participating?"Votre annonce est inscrite à la sélection Black Friday du 20 au 30 novembre. Aucun rabais n’est ajouté automatiquement.":"Votre annonce a été retirée de la sélection Black Friday.");
+    }catch{
+      setMessage("Impossible de modifier votre participation pour le moment. Vérifiez que l’annonce est active et éligible.");
+    }finally{setBlackFridayBusy(null)}
+  }
 
   async function changeStatus(id: string, next: Status) {
     setMessage("");
@@ -172,6 +196,7 @@ export default function MyListingsPage() {
             </form>
           </div>
 
+          <div className={styles.blackFridayInvite}><div><small>ÉVÉNEMENT · 20–30 NOVEMBRE</small><strong>Black Friday 2026</strong><span>Inscrivez gratuitement vos annonces éligibles dans la sélection spéciale.</span></div><a href="/black-friday">Voir l’événement →</a></div>
           {message && <div className={styles.notice}>{message}</div>}
           {loading ? <div className={`${styles.empty} ${styles.loadingReserve}`} aria-busy="true"><b>Chargement de vos annonces…</b><span>Préparation de votre espace d’annonces.</span></div> : listings.length === 0 ? (
             <div className={styles.empty}><b>Aucune annonce dans cette section.</b><span>Créez une nouvelle annonce ou changez de filtre.</span></div>
@@ -189,6 +214,7 @@ export default function MyListingsPage() {
                       <span className={`${styles.badge} ${styles[item.status.toLowerCase()]}`}>{labels[item.status]}</span>
                     </div>
                     <strong className={styles.price}>{formatListingPrice(item.priceMinor,item.currency,{domain:item.category.domain,transactionType:item.property?.transactionType??null},"Prix non défini")}</strong>
+                    {item.blackFriday2026&&<span className={styles.blackFridayTag}>✦ Inscrite à la sélection Black Friday</span>}
                     <div className={styles.meta}>
                       <span>{item.city ?? "Localisation à compléter"}</span>
                       <span>Mis à jour le {new Date(item.updatedAt).toLocaleDateString("fr-FR")}</span>
@@ -203,6 +229,7 @@ export default function MyListingsPage() {
                     {proStores.length>0 && <label className={styles.storeAssign}>Boutique<select value={item.store?.id??""} onChange={e=>void assignStore(item,e.target.value)}><option value="">Hors boutique</option>{proStores.map(s=><option value={s.id} key={s.id}>{s.name}</option>)}</select></label>}
                   </div>
                   <div className={`${styles.actions} ${styles.desktopActions}`}>
+                    {blackFridayOpen&&blackFridayEligible(item)&&<button type="button" className={styles.blackFridayAction} disabled={blackFridayBusy===item.id} onClick={()=>void setBlackFridayParticipation(item)}>{blackFridayBusy===item.id?"Enregistrement…":item.blackFriday2026?"Retirer du Black Friday":"✦ Participer au Black Friday"}</button>}
                     {item.status === "PUBLISHED" && item.slug && <a href={`/annonce/${item.slug}`}>Voir</a>}
                     {item.status === "DRAFT" && <a href={`/deposer-une-annonce?listingId=${encodeURIComponent(item.id)}`}>Continuer</a>}
                     {item.status === "SUSPENDED" && <a className={styles.correct} href={`/deposer-une-annonce?listingId=${encodeURIComponent(item.id)}`}>Corriger mon annonce</a>}
@@ -217,6 +244,7 @@ export default function MyListingsPage() {
                     <button type="button" className={styles.danger} onClick={() => void deleteListing(item)}>Supprimer</button>
                   </div>
                   <div className={styles.mobileActions}>
+                    {blackFridayOpen&&blackFridayEligible(item)&&<button type="button" className={styles.mobileBlackFriday} disabled={blackFridayBusy===item.id} onClick={()=>void setBlackFridayParticipation(item)}>{blackFridayBusy===item.id?"Enregistrement…":item.blackFriday2026?"Retirer du Black Friday":"✦ Participer au Black Friday"}</button>}
                     {item.status === "PUBLISHED" && item.slug && <a className={styles.mobilePrimary} href={`/annonce/${item.slug}`}>Voir l’annonce</a>}
                     {item.status === "DRAFT" && !item.lifecycle?.renewalRequired && <a className={styles.mobilePrimary} href={`/deposer-une-annonce?listingId=${encodeURIComponent(item.id)}`}>Continuer</a>}
                     {item.status === "SUSPENDED" && <a className={styles.mobilePrimary} href={`/deposer-une-annonce?listingId=${encodeURIComponent(item.id)}`}>Corriger</a>}

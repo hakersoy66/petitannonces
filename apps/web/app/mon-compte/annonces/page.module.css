@@ -211,3 +211,12 @@
 @media(min-width:701px){
  .actionSheet{bottom:24px}
 }
+
+/* Black Friday 2026: curated listing enrollment, never a claimed discount. */
+.blackFridayInvite{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:18px 0 0;padding:15px 19px;border-radius:17px;background:linear-gradient(110deg,#1b1924,#453322);border:1px solid #876a48;color:#fff}
+.blackFridayInvite>div{display:grid;gap:3px}.blackFridayInvite small{color:#e8c183;font-size:10px;font-weight:850;letter-spacing:.12em}.blackFridayInvite strong{font-size:18px}.blackFridayInvite span{font-size:12px;color:#e4d9c9}.blackFridayInvite a{background:#ebc580;color:#22212a;font-size:12px;font-weight:900;padding:11px 14px;border-radius:11px;white-space:nowrap}
+.blackFridayTag{display:inline-flex;align-items:center;max-width:100%;border-radius:99px;padding:5px 9px;margin-top:9px;background:#f6e6c5;color:#76501b;font-size:11px;font-weight:850}
+.actions .blackFridayAction{border-color:#caa168;background:#f9efda;color:#684417;font-size:12px}.actions .blackFridayAction:hover{background:#f5e2bd;color:#563715}
+.mobileBlackFriday{border:1px solid #dfbc83;background:#fff3d7;color:#65451c;padding:12px 13px;border-radius:12px;font-weight:850;font-size:12px}
+.blackFridayAction:disabled,.mobileBlackFriday:disabled{opacity:.6;cursor:wait}
+@media(max-width:640px){.blackFridayInvite{display:grid;gap:12px;margin-top:14px;padding:16px}.blackFridayInvite a{text-align:center}.mobileBlackFriday{max-width:100%}}

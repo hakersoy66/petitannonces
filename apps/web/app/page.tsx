@@ -5,6 +5,7 @@ import { AppIcon, type AppIconName } from "../components/app-icon";
 import { HomeMobileCategories } from "../components/home-mobile-categories";
 import { HomeSeoExplore } from "../components/home-seo-explore";
 import { HomeFranceHero } from "../components/home-france-hero";
+import { BlackFridayBanner } from "../components/black-friday-banner";
 import { HomeFranceMobileMap } from "../components/home-france-mobile-map";
 import { HomeFranceTravailJobs, type HomeFranceTravailJob } from "../components/home-france-travail-jobs";
 import { FavoriteButton } from "../components/favorite-button";
@@ -325,6 +326,7 @@ export default async function HomePage() {
       <main className="home-main-order">
         {pwaEnabled("categories")&&<div className="mobile-pwa-block-order" style={{order:pwaOrder("categories")}}><HomeMobileCategories categories={roots} /></div>}
         {topBanners.map((banner,index)=><MarketingBannerBlock key={banner.id} banner={banner} orderValue={5+index}/>) }
+        <BlackFridayBanner/>
         {enabled("hero")&&<div style={{order:order("hero")}}><HomeFranceHero/></div>}
 
 
