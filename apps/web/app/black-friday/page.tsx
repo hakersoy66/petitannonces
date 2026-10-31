@@ -20,6 +20,17 @@ async function getCampaign():Promise<Data>{
     return await res.json() as Data;
   }catch{return{phase:"disabled",enabled:false,visible:false,edition:2026,startsAt:"",endsAt:"",discountPercent:0,giftMonthsMultiplier:0,maxPrepaidMonths:0,items:[],total:0}}
 }
+type PublicProPlan={code:string;name:string;monthlyPriceMinor:number;currency:string;maxActiveListings:number|null;maxStores:number;bulkImportEnabled:boolean};
+async function getPublicProPlans():Promise<PublicProPlan[]>{
+ const base=(process.env.API_INTERNAL_URL??process.env.NEXT_PUBLIC_API_URL??"http://127.0.0.1:4000").replace(/\/$/,"");
+ try{
+  const res=await fetch(base+"/pro/plans",{cache:"no-store"});
+  if(!res.ok)return [];
+  const data=await res.json() as {plans?:PublicProPlan[]};
+  return Array.isArray(data.plans)?data.plans.filter(p=>p.currency==="EUR"&&/^[A-Z0-9_-]{2,60}$/.test(p.code)&&Number.isInteger(p.monthlyPriceMinor)&&p.monthlyPriceMinor>=0).sort((a,b)=>a.monthlyPriceMinor-b.monthlyPriceMinor).slice(0,3):[];
+ }catch{return []}
+}
+const euro=(minor:number)=>new Intl.NumberFormat("fr-FR",{style:"currency",currency:"EUR"}).format(minor/100);
 const paris=(date:Date,options:Intl.DateTimeFormatOptions)=>new Intl.DateTimeFormat("fr-FR",{timeZone:"Europe/Paris",...options}).format(date);
 const parisDate=(value:string)=>paris(new Date(value),{day:"numeric",month:"long",year:"numeric"});
 const endDay=(value:string)=>parisDate(new Date(Date.parse(value)-1000).toISOString());
@@ -34,6 +45,7 @@ export default async function BlackFridayPage(){
   const data=await getCampaign();
   if(!data.enabled)notFound();
   const live=data.phase==="active";
+  const proPlans=data.giftMonthsMultiplier>0?await getPublicProPlans():[];
   const from=parisDate(data.startsAt),to=endDay(data.endsAt);
   const dayBlackFriday=parisDate(blackFridayDay(data.edition).toISOString());
   const startDay=paris(new Date(data.startsAt),{day:"numeric",month:"long"});
@@ -91,9 +103,34 @@ export default async function BlackFridayPage(){
           <small>Paiement unique du forfait Black Friday, sans renouvellement mensuel automatique. Offre valable du {from} au {to}. L’essai de 90 jours est soumis aux conditions d’éligibilité des nouveaux comptes Pro.</small>
         </div>
         <div className={styles.proOfferActions}>
-          <a href="/espace-pro/abonnement">Choisir mon abonnement Pro <span aria-hidden="true">→</span></a>
+          <a href="#forfaits-pro">Comparer les abonnements Pro <span aria-hidden="true">→</span></a>
           <a className={styles.proTrialLink} href="/ouvrir-boutique-pro">Découvrir les 90 jours offerts <span aria-hidden="true">→</span></a>
         </div>
+      </section>}
+      {data.giftMonthsMultiplier>0&&<section className={styles.proPlansPublic} id="forfaits-pro" aria-labelledby="forfaits-pro-title">
+        <div className={styles.sectionHead}><div><span className={styles.sectionKicker}>FORFAITS PROFESSIONNELS</span>
+          <h2 id="forfaits-pro-title">Comparez les abonnements Pro</h2>
+          <p>Choisissez un forfait, puis profitez de l’offre Black Friday durant la période de la campagne.</p>
+        </div></div>
+        {proPlans.length>0?<div className={styles.publicPlanGrid}>{proPlans.map(plan=>{
+          const next="/espace-pro/abonnement?plan="+encodeURIComponent(plan.code)+"#offre-black-friday";
+          return <article key={plan.code} className={styles.publicPlanCard}>
+            <span className={styles.publicPlanLabel}>ABONNEMENT PRO</span>
+            <h3>{plan.name}</h3>
+            <div className={styles.publicPlanPrice}><strong>{euro(plan.monthlyPriceMinor)}</strong><span>/ mois payé</span></div>
+            <div className={styles.publicPlanGift}>1 mois payé = {1+data.giftMonthsMultiplier} mois d’accès</div>
+            <ul>
+              <li>{plan.maxActiveListings==null?"Annonces illimitées":plan.maxActiveListings+" annonces actives"}</li>
+              <li>{plan.maxStores} boutique{plan.maxStores>1?"s":""} professionnelle{plan.maxStores>1?"s":""}</li>
+              <li>{plan.bulkImportEnabled?"Import en masse inclus":"Gestion des annonces depuis l’espace Pro"}</li>
+            </ul>
+            <a href={"/inscription?type=pro&next="+encodeURIComponent(next)}>Créer mon compte Pro <span aria-hidden="true">→</span></a>
+          </article>;
+        })}</div>:<p className={styles.publicPlansUnavailable}>Les tarifs sont momentanément indisponibles. Retrouvez les formules depuis votre espace professionnel.</p>}
+        <div className={styles.publicPlanFoot}><div><strong>Vous possédez déjà un compte Pro ?</strong><p>Accédez aux abonnements pour choisir la durée et consulter vos droits existants.</p></div>
+          <a href="/espace-pro/abonnement#offre-black-friday">Accéder à mes abonnements →</a>
+        </div>
+        <p className={styles.publicPlanConditions}>Les 90 jours d’essai gratuits sont réservés aux nouveaux comptes éligibles. Les mois achetés ou offerts ne remplacent pas les jours d’essai. Les paiements Black Friday ne commencent que le {from}.</p>
       </section>}
       <section className={styles.seller}><div><span>VOUS VENDEZ SUR PETIT ANNONCES ?</span><h2>Faites découvrir vos annonces pendant le Black Friday.</h2><p>La participation à cette sélection est gratuite. Seules les annonces actives éligibles sont présentées, et aucune réduction de prix n’est inventée.</p></div><a href="/mon-compte/annonces">Gérer mes participations →</a></section>
       <p className={styles.legal}>La participation à la sélection Black Friday ne garantit pas une réduction de prix. Les prix affichés restent fixés par les vendeurs. Pour toute annonce de réduction de prix, les professionnels doivent respecter notamment la règle du prix le plus bas des 30 jours précédents (<a href="https://www.economie.gouv.fr/dgccrf/les-fiches-pratiques/annonces-de-reduction-de-prix-ce-que-vous-devez-savoir">DGCCRF</a>). Les ventes restent soumises aux conditions habituelles de Petit Annonces.</p>

@@ -37,7 +37,7 @@ export default function Abonnement(){
   const[checkoutBusy,setCheckoutBusy]=useState("");
   const[checkoutMsg,setCheckoutMsg]=useState("");
   const[bfOffer,setBFOffer]=useState<BFOffer|null>(null);
-  const[bfMonths,setBFMonths]=useState(6);
+  const[bfMonths,setBFMonths]=useState(1);
   const[bfBusy,setBFBusy]=useState("");
 
   const[changeTarget,setChangeTarget]=useState<Plan|null>(null);
@@ -162,6 +162,11 @@ export default function Abonnement(){
     void load().catch(()=>setCheckoutMsg("Impossible de charger les informations d’abonnement pour le moment."));
   },[]);
 
+  useEffect(()=>{
+    if(bfOffer?.visible&&window.location.hash==="#offre-black-friday")
+      document.getElementById("offre-black-friday")?.scrollIntoView({block:"start",behavior:"smooth"});
+  },[bfOffer?.visible]);
+
   const current=me?.subscriptions?.[0];
   const bfPrepaid=current?.externalProvider==="stripe_black_friday_2026";
   const bfCurrentAllowed=!current||bfPrepaid||current.externalProvider!=="stripe"||current.cancelAtPeriodEnd===true;
@@ -231,14 +236,15 @@ export default function Abonnement(){
     {current?.cancelAtPeriodEnd&&!bfPrepaid&&<div className={styles.notice}>Votre abonnement est programmé pour s’arrêter à la fin de la période en cours.</div>}
     {current&&!bfPrepaid&&<div className={styles.notice}>Un changement de formule utilise toujours votre abonnement Stripe existant afin d’éviter toute double facturation.</div>}
 
-    {bfOffer?.visible&&bfOffer.bonusMultiplier>0&&<section className={styles.section} style={{border:"1px solid #e7c480",background:"linear-gradient(115deg,#fff9ec,#fffdf9)"}}>
+    {bfOffer?.visible&&bfOffer.bonusMultiplier>0&&<section id="offre-black-friday" className={styles.section} style={{border:"1px solid #e7c480",background:"linear-gradient(115deg,#fff9ec,#fffdf9)",scrollMarginTop:98}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:18,flexWrap:"wrap",marginBottom:14}}>
         <div><span className={styles.kickerDark}>BLACK FRIDAY {bfOffer.edition} · OFFRE LIMITÉE</span>
           <h2 style={{margin:"6px 0"}}>1 mois acheté = {bfOffer.bonusMultiplier} mois offert{bfOffer.bonusMultiplier>1?"s":""}</h2>
-          <p style={{margin:0,color:"#625947"}}>Choisissez entre 1 et 12 mois : pour chaque mois payé, nous ajoutons un mois gratuit. Paiement unique, sans renouvellement automatique.</p>
+          <p style={{margin:0,color:"#625947"}}>Choisissez entre 1 et {bfOffer.maxMonths} mois : chaque mois payé donne droit à {bfOffer.bonusMultiplier} mois offert{bfOffer.bonusMultiplier>1?"s":""}. Paiement unique, sans renouvellement automatique.</p>
         </div>
         <strong style={{background:"#272126",color:"#f0d095",padding:"9px 14px",borderRadius:12,fontSize:13}}>JUSQU’À {bfOffer.maxMonths*bfOffer.bonusMultiplier} MOIS OFFERTS</strong>
       </div>
+      {current?.status==="TRIALING"&&current.trialEndsAt&&<p style={{padding:"12px 15px",borderRadius:12,background:"#e8f6ef",border:"1px solid #b9e2cc",fontSize:13,color:"#276646",fontWeight:700,margin:"0 0 16px"}}>Votre essai Pro reste actif jusqu’au {date(current.trialEndsAt)}. Le forfait Black Friday acheté commencera après cette date.</p>}
       <label style={{display:"grid",gap:7,maxWidth:340,fontWeight:800,fontSize:13}}>
         Durée achetée
         <select className={styles.input} value={bfMonths} onChange={e=>setBFMonths(Number(e.target.value))}>
