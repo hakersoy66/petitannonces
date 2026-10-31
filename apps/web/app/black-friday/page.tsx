@@ -74,14 +74,26 @@ export default async function BlackFridayPage(){
         </div>
         <a href="/mon-compte/visibilite">Découvrir les mises en avant →</a>
       </section>}
-      {data.giftMonthsMultiplier>0&&<section className={styles.proOffer}>
-        <div>
-          <span>BLACK FRIDAY · COMPTES PROFESSIONNELS</span>
-          <h2>Vous achetez des mois, nous vous offrons {data.giftMonthsMultiplier} mois par mois acheté !</h2>
-          <p>1 mois acheté + {data.giftMonthsMultiplier} mois offerts · 3 mois achetés + {3*data.giftMonthsMultiplier} mois offerts · jusqu’à {data.maxPrepaidMonths} mois achetés + {data.maxPrepaidMonths*data.giftMonthsMultiplier} mois offerts.</p>
-          <small>Paiement unique à l’activation de l’offre, sans prélèvement mensuel automatique. Valable du {from} au {to}.</small>
+      {data.giftMonthsMultiplier>0&&<section className={styles.proOffer} aria-labelledby="black-friday-pro-title">
+        <div className={styles.proOfferContent}>
+          <span className={styles.proLabel}>BLACK FRIDAY · ABONNEMENTS PRO</span>
+          <h2 id="black-friday-pro-title">Votre abonnement Pro : 1 mois acheté = {data.giftMonthsMultiplier} mois offert{data.giftMonthsMultiplier>1?"s":""} !</h2>
+          <p className={styles.proIntro}>Cette offre concerne l’achat de <strong>forfaits d’abonnement professionnel Petitannonces</strong> : choisissez votre formule Pro et profitez de mois supplémentaires offerts.</p>
+          <div className={styles.proExamples} aria-label="Exemples de durées d’abonnement Pro">
+            <div><strong>1 mois payé</strong><b>+ {data.giftMonthsMultiplier} mois offert{data.giftMonthsMultiplier>1?"s":""}</b></div>
+            <div><strong>3 mois payés</strong><b>+ {3*data.giftMonthsMultiplier} mois offerts</b></div>
+            <div><strong>Jusqu’à {data.maxPrepaidMonths} mois payés</strong><b>+ {data.maxPrepaidMonths*data.giftMonthsMultiplier} mois offerts</b></div>
+          </div>
+          <div className={styles.proTrial}>
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="7" width="18" height="14" rx="2"/><path d="M12 7v14M3 12h18M12 7c-7 0-7-5-4-5 2 0 4 3 4 5Zm0 0c7 0 7-5 4-5-2 0-4 3-4 5Z"/></svg>
+            <p><strong>Nouveau professionnel ? Vos 90 premiers jours Pro sont offerts !</strong><br/>Essai gratuit sans carte bancaire pour les nouveaux comptes éligibles. Si vous achetez un abonnement Black Friday pendant l’essai, ses mois payés et offerts commenceront après ces 90 jours : votre essai est conservé.</p>
+          </div>
+          <small>Paiement unique du forfait Black Friday, sans renouvellement mensuel automatique. Offre valable du {from} au {to}. L’essai de 90 jours est soumis aux conditions d’éligibilité des nouveaux comptes Pro.</small>
         </div>
-        <a href="/espace-pro/abonnement">Découvrir les formules Pro →</a>
+        <div className={styles.proOfferActions}>
+          <a href="/espace-pro/abonnement">Choisir mon abonnement Pro <span aria-hidden="true">→</span></a>
+          <a className={styles.proTrialLink} href="/ouvrir-boutique-pro">Découvrir les 90 jours offerts <span aria-hidden="true">→</span></a>
+        </div>
       </section>}
       <section className={styles.seller}><div><span>VOUS VENDEZ SUR PETIT ANNONCES ?</span><h2>Faites découvrir vos annonces pendant le Black Friday.</h2><p>La participation à cette sélection est gratuite. Seules les annonces actives éligibles sont présentées, et aucune réduction de prix n’est inventée.</p></div><a href="/mon-compte/annonces">Gérer mes participations →</a></section>
       <p className={styles.legal}>La participation à la sélection Black Friday ne garantit pas une réduction de prix. Les prix affichés restent fixés par les vendeurs. Pour toute annonce de réduction de prix, les professionnels doivent respecter notamment la règle du prix le plus bas des 30 jours précédents (<a href="https://www.economie.gouv.fr/dgccrf/les-fiches-pratiques/annonces-de-reduction-de-prix-ce-que-vous-devez-savoir">DGCCRF</a>). Les ventes restent soumises aux conditions habituelles de Petit Annonces.</p>
