@@ -227,7 +227,7 @@ export default function MyListingsPage() {
                       <span className={`${styles.badge} ${styles[item.status.toLowerCase()]}`}>{labels[item.status]}</span>
                     </div>
                     <strong className={styles.price}>{formatListingPrice(item.priceMinor,item.currency,{domain:item.category.domain,transactionType:item.property?.transactionType??null},"Prix non défini")}</strong>
-                    {blackFridayOpen&&item.blackFriday2026&&<span className={styles.blackFridayTag}>✦ Inscrite à la sélection Black Friday</span>}
+                    {blackFridayOpen&&item.blackFriday2026&&<span className={styles.blackFridayTag} title="Annonce inscrite à la sélection Black Friday"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12 2.7 2.7L16 9"/></svg><span>Sélection Black Friday</span></span>}
                     <div className={styles.meta}>
                       <span>{item.city ?? "Localisation à compléter"}</span>
                       <span>Mis à jour le {new Date(item.updatedAt).toLocaleDateString("fr-FR")}</span>
