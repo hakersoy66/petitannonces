@@ -12,22 +12,23 @@ type JobResult={enabled:boolean;items:Job[]};
 const apiBase=()=>String(process.env.API_INTERNAL_URL??process.env.NEXT_PUBLIC_API_URL??"http://127.0.0.1:4000").replace(/\/$/,"");
 async function jobs(city:string,sector:string){
  const config=emploiLocalLanding(city,sector);
- if(!config)return {config:null,offers:[] as Job[],available:false};
+ if(!config)return {config:null,offers:[] as Job[],available:false,preserveIndex:false};
  try{
   const q=new URLSearchParams({motsCles:config.term,departement:config.department});
   const response=await fetch(apiBase()+"/public/emploi/france-travail?"+q,{next:{revalidate:1200}});
-  if(!response.ok)return{config,offers:[] as Job[],available:false};
+  if(!response.ok)return{config,offers:[] as Job[],available:false,preserveIndex:response.status===502||response.status===504};
   const payload=await response.json() as JobResult;
   const offers=payload.enabled&&Array.isArray(payload.items)?payload.items.filter(x=>x.id&&x.title):[];
-  return{config,offers,available:true};
- }catch{return{config,offers:[] as Job[],available:false}}
+  return{config,offers,available:true,preserveIndex:false};
+ }catch{return{config,offers:[] as Job[],available:false,preserveIndex:true}}
 }
 export function generateStaticParams(){return EMPLOI_LOCAL_LANDINGS.map(x=>({city:x.city,sector:x.sector}))}
 export async function generateMetadata({params}:Props):Promise<Metadata>{
- const {city,sector}=await params;const {config,offers}=await jobs(city,sector);
+ const {city,sector}=await params;const {config,offers,preserveIndex}=await jobs(city,sector);
  if(!config)return{title:"Emploi en France",robots:{index:false,follow:false}};
+ // Preserve SEO visibility of local job guides during temporary upstream outages.
  const title="Offres d'emploi "+(config.sector==="chauffeur"?"Chauffeur-livreur et coursier":config.role)+" à "+config.cityName+" ("+config.department+")";
- return{title,description:"Consultez les offres "+(config.sector==="chauffeur"?"de chauffeur-livreur et coursier":"de "+config.role.toLowerCase())+" dans le département "+config.department+" autour de "+config.cityName+". Contrats selon les annonces France Travail disponibles.",robots:{index:offers.length>0,follow:true},alternates:{canonical:emploiLocalHref(config)},openGraph:{title}};
+ return{title,description:"Consultez les offres "+(config.sector==="chauffeur"?"de chauffeur-livreur et coursier":"de "+config.role.toLowerCase())+" dans le département "+config.department+" autour de "+config.cityName+". Contrats selon les annonces France Travail disponibles.",robots:{index:offers.length>0||preserveIndex,follow:true},alternates:{canonical:emploiLocalHref(config)},openGraph:{title}};
 }
 export default async function Page({params}:Props){
  const {city,sector}=await params;

@@ -67,10 +67,12 @@ export default async function sitemap():Promise<MetadataRoute.Sitemap>{
         try{
           const qs=new URLSearchParams({motsCles:item.term,departement:item.department});
           const response=await fetch(apiBase()+"/public/emploi/france-travail?"+qs,{next:{revalidate:900},signal:AbortSignal.timeout(6000)});
-          if(!response.ok)return false;
+          // Preserve already-indexed job guides during transient France Travail 5xx responses.
+          // On a healthy 200 response, still omit landing pages with no matching offers.
+          if(!response.ok)return response.status===502||response.status===504;
           const data=await response.json() as {enabled?:boolean;items?:unknown[]};
           return data.enabled===true&&Array.isArray(data.items)&&data.items.length>0;
-        }catch{return false}
+        }catch{return true} // Network timeout: retain canonical URLs until the next healthy check.
       }));
       batch.forEach((item,index)=>{if(active[index])rows.push({url:BASE+emploiLocalHref(item),changeFrequency:"daily",priority:0.69})});
     }
