@@ -363,7 +363,7 @@ export default async function HomePage() {
            <div className="home-seo-hub-intro-text">
             <span className="home-seo-hub-eyebrow">Petites annonces gratuites en France</span>
             <h2 id="home-seo-title">Trouvez la bonne annonce, partout en France.</h2>
-            <p>Sur PetitAnnonces.fr, achetez et vendez gratuitement entre particuliers ou professionnels. Retrouvez des annonces d’occasion par catégorie ou près de chez vous.</p>
+            <p>Explorez les petites annonces gratuites en France : voitures d’occasion, immobilier, high-tech, mobilier, services et emploi. Consultez les annonces de particuliers et de professionnels par catégorie ou par ville, ou publiez votre annonce sans frais de dépôt.</p>
            </div>
            <div className="home-seo-hub-actions">
             <a className="home-seo-hub-primary" href="/deposer-annonce-gratuite">Déposer une annonce <span aria-hidden="true">↗</span></a>

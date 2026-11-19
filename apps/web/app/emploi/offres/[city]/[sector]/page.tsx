@@ -26,8 +26,8 @@ export function generateStaticParams(){return EMPLOI_LOCAL_LANDINGS.map(x=>({cit
 export async function generateMetadata({params}:Props):Promise<Metadata>{
  const {city,sector}=await params;const {config,offers}=await jobs(city,sector);
  if(!config)return{title:"Emploi en France",robots:{index:false,follow:false}};
- const title="Offres d'emploi "+config.role+" à "+config.cityName+" ("+config.department+")";
- return{title,description:"Consultez les offres "+config.role.toLowerCase()+" dans le département "+config.department+" autour de "+config.cityName+". Contrats CDI, CDD et intérim selon les offres France Travail disponibles.",robots:{index:offers.length>0,follow:true},alternates:{canonical:emploiLocalHref(config)},openGraph:{title}};
+ const title="Offres d'emploi "+(config.sector==="chauffeur"?"Chauffeur-livreur et coursier":config.role)+" à "+config.cityName+" ("+config.department+")";
+ return{title,description:"Consultez les offres "+(config.sector==="chauffeur"?"de chauffeur-livreur et coursier":"de "+config.role.toLowerCase())+" dans le département "+config.department+" autour de "+config.cityName+". Contrats selon les annonces France Travail disponibles.",robots:{index:offers.length>0,follow:true},alternates:{canonical:emploiLocalHref(config)},openGraph:{title}};
 }
 export default async function Page({params}:Props){
  const {city,sector}=await params;
@@ -35,7 +35,7 @@ export default async function Page({params}:Props){
  if(!config)notFound();
  const filter={q:config.term,departement:config.department,contrat:"" as const,page:1};
  const q=new URLSearchParams({ft_q:config.term,ft_dept:config.department});
- const others=EMPLOI_LOCAL_LANDINGS.filter(x=>x.city!==city||x.sector!==sector).slice(0,6);
+ const others=EMPLOI_LOCAL_LANDINGS.filter(x=>x.city!==city||x.sector!==sector).sort((a,b)=>Number(b.city===city)-Number(a.city===city)).slice(0,7);
  return <main className={styles.shell}>
   <nav className={styles.crumb} aria-label="Fil d'Ariane"><Link href="/">Accueil</Link><span>›</span><Link href="/categorie/emploi">Emploi</Link><span>›</span><span>{config.area}</span></nav>
   <section className={styles.hero}><div className={styles.badge}>EMPLOI LOCAL · FRANCE TRAVAIL</div>
@@ -56,8 +56,14 @@ export default async function Page({params}:Props){
   </section>
   <section className={styles.guide}><h2>Comment rechercher un emploi {config.role.toLowerCase()} autour de {config.cityName} ?</h2>
    <p>Consultez les offres disponibles dans le département {config.department}, vérifiez le lieu de travail exact, la durée du contrat et les compétences attendues. Pour élargir les résultats, retirez le filtre de département ou essayez des intitulés de métier voisins.</p>
+    {config.sector==="chauffeur"&&<p>À Lyon, les recherches d’emploi de chauffeur-livreur recoupent parfois celles de coursier, livreur et conducteur de livraison. Vérifiez pour chaque offre le véhicule demandé, la zone de tournée et les horaires : les résultats proviennent de France Travail pour le Rhône, pas uniquement de Lyon.</p>}
    <p>Une alerte emploi enregistrée permet de recevoir les nouvelles offres correspondant à votre métier et à votre département selon vos préférences de notification. Elle peut être désactivée depuis votre espace personnel.</p>
    <h3>Découvrez également</h3><div className={styles.related}>{others.map(x=><Link href={emploiLocalHref(x)} key={x.city+"-"+x.sector}>{x.role} · {x.cityName} <span>↗</span></Link>)}</div>
   </section>
+  <script type="application/ld+json" dangerouslySetInnerHTML={{__html:JSON.stringify({"@context":"https://schema.org","@type":"BreadcrumbList",itemListElement:[
+    {"@type":"ListItem",position:1,name:"Accueil",item:"https://petitannonces.fr/"},
+    {"@type":"ListItem",position:2,name:"Emploi",item:"https://petitannonces.fr/categorie/emploi"},
+    {"@type":"ListItem",position:3,name:config.role+" à "+config.cityName,item:"https://petitannonces.fr"+emploiLocalHref(config)}
+  ]}).replace(/</g,"\\u003c")}}/>
  </main>
 }

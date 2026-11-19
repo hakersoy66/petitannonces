@@ -56,3 +56,13 @@
 @media(max-width:760px) and (display-mode:standalone){
  .page{padding-left:env(safe-area-inset-left,0px)!important;padding-right:env(safe-area-inset-right,0px)!important}
 }
+
+
+/* Organic search navigation: useful category links on free-listing landing page. */
+.seoLinks{padding:42px 0;background:#fbfaff;border-block:1px solid #eeebf7}
+.seoLinks h2{margin:0 0 10px;font-size:clamp(1.5rem,2.6vw,2.15rem);line-height:1.12;letter-spacing:-.03em}
+.seoLinks p{max-width:850px;color:#696779;font-size:14px;line-height:1.7;margin:0 0 20px}
+.seoLinks nav{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.seoLinks nav a{display:flex;align-items:center;min-height:50px;padding:13px 15px;border:1px solid #e5def5;border-radius:13px;background:white;color:#5141ad;text-decoration:none;font-size:13px;font-weight:750;line-height:1.35}
+.seoLinks nav a:hover,.seoLinks nav a:focus-visible{border-color:#8f81e8;background:#f4f0ff}
+@media(max-width:760px){.seoLinks{padding:28px 0}.seoLinks .shell{width:calc(100% - 24px)!important;max-width:100%!important;margin-inline:auto!important}.seoLinks h2{font-size:1.5rem}.seoLinks p{font-size:13px;line-height:1.55}.seoLinks nav{grid-template-columns:1fr;gap:8px}.seoLinks nav a{min-height:46px;padding:10px 12px;font-size:12px}}

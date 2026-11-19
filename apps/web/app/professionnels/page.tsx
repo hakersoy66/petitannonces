@@ -4,13 +4,13 @@ import styles from "./page.module.css";
 import {BlackFridayProRibbon} from "../../components/black-friday-pro-ribbon";
 
 export const metadata: Metadata = {
-  title: { absolute: "Annonces professionnelles en France | Boutiques Pro" },
-  description: "Déposez des annonces professionnelles et créez votre boutique en ligne en France. Pour commerçants, agences et revendeurs : essai Pro de 90 jours sans carte bancaire.",
+  title: { absolute: "Annonces professionnelles et boutiques Pro | Petit Annonces" },
+  description: "Publiez vos annonces professionnelles en France et ouvrez votre boutique Pro : catalogue, identité vérifiée et 90 jours d’essai sans carte bancaire.",
   alternates: { canonical: "/professionnels" },
   openGraph: {
     type: "website",
     url: "/professionnels",
-    title: "Annonces professionnelles en France | Boutiques Pro",
+    title: "Annonces professionnelles et boutiques Pro | Petit Annonces",
     description: "Découvrez les boutiques et entreprises par secteur ou diffusez vos annonces professionnelles avec 90 jours Pro offerts, sans carte bancaire.",
   },
 };
@@ -235,7 +235,7 @@ export default async function ProfessionalsPage({ searchParams }: { searchParams
 
         <section className={styles.value} aria-labelledby="seo-pro-publish-title">
           <div className={styles.shell}>
-            <div className={styles.sectionHead}><span>Publier pour votre activité</span><h2 id="seo-pro-publish-title">Déposer une annonce professionnelle pour un commerce, une boutique ou un magasin.</h2><p>Sur Petit Annonces, les professionnels peuvent publier leurs annonces, structurer leur catalogue et présenter leur activité dans une boutique dédiée. Choisissez la catégorie la plus précise pour apparaître sur des recherches liées à votre métier, votre ville et aux produits ou biens que vous proposez.</p></div>
+            <div className={styles.sectionHead}><span>Publier pour votre activité</span><h2 id="seo-pro-publish-title">Déposer une annonce professionnelle en France pour votre commerce, boutique ou magasin.</h2><p>Sur Petit Annonces, les professionnels peuvent publier leurs annonces, structurer leur catalogue et présenter leur activité dans une boutique dédiée. Choisissez la catégorie la plus précise pour apparaître sur des recherches liées à votre métier, votre ville et aux produits ou biens que vous proposez.</p></div>
             <div className={styles.valueGrid}>
               <article><i><AppIcon name="store" /></i><h3>Commerce, boutique & seconde main</h3><p>Présentez votre stock, vos arrivages et vos annonces d’occasion depuis une vitrine professionnelle identifiable.</p><a href="/pro/occasion">Publier pour un commerce d’occasion →</a></article>
               <article><i><AppIcon name="tools" /></i><h3>Matériel de commerce & restauration</h3><p>Déposez des annonces de matériel professionnel dans une catégorie dédiée pour toucher des acheteurs plus qualifiés.</p><a href="/categorie/materiel-commerce-restauration">Voir le matériel professionnel →</a></article>
@@ -333,6 +333,17 @@ export default async function ProfessionalsPage({ searchParams }: { searchParams
           </div>
         </section>
 
+        <section className={styles.value} aria-labelledby="faq-pro-petitannonces">
+          <div className={styles.shell}>
+            <div className={styles.sectionHead}><span>Vos questions</span><h2 id="faq-pro-petitannonces">Publier des annonces en tant que professionnel</h2><p>Une boutique Pro permet de présenter votre entreprise et de regrouper vos petites annonces dans un espace dédié.</p></div>
+            <div className={styles.valueGrid}>
+              <article><h3>Qui peut ouvrir une boutique professionnelle ?</h3><p>Un commerçant, un artisan, une agence ou une entreprise peut demander un compte professionnel. L’identité de l’entreprise est vérifiée pendant la validation du compte.</p></article>
+              <article><h3>Peut-on essayer l’offre avant de s’abonner ?</h3><p>L’offre de lancement propose 90 jours d’essai Pro sans carte bancaire. Les formules et conditions sont indiquées dans la section tarifs.</p></article>
+              <article><h3>Où apparaissent les annonces d’une entreprise ?</h3><p>Les annonces publiées sont visibles dans leurs catégories et sur la page de la boutique, lorsque leur statut permet leur diffusion.</p></article>
+              <article><h3>Je vends en tant que particulier, que choisir ?</h3><p>Les particuliers peuvent <a href="/deposer-annonce-gratuite">déposer une petite annonce gratuite</a>, sans ouvrir de boutique professionnelle.</p></article>
+            </div>
+          </div>
+        </section>
         <section className={styles.cta}><div className={styles.shell}><div><span>Passez à une présence professionnelle</span><h2>Créez votre vitrine et commencez à structurer vos ventes.</h2></div><a href="/inscription/pro">Créer mon compte professionnel <AppIcon name="arrow-right" /></a></div></section>
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c") }} />
       </main>

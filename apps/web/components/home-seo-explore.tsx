@@ -4,6 +4,7 @@ import {useState} from "react";
 
 type SeoCity={city:string;slug:string};
 const links=[
+ {href:"/deposer-annonce-gratuite",label:"Déposer une petite annonce gratuite"},
  {href:"/categorie/vehicules",label:"Voitures et véhicules d’occasion"},
  {href:"/categorie/emploi",label:"Offres d’emploi en France"},
  {href:"/categorie/immobilier",label:"Immobilier"},
@@ -15,7 +16,10 @@ const links=[
  {href:"/categorie/chats",label:"Chats"},
  {href:"/categorie/aspirateurs",label:"Aspirateurs"},
  {href:"/vacances",label:"Locations de vacances"},
- {href:"/professionnels",label:"Boutiques professionnelles"}
+ {href:"/professionnels",label:"Annonces professionnelles et boutiques Pro"},
+ {href:"/emploi/offres/lyon/chauffeur",label:"Emploi chauffeur-livreur à Lyon"},
+ {href:"/emploi/offres/paris/developpeur",label:"Emploi développeur à Paris"},
+ {href:"/emploi/offres/marseille/vendeur",label:"Emploi vendeur à Marseille"}
 ] as const;
 
 /** All SEO navigation links remain in the HTML for discovery, even when

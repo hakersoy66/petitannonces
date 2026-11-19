@@ -3,7 +3,7 @@ import {AppIcon} from "../../components/app-icon";
 import {CampaignLink} from "../../components/campaign-link";
 import styles from "../campaign-landing.module.css";
 
-export const metadata:Metadata={title:{absolute:"Déposer une petite annonce gratuite | Petit Annonces"},description:"Déposez une petite annonce gratuite en France : choisissez la catégorie, ajoutez vos photos, votre prix et votre ville. Publication après contrôle, sans frais de dépôt.",alternates:{canonical:"https://petitannonces.fr/deposer-annonce-gratuite"},openGraph:{title:"Déposer une petite annonce gratuite | Petit Annonces",description:"Publiez gratuitement votre petite annonce partout en France avec un parcours simple et guidé.",url:"https://petitannonces.fr/deposer-annonce-gratuite",type:"website"}};
+export const metadata:Metadata={title:{absolute:"Déposer une annonce gratuite en France | Petit Annonces"},description:"Déposez gratuitement une petite annonce en France : voiture, immobilier, meubles ou high-tech. Ajoutez vos photos et votre ville, sans frais de dépôt.",alternates:{canonical:"https://petitannonces.fr/deposer-annonce-gratuite"},openGraph:{title:"Déposer une annonce gratuite en France | Petit Annonces",description:"Publiez gratuitement votre petite annonce partout en France avec un parcours simple et guidé.",url:"https://petitannonces.fr/deposer-annonce-gratuite",type:"website"}};
 type Params=Record<string,string|string[]|undefined>;type Props={searchParams:Promise<Params>};
 const TRACKING_KEYS=["utm_source","utm_medium","utm_campaign","utm_content","utm_term","fbclid","gclid","gbraid","wbraid","msclkid"] as const;
 function first(value:string|string[]|undefined){return Array.isArray(value)?value[0]:value}
@@ -11,6 +11,8 @@ const FAQ=[
  {q:"Comment déposer une petite annonce gratuite ?",a:"Créez votre compte, choisissez la catégorie, ajoutez un titre, des photos, un prix et votre ville, puis envoyez l’annonce pour contrôle avant publication."},
  {q:"Combien coûte la publication d’une annonce ?",a:"Le dépôt d’une annonce par un particulier est gratuit sur Petit Annonces, sous réserve des règles de publication et de modération de la plateforme."},
  {q:"Puis-je publier une annonce partout en France ?",a:"Oui. Vous pouvez renseigner votre ville et votre code postal afin que les acheteurs trouvent plus facilement votre annonce dans leur zone."},
+ {q:"Comment rendre mon annonce plus visible ?",a:"Choisissez une catégorie précise, ajoutez des photos nettes, indiquez l’état du produit et renseignez un prix réaliste ainsi que sa localisation."},
+ {q:"Peut-on déposer une annonce depuis un téléphone ?",a:"Oui, la création d’annonce est accessible depuis le navigateur mobile et la version installable de Petit Annonces."},
 ];
 
 export default async function FreeListingLanding({searchParams}:Props){
@@ -22,6 +24,20 @@ export default async function FreeListingLanding({searchParams}:Props){
   </div></section>
   <section className={styles.steps}><div className={styles.shell}><div className={styles.sectionHead}><span>Quelques minutes suffisent</span><h2>Comment publier une petite annonce gratuitement ?</h2><p>Le formulaire s’adapte à la catégorie choisie pour ne demander que les informations utiles, de la création jusqu’à la publication.</p></div><div className={styles.stepGrid}><article><i>1</i><span><AppIcon name="list"/></span><h3>Présentez votre objet</h3><p>Choisissez la bonne catégorie et ajoutez un titre facile à comprendre.</p></article><article><i>2</i><span><AppIcon name="camera"/></span><h3>Montrez ce que vous vendez</h3><p>Ajoutez vos photos, les caractéristiques utiles et une description claire.</p></article><article><i>3</i><span><AppIcon name="circle-check"/></span><h3>Fixez votre prix et publiez</h3><p>Vérifiez l’annonce, choisissez votre prix puis envoyez-la en modération.</p></article></div></div></section>
   <section className={styles.trust}><div className={styles.shell}><div className={styles.trustCopy}><span>Vendre sur Petit Annonces</span><h2>Tout ce qu’il faut pour vendre sans compliquer le parcours.</h2><p>Votre espace regroupe brouillons, annonces, favoris, messages et notifications afin que vous puissiez suivre les contacts depuis le web ou la PWA.</p><p>Vous publiez pour une entreprise, un commerce ou un magasin ? <a href="/professionnels">Découvrez comment déposer des annonces professionnelles et ouvrir une boutique Pro</a>.</p><CampaignLink className={styles.secondary} href={cta} cta="trust_secondary" landing="/deposer-annonce-gratuite" campaign="listing_general">Créer mon annonce <AppIcon name="arrow-right"/></CampaignLink></div><div className={styles.trustCards}><article><AppIcon name="shield"/><div><strong>Contrôles de sécurité</strong><small>Les annonces restent soumises aux règles de contenu et à la modération avant publication.</small></div></article><article><AppIcon name="comments"/><div><strong>Messagerie intégrée</strong><small>Échangez avec les acheteurs depuis Petit Annonces.</small></div></article><article><AppIcon name="location"/><div><strong>Près de chez vous</strong><small>La ville et le code postal permettent aux acheteurs de trouver les annonces locales.</small></div></article><article><AppIcon name="credit-card"/><div><strong>Paiement sécurisé</strong><small>Sur les annonces éligibles, acheteurs et vendeurs peuvent utiliser le parcours de paiement sécurisé Petit Annonces.</small></div></article></div></div></section>
+  <section className={styles.seoLinks} aria-labelledby="annonces-categories-populaires">
+    <div className={styles.shell}>
+      <h2 id="annonces-categories-populaires">Une petite annonce gratuite pour chaque besoin</h2>
+      <p>Pour vendre un objet, proposer un service ou trouver un acheteur près de chez vous, choisissez une rubrique adaptée. Les annonces se consultent par catégorie et par ville.</p>
+      <nav aria-label="Catégories d’annonces gratuites">
+        <a href="/categorie/vehicules">Voitures et véhicules d’occasion</a>
+        <a href="/categorie/immobilier">Annonces immobilières</a>
+        <a href="/categorie/high-tech">Téléphones et high-tech d’occasion</a>
+        <a href="/categorie/maison-jardin">Meubles, maison et jardin</a>
+        <a href="/categorie/services">Prestations et services</a>
+        <a href="/professionnels">Vous vendez en professionnel ?</a>
+      </nav>
+    </div>
+  </section>
   <section className={styles.steps} aria-labelledby="faq-annonce-gratuite"><div className={styles.shell}><div className={styles.sectionHead}><span>Questions fréquentes</span><h2 id="faq-annonce-gratuite">Publier une annonce gratuite sur Petit Annonces</h2><p>Les réponses essentielles avant de mettre votre annonce en ligne.</p></div><div className={styles.stepGrid}>{FAQ.map((item,index)=><article key={item.q}><i>{index+1}</i><span><AppIcon name="circle-check"/></span><h3>{item.q}</h3><p>{item.a}</p></article>)}</div></div></section>
   <script type="application/ld+json" dangerouslySetInnerHTML={{__html:JSON.stringify({"@context":"https://schema.org","@type":"FAQPage",mainEntity:FAQ.map(item=>({"@type":"Question",name:item.q,acceptedAnswer:{"@type":"Answer",text:item.a}}))})}}/>
   <CampaignLink className={styles.mobileCta} href={cta} cta="mobile_sticky" landing="/deposer-annonce-gratuite" campaign="listing_general">Déposer une annonce <AppIcon name="arrow-right"/></CampaignLink>
