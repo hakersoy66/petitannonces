@@ -39,6 +39,7 @@ export const adminNavGroups:AdminNavGroup[]=[
   {icon:"growth",label:"Croissance",href:"/growth",roles:campaigns},
   {icon:"campaign",label:"Influenceurs & partenariats",href:"/influenceurs",roles:marketing},
   {icon:"search",label:"SEO & Google",href:"/seo",roles:marketing},
+  {icon:"store",label:"Google Merchant",href:"/google-merchant",roles:marketing},
   {icon:"briefcase",label:"Suivi Emploi",href:"/emploi-analytics",roles:operations},
   {icon:"campaign",label:"Offres & campagnes",href:"/commercial",roles:campaigns},
   {icon:"campaign",label:"Black Friday",href:"/commercial/black-friday",roles:campaigns},
