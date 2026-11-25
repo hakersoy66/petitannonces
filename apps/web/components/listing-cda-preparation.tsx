@@ -6,13 +6,14 @@ import styles from "./listing-cda-preparation.module.css";
 type Operation = 1 | 2 | 3 | 4;
 type OwnerType = 1 | 2;
 type ProNumberType = 1 | 2 | 3 | 4;
-type Status = "NOT_STARTED" | "PREPARED";
+type Status = "NOT_STARTED" | "CHECKING" | "CHECKED" | "CODE_SENT" | "VERIFIED" | "FAILED" | "UNAVAILABLE" | "EXPIRED";
 type CdaStatus = {
   status?: Status;
   verified?: boolean;
   officialVerificationAvailable?: boolean;
   preparedAt?: string;
   expiresAt?: string;
+  hasMail?: boolean; hasTel?: boolean; errorCode?: number;
 };
 type Props = {
   listingId: string;
@@ -44,6 +45,10 @@ export function ListingCdaPreparation({ listingId, categorySlug, isProfessional,
   const [status, setStatus] = useState<Status>("NOT_STARTED");
   const [message, setMessage] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
+  const [hasMail,setHasMail]=useState(false),[hasTel,setHasTel]=useState(false),[code,setCode]=useState("");
+  const [consent,setConsent]=useState(false);
+  function applyStatus(data:CdaStatus){setStatus(data.status??"NOT_STARTED");setHasMail(Boolean(data.hasMail));setHasTel(Boolean(data.hasTel));setExpiresAt(data.expiresAt??"");setMessage(data.errorCode?("Contrôle CDA : erreur "+data.errorCode+". Vérifiez vos informations ou réessayez."):"");}
+  async function advance(action:"contact"|"verify",body:Record<string,unknown>){setLoading(true);setMessage("");try{const r=await fetch(api()+"/listings/"+encodeURIComponent(listingId)+"/cda/"+action,{method:"POST",credentials:"include",headers:{"content-type":"application/json"},body:JSON.stringify(body)});const d=await r.json();if(!r.ok)throw Error();applyStatus(d);if(action==="verify")setCode("");}catch{setMessage("Contrôle indisponible. Réessayez ou recommencez la vérification.")}finally{setLoading(false)}}
 
   useEffect(() => {
     setStatus("NOT_STARTED");
@@ -59,8 +64,7 @@ export function ListingCdaPreparation({ listingId, categorySlug, isProfessional,
       return response.json() as Promise<CdaStatus>;
     }).then(data => {
       if (canceled) return;
-      setStatus(data.status === "PREPARED" ? "PREPARED" : "NOT_STARTED");
-      setExpiresAt(data.expiresAt ?? "");
+      applyStatus(data);
     }).catch(() => {
       if (!canceled) setMessage("Le statut de préparation CDA n'a pas pu être chargé.");
     }).finally(() => { if (!canceled) setChecking(false); });
@@ -75,7 +79,7 @@ export function ListingCdaPreparation({ listingId, categorySlug, isProfessional,
 
   async function prepare(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (loading || !canPrepare || !listingId) return;
+    if (loading || !canPrepare || !listingId || !consent) return;
     setMessage("");
     if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(birthDate)) {
       setMessage("Renseignez le mois et l'année de naissance."); return;
@@ -101,7 +105,7 @@ export function ListingCdaPreparation({ listingId, categorySlug, isProfessional,
           } : {}),
         };
     const body = {
-      operationType: operation,
+      operationType: operation, consent: true,
       data: {
         animal: {
           identification: idMethod === "chip"
@@ -120,7 +124,7 @@ export function ListingCdaPreparation({ listingId, categorySlug, isProfessional,
         body: JSON.stringify(body),
       });
       const payload = await response.json().catch(() => ({})) as {
-        prepared?: boolean; expiresAt?: string; error?: string;
+        prepared?: boolean; expiresAt?: string; error?: string; status?:Status; hasMail?:boolean; hasTel?:boolean; errorCode?:number;
       };
       if (!response.ok || !payload.prepared) {
         const reason: Record<string,string> = {
@@ -136,9 +140,7 @@ export function ListingCdaPreparation({ listingId, categorySlug, isProfessional,
       // Discard the sensitive raw inputs from the interface after submission.
       setIdentifier(""); setFirstName(""); setLastName(""); setProNumber("");
       setBirthDate(""); setBreed("");
-      setStatus("PREPARED");
-      setExpiresAt(payload.expiresAt ?? "");
-      setMessage("");
+      applyStatus(payload);
     } catch {
       setMessage("Le service de préparation est indisponible pour le moment.");
     } finally {
@@ -151,21 +153,28 @@ export function ListingCdaPreparation({ listingId, categorySlug, isProfessional,
       <div className={styles.icon} aria-hidden="true">🐾</div>
       <div>
         <span className={styles.eyebrow}>I-CAD · Contrôle des annonces</span>
-        <h3>Préparation de la vérification animale</h3>
+        <h3>Vérification officielle de l’animal</h3>
         <p>Identifiez l'animal et son détenteur avant toute demande de cession.</p>
       </div>
     </div>
     <div className={styles.notice} role="status">
-      <strong>Fonctionnalité en préparation — aucune annonce d'animal vivant n'est publiable.</strong>
-      <span>L'accès I-CAD actuel est réservé à la préproduction. L'enregistrement des données ci-dessous ne constitue <b>ni une validation officielle, ni une autorisation de vente, de don ou d'adoption</b>. Aucun code n'est envoyé à cette étape.</span>
+      <strong>Contrôle officiel avant publication</strong>
+      <span>Les données sont transmises au dispositif CDA. Confirmez ensuite votre identité avec le code reçu sur les coordonnées enregistrées dans le registre officiel. La décision de publication reste manuelle.</span>
     </div>
     {!canPrepare ? <div className={styles.notice}>
       Les vérifications CDA disponibles concernent uniquement les chiens et les chats. Les autres catégories restent indisponibles pour les cessions.
-    </div> : checking ? <p className={styles.muted}>Vérification du statut du brouillon…</p> : status === "PREPARED" ? <div className={styles.confirmation}>
-      <strong>Informations de préparation enregistrées</strong>
-      <p>Les données ont été enregistrées sous forme d'empreinte sécurisée liée à votre brouillon. Votre identité et celle de l'animal ne sont pas certifiées par I-CAD.</p>
-      {expiresAt && <small>Préparation valable jusqu'au {new Date(expiresAt).toLocaleDateString("fr-FR")}. Une vérification officielle sera exigée avant toute publication.</small>}
-      <button type="button" className={styles.secondary} onClick={() => setStatus("NOT_STARTED")}>Recommencer la préparation</button>
+    </div> : checking ? <p className={styles.muted}>Vérification du statut du brouillon…</p> : status === "VERIFIED" ? <div className={styles.confirmation}>
+      <strong>Vérification I-CAD réussie</strong>
+      <p>Le code a été validé par le dispositif CDA. Votre annonce sera ensuite examinée par notre équipe.</p>
+      {expiresAt && <small>Contrôle valable jusqu’au {new Date(expiresAt).toLocaleDateString("fr-FR")}.</small>}
+      <button type="button" className={styles.secondary} onClick={() => setStatus("NOT_STARTED")}>Recommencer la vérification</button>
+    </div> : status==="CHECKED"||status==="CODE_SENT" ? <div className={styles.confirmation}>
+      <strong>{status==="CHECKED"?"Informations reconnues par CDA":"Code de validation envoyé"}</strong>
+      <p>Le code est envoyé aux coordonnées enregistrées auprès du registre officiel, jamais aux coordonnées saisies librement.</p>
+      {status==="CHECKED"&&<>{hasMail&&<button type="button" className={styles.submit} disabled={loading} onClick={()=>void advance("contact",{contactType:1})}>Recevoir le code par e-mail</button>}{!hasMail&&hasTel&&<button type="button" className={styles.submit} disabled={loading} onClick={()=>void advance("contact",{contactType:2})}>Recevoir le code par SMS</button>}</>}
+      {status==="CODE_SENT"&&<form onSubmit={e=>{e.preventDefault();void advance("verify",{code})}}><label className={styles.field}><span>Code de validation</span><input value={code} onChange={e=>setCode(e.target.value)} autoComplete="one-time-code" required minLength={4} maxLength={12}/></label><button type="submit" className={styles.submit} disabled={loading}>Valider le code</button></form>}
+      {message&&<p role="alert" className={styles.error}>{message}</p>}
+      <button type="button" className={styles.secondary} disabled={loading} onClick={()=>setStatus("NOT_STARTED")}>Recommencer la vérification</button>
     </div> : <form className={styles.form} onSubmit={prepare} autoComplete="off">
       <section className={styles.section}>
         <div className={styles.sectionTitle}><span>01</span><div><h4>Nature de la cession</h4><p>Le type de compte et l'opération doivent respecter les règles I-CAD.</p></div></div>
@@ -237,13 +246,14 @@ export function ListingCdaPreparation({ listingId, categorySlug, isProfessional,
           </>}
         </div>
       </section>
-      <p className={styles.privacy}>Ces informations servent uniquement à préparer le contrôle futur. La préparation est limitée à ce brouillon et ne sauvegarde pas le numéro d'identification ni le nom du détenteur en clair.</p>
+      <p className={styles.privacy}>Ces informations sont transmises à Ingenium Animalis pour le contrôle réglementaire de cette annonce. Le numéro d’identification et le nom du détenteur ne sont pas conservés en clair par Petit Annonces.</p>
+      <label className={styles.checkbox}><input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)} required/><span>Je confirme être habilité à transmettre ces informations pour le contrôle CDA.</span></label>
       {message && <p className={styles.error} role="alert">{message}</p>}
-      <button className={styles.submit} type="submit" disabled={loading}>{loading ? "Enregistrement…" : "Enregistrer la préparation CDA"}</button>
+      <button className={styles.submit} type="submit" disabled={loading||!consent}>{loading ? "Vérification…" : "Vérifier avec I-CAD"}</button>
     </form>}
     <div className={styles.actions}>
       <button type="button" className={styles.secondary} onClick={onBack}>Retour aux photos</button>
-      <span>La publication restera bloquée jusqu'à l'autorisation officielle I-CAD.</span>
+      <span>La publication nécessite un contrôle CDA réussi et une validation manuelle.</span>
     </div>
   </div>;
 }

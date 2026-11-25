@@ -6,7 +6,7 @@ import{AdminIcon}from"../../../components/admin-icon";
 type Store={id:string;name:string;status:string};
 type L={
  id:string;slug:string|null;title:string|null;description:string|null;status:string;priceMinor:number|null;currency:string;
- sellerEmail:string;sellerName:string;categoryId:string;category:string;domain:string;city:string|null;postalCode:string|null;
+ sellerEmail:string;sellerName:string;categoryId:string;category:string;categorySlug:string;domain:string;cda?:{status:string;verified:boolean}|null;city:string|null;postalCode:string|null;
  region:string|null;storeId:string|null;sellerStores:Store[];coverUrl:string|null;createdAt:string;publishedAt:string|null
 };
 type Cat={id:string;name:string;parentId:string|null};
@@ -49,7 +49,7 @@ export default function ListingsClient(){
   if(!edit||!form)return;
   const r=await fetch(`/api/admin/listings/${edit.id}`,{method:"PATCH",credentials:"include",headers:{"content-type":"application/json"},body:JSON.stringify({title:form.title,description:form.description,price:form.price===""?null:Number(form.price),city:form.city||null,postalCode:form.postalCode||null,region:form.region||null,categoryId:form.categoryId,storeId:form.storeId||null})});
   const p=await r.json().catch(()=>({}));
-  setMsg(r.ok?"Annonce modifiée.":p.error==="store_not_owned_by_seller"?"La vitrine sélectionnée n’appartient pas au vendeur.":"Impossible de modifier l’annonce.");
+  setMsg(r.ok?"Annonce modifiée.":p.error==="store_not_owned_by_seller"?"La vitrine sélectionnée n’appartient pas au vendeur.":p.error==="cda_seller_edit_required"?"Le vendeur doit corriger l’annonce animale et renouveler le contrôle CDA.":"Impossible de modifier l’annonce.");
   if(r.ok){setEdit(null);await load()}
  }
  function openBulk(next:"PUBLISHED"|"SUSPENDED"|"EXPIRED"){if(!selected.length)return;setStatusAction({ids:selected,next,reason:next==="PUBLISHED"?"Validation administrative groupée":"Décision administrative groupée"})}
@@ -118,7 +118,7 @@ export default function ListingsClient(){
         </a>
        </td>
        <td data-label="Prix"><strong className="admin-price-cell">{money(l.priceMinor,l.currency)}</strong></td>
-       <td data-label="Statut"><span className={`admin-badge ${tone(l.status)}`}>{labels[l.status]??l.status}</span></td>
+       <td data-label="Statut"><span className={`admin-badge ${tone(l.status)}`}>{labels[l.status]??l.status}</span>{l.domain==="ANIMAL"&&l.categorySlug!=="animaux-perdus"&&<div style={{marginTop:6}}><span className={`admin-badge ${l.cda?.verified?"green":"orange"}`}>{l.cda?.verified?"Vérifié I-CAD":l.cda?.status==="FAILED"?"I-CAD : échec":l.cda?.status==="UNAVAILABLE"?"I-CAD : indisponible":"I-CAD : non vérifié"}</span></div>}</td>
        <td data-label="Catégorie"><div className="admin-cell-stack"><strong>{l.category}</strong><small>{l.domain}</small></div></td>
        <td data-label="Vendeur"><div className="admin-cell-stack"><strong>{l.sellerName}</strong><small>{l.sellerEmail}</small></div></td>
        <td data-label="Localisation"><div className="admin-location-cell"><strong>{l.city||"—"}</strong><small>{l.postalCode||l.region||""}</small></div></td>

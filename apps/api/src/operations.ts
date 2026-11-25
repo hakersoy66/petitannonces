@@ -1,3 +1,4 @@
+import { adminCdaStatuses } from "./cda-production.js";
 import { createHash, randomUUID } from "node:crypto";
 import { prisma } from "@pa/database";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
@@ -238,10 +239,11 @@ export async function registerOperationsRoutes(app: FastifyInstance) {
           { seller: { email: { contains: q, mode: "insensitive" } } },
         ] }] } : {}),
       },
-      include: { seller: { select: { email: true, profile: { select: { displayName: true, firstName: true, lastName: true } }, stores:{select:{id:true,name:true,status:true}} } }, category: { select: { id:true,name: true, domain: true } } },
+      include: { seller: { select: { email: true, profile: { select: { displayName: true, firstName: true, lastName: true } }, stores:{select:{id:true,name:true,status:true}} } }, category: { select: { id:true,name: true, domain: true,slug:true } } },
       orderBy: { createdAt: "desc" }, take: 150,
     });
     const ids = rows.map(row => row.id);
+    const cdaById=await adminCdaStatuses(rows.filter(l=>l.category.domain==="ANIMAL").map(l=>l.id));
     const media = ids.length ? await prisma.$queryRawUnsafe<Array<{ listingId:string; publicUrl:string }>>(
       `SELECT DISTINCT ON ("listingId") "listingId","publicUrl" FROM "ListingMedia" WHERE "listingId" = ANY($1::text[]) AND "status"='READY' AND "publicUrl" IS NOT NULL ORDER BY "listingId","isCover" DESC,"sortOrder" ASC,"createdAt" ASC`, ids,
     ) : [];
@@ -249,7 +251,7 @@ export async function registerOperationsRoutes(app: FastifyInstance) {
     return reply.send({ listings: rows.map((l) => ({
       id: l.id, slug: l.slug, title: l.title, description:l.description, status: l.status, priceMinor: l.priceMinor, currency: l.currency,
       sellerEmail: l.seller.email, sellerName: l.seller.profile?.displayName ?? ([l.seller.profile?.firstName,l.seller.profile?.lastName].filter(Boolean).join(" ") || l.seller.email),
-      categoryId:l.category.id, category: l.category.name, domain: l.category.domain, city: l.city, postalCode: l.postalCode, region:l.region, storeId:l.storeId, sellerStores:l.seller.stores, coverUrl: mediaMap.get(l.id) ?? null, createdAt: l.createdAt, publishedAt: l.publishedAt,
+      categoryId:l.category.id, category: l.category.name, categorySlug:l.category.slug, domain: l.category.domain, cda:cdaById.get(l.id)??null, city: l.city, postalCode: l.postalCode, region:l.region, storeId:l.storeId, sellerStores:l.seller.stores, coverUrl: mediaMap.get(l.id) ?? null, createdAt: l.createdAt, publishedAt: l.publishedAt,
     })) });
   });
 
@@ -451,8 +453,9 @@ export async function registerOperationsRoutes(app: FastifyInstance) {
     const params=z.object({id:z.string().min(1)}).safeParse(request.params);
     const body=z.object({title:z.string().trim().min(5).max(120),description:z.string().trim().min(20).max(12000),price:z.number().nonnegative().nullable(),city:z.string().trim().max(100).nullable(),postalCode:z.string().trim().max(20).nullable(),region:z.string().trim().max(120).nullable(),categoryId:z.string().min(1),storeId:z.string().nullable().optional()}).safeParse(request.body);
     if(!params.success||!body.success)return reply.code(400).send({error:"invalid_request"});
-    const listing=await prisma.listing.findUnique({where:{id:params.data.id},select:{id:true,sellerId:true}});if(!listing)return reply.code(404).send({error:"listing_not_found"});
-    const category=await prisma.category.findUnique({where:{id:body.data.categoryId},select:{id:true}});if(!category)return reply.code(400).send({error:"category_not_found"});
+    const listing=await prisma.listing.findUnique({where:{id:params.data.id},select:{id:true,sellerId:true,category:{select:{domain:true,slug:true}}}});if(!listing)return reply.code(404).send({error:"listing_not_found"});
+    const category=await prisma.category.findUnique({where:{id:body.data.categoryId},select:{id:true,domain:true,slug:true}});if(!category)return reply.code(400).send({error:"category_not_found"});
+    if(animalCessionRequiresProductionApproval(listing.category)||animalCessionRequiresProductionApproval(category))return reply.code(423).send({error:"cda_seller_edit_required"});
     if(body.data.storeId){const store=await prisma.store.findFirst({where:{id:body.data.storeId,ownerId:listing.sellerId},select:{id:true}});if(!store)return reply.code(400).send({error:"store_not_owned_by_seller"});}
     const updated=await prisma.listing.update({where:{id:listing.id},data:{title:body.data.title,description:body.data.description,priceMinor:body.data.price==null?null:Math.round(body.data.price*100),city:body.data.city||null,postalCode:body.data.postalCode||null,region:body.data.region||null,categoryId:body.data.categoryId,...(body.data.storeId!==undefined?{storeId:body.data.storeId||null}:{})}});
     await audit(admin.id,"LISTING_CONTENT_UPDATED","LISTING",listing.id,{fields:["title","description","price","location","category","store"]});
@@ -559,7 +562,7 @@ export async function registerOperationsRoutes(app: FastifyInstance) {
       prisma.$queryRawUnsafe<Array<Record<string,unknown>>>(`SELECT "id","orderNumber","buyerId","sellerId","status","totalAmountMinor","sellerNetMinor","currency","createdAt" FROM "MarketplaceOrder" WHERE "listingId"=$1 ORDER BY "createdAt" DESC LIMIT 50`,listing.id),
       prisma.$queryRawUnsafe<Array<Record<string,unknown>>>(`SELECT "id","reporterId","reason"::text AS "reason","details","status"::text AS "status","createdAt" FROM "TrustReport" WHERE "targetType"='LISTING' AND "targetId"=$1 ORDER BY "createdAt" DESC LIMIT 50`,listing.id),
     ]);
-    return reply.send({listing,media,orders,reports});
+    return reply.send({listing,media,orders,reports,cda:listing.category.domain==="ANIMAL"?(await adminCdaStatuses([listing.id])).get(listing.id)??null:null});
   });
 
   app.get("/admin/professionals/:id/detail", async (request, reply) => {

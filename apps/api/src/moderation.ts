@@ -1,3 +1,4 @@
+import { adminCdaStatuses } from "./cda-production.js";
 import { createHash, randomUUID } from "node:crypto";
 import { prisma } from "@pa/database";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
@@ -171,6 +172,7 @@ export async function registerModerationRoutes(app: FastifyInstance) {
       },
     });
     const listingIds = listings.map(item => item.id);
+    const cdaById=await adminCdaStatuses(listings.filter(l=>l.category.domain==="ANIMAL").map(l=>l.id));
     const media = listingIds.length ? await prisma.$queryRawUnsafe<Array<{listingId:string;publicUrl:string|null}>>(
       `SELECT DISTINCT ON ("listingId") "listingId","publicUrl"
        FROM "ListingMedia"
@@ -203,6 +205,7 @@ export async function registerModerationRoutes(app: FastifyInstance) {
           priceMinor: listing.priceMinor, currency: listing.currency, city: listing.city, postalCode: listing.postalCode,
           createdAt: listing.createdAt, updatedAt: listing.updatedAt, coverUrl: coverById.get(listing.id) ?? null,
           category: listing.category,
+          cda:cdaById.get(listing.id)??null,
           seller: {
             id: listing.seller.id, email: listing.seller.email, kind: listing.seller.kind,
             name: sellerName || listing.seller.email,
@@ -267,6 +270,7 @@ export async function registerModerationRoutes(app: FastifyInstance) {
       priceMinor: listing.priceMinor, currency: listing.currency, city: listing.city, postalCode: listing.postalCode,
       region: listing.region, latitude: listing.latitude, longitude: listing.longitude,
       category: { name: listing.category.name, slug: listing.category.slug, domain: listing.category.domain },
+      cda:listing.category.domain==="ANIMAL"?(await adminCdaStatuses([listing.id])).get(listing.id)??null:null,
       attributes: values, vehicle: listing.vehicle, property: listing.property, energy: listing.energy,
       media: media.map(item => ({ ...item, url: item.publicUrl })), reports,
       seller: {
@@ -296,10 +300,12 @@ export async function registerModerationRoutes(app: FastifyInstance) {
     const c = cases[0]; if (!c) return reply.code(404).send({ error: "case_not_found" });
     if (body.data.action === "NONE" && c.targetType === "LISTING") {
       const currentListing=await prisma.listing.findUnique({where:{id:c.targetId},select:{publishedAt:true,sellerId:true,category:{select:{domain:true,slug:true}}}});
-      if(currentListing?.category.domain==="ANIMAL" && currentListing.category.slug!=="animaux-perdus")return reply.code(423).send({error:"animal_cession_requires_cda_production_validation"});
+      const animalCession=currentListing?.category.domain==="ANIMAL"&&currentListing.category.slug!=="animaux-perdus";
+      if(animalCession&&!(["chiens","chats"].includes(currentListing!.category.slug)&&(await adminCdaStatuses([c.targetId])).get(c.targetId)?.verified))return reply.code(423).send({error:"animal_cession_requires_cda_production_validation"});
       const firstPublication=currentListing?.publishedAt==null;
       const publishedAt = currentListing?.publishedAt ?? new Date();
-      const published = await prisma.listing.updateMany({ where: { id: c.targetId, status: "PENDING" }, data: { status: "PUBLISHED", publishedAt } });
+      const published = animalCession?{count:await prisma.$executeRawUnsafe(`UPDATE "Listing" l SET "status"='PUBLISHED',"publishedAt"=$2,"updatedAt"=NOW() WHERE l."id"=$1 AND l."status"='PENDING' AND EXISTS (SELECT 1 FROM "CdaListingProduction" c WHERE c."listingId"=l."id" AND c."sellerId"=l."sellerId" AND c."categoryId"=l."categoryId" AND c."status"='VERIFIED' AND c."expiresAt">NOW() AND (c."operationType" NOT IN (1,2) OR l."priceMinor"=0))`,c.targetId,publishedAt)}:await prisma.listing.updateMany({ where: { id: c.targetId, status: "PENDING" }, data: { status: "PUBLISHED", publishedAt } });
+      if(animalCession&&!published.count)return reply.code(423).send({error:"animal_cession_requires_cda_production_validation"});
       if (published.count) {
         await activateListingLifetime(c.targetId, publishedAt);
         if(currentListing?.sellerId)await rewardReferralAfterFirstPublishedListing(currentListing.sellerId).catch(error=>request.log.warn({error,userId:currentListing.sellerId},"referral reward failed after moderation approval"));

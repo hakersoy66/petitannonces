@@ -3,6 +3,7 @@ import { prisma } from "@pa/database";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { requireListingUser } from "./listing-auth.js";
+import { adminCdaStatuses } from "./cda-production.js";
 import { animalCessionRequiresProductionApproval } from "./animal-cession-gate.js";
 import { activateListingLifetime, getListingLifecycles, LISTING_RENEWAL_COST_MINOR, LISTING_RENEWAL_CURRENCY } from "./listing-lifecycle.js";
 import { queueAdminRoleEmail, queueTransactionalEmail } from "./transactional-email.js";
@@ -110,7 +111,7 @@ export async function evaluateListing(listingId: string, userId: string) {
 
   const errors: string[] = [];
   const warnings: string[] = [];
-  if (animalCessionRequiresProductionApproval(listing.category)) errors.push("animal_cession_requires_cda_production_validation");
+  if (animalCessionRequiresProductionApproval(listing.category)&&!(await adminCdaStatuses([listing.id])).get(listing.id)?.verified) warnings.push("animal_cession_requires_cda_production_validation");
   if (!listing.title || listing.title.trim().length < 5) errors.push("title_required");
   if (!listing.description || listing.description.trim().length < 20) errors.push("description_required");
   if (!listing.city) errors.push("city_required");
@@ -246,7 +247,7 @@ export async function registerPublicationRoutes(app: FastifyInstance) {
     const lifecycle=(await getListingLifecycles([lifecycleId]))[0]??null;
     const renewalRequired=Boolean(lifecycle&&lifecycle.isExpired);
     const issues=issueDetails(result.errors,result.warnings);
-    return reply.send({ ready: result.ready&&!renewalRequired&&!duplicate, phoneVerified, phoneVerificationRequired:false, manualModerationRequired:!phoneVerified, sellerKind:user.kind, compliance:{productSafety:safetyRows[0]??null,consumerDisclosure:disclosureRows[0]??null}, errors: result.errors, warnings: result.warnings, issues, quality: result.quality, summary: result.summary, duplicate:duplicate?duplicatePayload(duplicate):null, renewalRequired, renewal:lifecycle?{expiresAt:lifecycle.expiresAt,freeRenewalAvailable:!lifecycle.freeRenewalUsed,costMinor:lifecycle.freeRenewalUsed?LISTING_RENEWAL_COST_MINOR:0,currency:LISTING_RENEWAL_CURRENCY}:null, edit:editSession?{isolated:true,originalListingId:editSession.originalListingId,previousStatus:editSession.previousStatus}:null });
+    return reply.send({ ready: result.ready&&!renewalRequired&&!duplicate, phoneVerified, phoneVerificationRequired:false, manualModerationRequired:!phoneVerified||result.listing.category.domain==="ANIMAL", sellerKind:user.kind, compliance:{productSafety:safetyRows[0]??null,consumerDisclosure:disclosureRows[0]??null}, errors: result.errors, warnings: result.warnings, issues, quality: result.quality, summary: result.summary, duplicate:duplicate?duplicatePayload(duplicate):null, renewalRequired, renewal:lifecycle?{expiresAt:lifecycle.expiresAt,freeRenewalAvailable:!lifecycle.freeRenewalUsed,costMinor:lifecycle.freeRenewalUsed?LISTING_RENEWAL_COST_MINOR:0,currency:LISTING_RENEWAL_CURRENCY}:null, edit:editSession?{isolated:true,originalListingId:editSession.originalListingId,previousStatus:editSession.previousStatus}:null });
   });
 
   app.post("/listings/:id/publish", async (request, reply) => {
@@ -290,7 +291,10 @@ export async function registerPublicationRoutes(app: FastifyInstance) {
     let oldMediaKeys:string[]=[];
 
     const listing = await prisma.$transaction(async (tx) => {
-      if(editSession){const applied=await applyWorkingCopyToOriginal(tx,editSession);oldMediaKeys=applied.oldMediaKeys;}
+      if(editSession){const applied=await applyWorkingCopyToOriginal(tx,editSession);oldMediaKeys=applied.oldMediaKeys;
+       await tx.$executeRawUnsafe(`DELETE FROM "CdaListingProduction" WHERE "listingId"=$1`,targetId);
+       await tx.$executeRawUnsafe(`UPDATE "CdaListingProduction" SET "listingId"=$1,"caseId"=NULL WHERE "listingId"=$2 AND "status" IN ('VERIFIED','FAILED','UNAVAILABLE')`,targetId,editSession.workingListingId);
+      }
       await tx.$executeRawUnsafe(
         `INSERT INTO "ListingPublicationConsent" ("id","listingId","userId","termsAccepted","rulesAccepted","accuracyConfirmed","professionalDisclosureConfirmed","ipHash","userAgent","createdAt") VALUES ($1,$2,$3,TRUE,TRUE,TRUE,TRUE,$4,$5,NOW())`,
         consentId, targetId, user.id, requestIpHash(request), userAgent,

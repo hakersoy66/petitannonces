@@ -48,6 +48,7 @@ type PublicationCheck = {
 };
 
 const labels: Record<string, string> = {
+  animal_cession_requires_cda_production_validation: "Contrôle I-CAD non validé. Votre annonce peut être soumise à l’équipe, mais ne pourra pas être publiée avant un contrôle officiel réussi.",
   title_required: "Ajoutez un titre d’au moins 5 caractères.",
   description_required: "Ajoutez une description suffisamment détaillée.",
   city_required: "Indiquez la ville où se trouve l’annonce.",

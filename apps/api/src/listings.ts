@@ -336,6 +336,7 @@ export async function registerListingRoutes(app: FastifyInstance) {
         await tx.propertyEnergyPerformance.deleteMany({where:{listingId:draft.id}});
         await tx.propertyDetails.deleteMany({where:{listingId:draft.id}});
       }
+      await tx.$executeRawUnsafe(`DELETE FROM "CdaListingProduction" WHERE "listingId"=$1`,draft.id);
       await tx.listing.update({where:{id:draft.id},data:{categoryId:category.id}});
     });
     return reply.send({listing:{...draft,categoryId:category.id,category},categoryChanged:true,migratedAttributes:migrated.length});

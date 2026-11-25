@@ -83,7 +83,7 @@ function encode64(value: string | Buffer) {
   return Buffer.from(value).toString("base64url");
 }
 
-function signJwt(secret: string, payload: Record<string, unknown>) {
+export function signJwt(secret: string, payload: Record<string, unknown>) {
   const header = encode64(JSON.stringify({ alg: "HS256", typ: "JWT" }));
   const body = encode64(JSON.stringify(payload));
   const bodyToSign = header + "." + body;
