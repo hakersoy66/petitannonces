@@ -49,7 +49,7 @@ async function expoPushToken(requestPermission:boolean){
 }
 
 type NativeInsets={top:number;right:number;bottom:number;left:number};
-const NATIVE_UI_REVISION='2026-10-28-android-scroll-zoom-v3';
+const NATIVE_UI_REVISION='2026-11-25-cda-listing-v4';
 
 function buildBootstrapScript(insets:NativeInsets){
   const platformClass=Platform.OS==='ios'?'pa-native-ios':'pa-native-android';

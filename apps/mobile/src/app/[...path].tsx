@@ -59,7 +59,7 @@ export default function WebLinkFallback(){
     else if(a==='messages'&&b)target=`/messages/${enc(b)}`;
     else if(a==='messages'){const conversation=first(params.conversation);target=conversation?`/messages/${enc(conversation)}`:'/(tabs)/messages';}
     else if(a==='parrainage')target='/referrals';
-    else if(a==='deposer-une-annonce'||a==='deposer-annonce-gratuite')target='/sell';
+    else if(a==='deposer-une-annonce'||a==='deposer-annonce-gratuite')target=webFeatureUrl(parts,params);
     else if(a==='importer-une-annonce')target='/import-listing';
     else if(a==='boutique'&&b)target=`/store/${enc(b)}`;
     else if(a==='profil'&&b)target=`/seller/${enc(b)}`;
