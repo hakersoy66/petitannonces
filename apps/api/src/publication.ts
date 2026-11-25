@@ -3,6 +3,7 @@ import { prisma } from "@pa/database";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { requireListingUser } from "./listing-auth.js";
+import { animalCessionRequiresProductionApproval } from "./animal-cession-gate.js";
 import { activateListingLifetime, getListingLifecycles, LISTING_RENEWAL_COST_MINOR, LISTING_RENEWAL_CURRENCY } from "./listing-lifecycle.js";
 import { queueAdminRoleEmail, queueTransactionalEmail } from "./transactional-email.js";
 import { scheduleTrustedListingAutoApproval } from "./auto-approval.js";
@@ -109,6 +110,7 @@ export async function evaluateListing(listingId: string, userId: string) {
 
   const errors: string[] = [];
   const warnings: string[] = [];
+  if (animalCessionRequiresProductionApproval(listing.category)) errors.push("animal_cession_requires_cda_production_validation");
   if (!listing.title || listing.title.trim().length < 5) errors.push("title_required");
   if (!listing.description || listing.description.trim().length < 20) errors.push("description_required");
   if (!listing.city) errors.push("city_required");

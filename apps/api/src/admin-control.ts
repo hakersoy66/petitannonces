@@ -9,7 +9,7 @@ import sharp from "sharp";
 import { requireAdminRoles } from "./rbac.js";
 import { createPresignedUpload, makeStoredObjectPublic, publicObjectUrl, readStoredObjectBuffer, readStoredObjectText, storageConfigured, uploadStoredObject, verifyStoredObject } from "./storage.js";
 
-export type IntegrationProvider = "marketplace-payment" | "paypal-checkout" | "stripe-billing" | "sendcloud" | "hostinger-mail" | "twilio-verify" | "openai" | "vehicle-data" | "web-extraction" | "meta-ads" | "google-ads" | "hbx-hotels" | "cj-dropshipping" | "france-travail" | "cda-uat";
+export type IntegrationProvider = "marketplace-payment" | "paypal-checkout" | "stripe-billing" | "sendcloud" | "hostinger-mail" | "twilio-verify" | "openai" | "vehicle-data" | "web-extraction" | "meta-ads" | "google-ads" | "hbx-hotels" | "cj-dropshipping" | "france-travail" | "cda-uat" | "cda-production";
 export type RuntimeIntegration = { enabled: boolean; config: Record<string, unknown>; secrets: Record<string, string> };
 
 const execFileAsync=promisify(execFile);
@@ -19,7 +19,7 @@ const INTEGRATION_ADMIN = ["SUPER_ADMIN", "ADMIN"] as const;
 const MAX_BRANDING_BYTES = 5 * 1024 * 1024;
 const BRAND_MIMES = new Set(["image/jpeg", "image/png", "image/webp", "image/avif", "image/x-icon", "image/vnd.microsoft.icon", "image/svg+xml"]);
 const RASTER_BRAND_MIMES = new Set(["image/jpeg", "image/png", "image/webp", "image/avif", "image/x-icon", "image/vnd.microsoft.icon"]);
-const PROVIDERS: IntegrationProvider[] = ["marketplace-payment", "paypal-checkout", "stripe-billing", "sendcloud", "hostinger-mail", "twilio-verify", "openai", "vehicle-data", "web-extraction", "meta-ads", "google-ads", "hbx-hotels", "cj-dropshipping", "france-travail", "cda-uat"];
+const PROVIDERS: IntegrationProvider[] = ["marketplace-payment", "paypal-checkout", "stripe-billing", "sendcloud", "hostinger-mail", "twilio-verify", "openai", "vehicle-data", "web-extraction", "meta-ads", "google-ads", "hbx-hotels", "cj-dropshipping", "france-travail", "cda-uat", "cda-production"];
 
 const DEFAULT_SITE = {
   siteName: "Petit Annonces",
@@ -111,7 +111,7 @@ const siteSchema = z.object({
   })).length(6).refine(items=>new Set(items.map(item=>item.key)).size===6,{message:"duplicate_home_section"}),
 });
 
-const providerSchema = z.enum(["marketplace-payment", "paypal-checkout", "stripe-billing", "sendcloud", "hostinger-mail", "twilio-verify", "openai", "vehicle-data", "web-extraction", "meta-ads", "google-ads", "hbx-hotels", "cj-dropshipping", "france-travail", "cda-uat"]);
+const providerSchema = z.enum(["marketplace-payment", "paypal-checkout", "stripe-billing", "sendcloud", "hostinger-mail", "twilio-verify", "openai", "vehicle-data", "web-extraction", "meta-ads", "google-ads", "hbx-hotels", "cj-dropshipping", "france-travail", "cda-uat", "cda-production"]);
 const updateIntegrationSchema = z.object({
   enabled: z.boolean(),
   config: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).default({}),
@@ -491,6 +491,13 @@ export async function registerAdminControlRoutes(app: FastifyInstance) {
     const existing = await getRuntimeIntegration(params.data.provider);
     const cleanedSecrets = Object.fromEntries(Object.entries(body.data.secrets).filter(([, value]) => value.trim().length > 0).map(([key, value]) => [key, value.trim()]));
     const mergedSecrets = { ...(existing?.secrets ?? {}), ...cleanedSecrets };
+    // Saving encrypted production credentials never authorizes publication.
+    if (params.data.provider === "cda-production") {
+      if (Object.keys(mergedSecrets).some(key => key !== "secret" && key !== "apiToken")) return reply.code(422).send({ error: "invalid_cda_secret_keys" });
+      if (mergedSecrets.secret && !/^[a-f0-9]{64}$/i.test(mergedSecrets.secret)) return reply.code(422).send({ error: "invalid_cda_secret" });
+      if (mergedSecrets.apiToken && mergedSecrets.apiToken.length < 8) return reply.code(422).send({ error: "invalid_cda_api_token" });
+      if (body.data.enabled && (!mergedSecrets.secret || !mergedSecrets.apiToken)) return reply.code(422).send({ error: "cda_production_credentials_required" });
+    }
     const cipher = Object.keys(mergedSecrets).length ? encryptSecrets(mergedSecrets) : null;
     const actor = await currentAdminId(request);
     await prisma.$executeRawUnsafe(
