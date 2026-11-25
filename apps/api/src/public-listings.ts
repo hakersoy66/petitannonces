@@ -75,6 +75,10 @@ export async function registerPublicListingRoutes(app: FastifyInstance) {
       },
     });
     if (!listing) return reply.code(404).send({ error: "listing_not_found" });
+    // Only expose a boolean, never CDA identifiers or the holder's data.
+    const cdaVerified=listing.status==="PUBLISHED"&&listing.category.domain==="ANIMAL"&&["chiens","chats"].includes(listing.category.slug)
+      ? Boolean((await prisma.$queryRawUnsafe<Array<{verified:boolean}>>(`SELECT EXISTS (SELECT 1 FROM "CdaListingProduction" c WHERE c."listingId"=$1 AND c."sellerId"=$2 AND c."categoryId"=$3 AND c."status"='VERIFIED' AND c."expiresAt">NOW()) AS verified`,listing.id,listing.sellerId,listing.categoryId).catch(()=>[]))[0]?.verified)
+      : false;
     const publicStore=listing.store?.status==="ACTIVE"?listing.store:null;
     const sellerName = publicStore?.name ?? listing.seller.business?.tradeName ?? listing.seller.profile?.displayName ?? listing.seller.profile?.firstName ?? "Annonceur Petit Annonces";
     const attributes = listing.attributes.map((item) => ({ key: item.attribute.key, label: item.attribute.label, unit: item.attribute.unit, value: readAttributeValue(item) }));
@@ -141,7 +145,7 @@ export async function registerPublicListingRoutes(app: FastifyInstance) {
     return reply.send({ listing: {
       id: listing.id, slug: listing.slug, title: listing.title, description: listing.description, priceMinor: listing.priceMinor, currency: listing.currency, status: listing.status, updatedAt: listing.updatedAt, viewCount,
       city: listing.city, postalCode: listing.postalCode, region: listing.region, latitude: listing.latitude, longitude: listing.longitude, publishedAt: listing.publishedAt, expiresAt: lifecycleRows[0]?.expiresAt ?? null,
-      category: { id: listing.category.id, name: listing.category.name, slug: listing.category.slug, domain: listing.category.domain }, breadcrumb, attributes,
+      category: { id: listing.category.id, name: listing.category.name, slug: listing.category.slug, domain: listing.category.domain }, cdaVerified, breadcrumb, attributes,
       media: media.map((item) => ({ id: item.id, url: `https://petitannonces.fr/api/media/watermark/${encodeURIComponent(item.id)}`, mimeType: "image/webp", width: item.width, height: item.height, altText: item.altText, isCover: item.isCover })),
       vehicle: publicVehicle, vehicleHistory, vehicleWarranty: listing.category.domain==="VEHICLE"&&listing.seller.kind==="PROFESSIONNEL"?(vehicleWarrantyRows[0]??{commercialOffered:false,commercialMonths:null,commercialCoverage:null,commercialProvider:null}):null, property: listing.property, energy: listing.energy, promotions,
       priceHistory: priceHistory.map(item=>({oldPriceMinor:item.oldPriceMinor,newPriceMinor:item.newPriceMinor,currency:item.currency,changedAt:item.changedAt})),

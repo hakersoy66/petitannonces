@@ -2,6 +2,7 @@ import { cache } from "react";
 import { decodeHtmlEntities } from "./decode-html-entities";
 
 export type PublicListingDetail = {
+  cdaVerified?: boolean;
   id: string;
   slug: string | null;
   title: string | null;

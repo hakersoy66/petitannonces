@@ -865,3 +865,6 @@
 /* Vehicle legal/commercial warranties appear only on professional vehicle listings. */
 .vehicleWarrantySlot{min-width:0;width:100%;box-sizing:border-box}
 @media(max-width:760px){.vehicleWarrantySlot{order:9!important;margin-top:10px!important;max-width:100%!important}}
+
+/* Official CDA listing status — never based on seller self-declaration. */
+.cdaVerified{display:inline-flex;align-items:center;gap:7px;max-width:100%;width:fit-content;margin:9px 0 2px;padding:7px 11px;border:1px solid #a7e2ca;border-radius:9px;background:#edf9f2;color:#10623f;font-size:13px;font-weight:800;line-height:1.3}.cdaVerified svg{flex-shrink:0;color:#168453;font-size:14px}
