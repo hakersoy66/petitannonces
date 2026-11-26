@@ -5,6 +5,7 @@ import { AccountSidebar } from "../../../components/account-sidebar";
 import { AppIcon, type AppIconName } from "../../../components/app-icon";
 import { ReputationBadges, type ReputationBadgeView, type ReputationMetricsView } from "../../../components/reputation-badges";
 import styles from "./page.module.css";
+import LoyaltyPanel from "./loyalty-panel";
 
 type Condition={key:string;label:string;currentLabel:string;met:boolean;progress:number};
 type BadgeProgress={badge:ReputationBadgeView;earned:boolean;progress:number;conditions:Condition[];nextStep:string|null};
@@ -33,6 +34,7 @@ export default function ReputationPage(){
   const nextBadge=useMemo(()=>data?.catalog.filter(item=>!item.earned).sort((a,b)=>b.progress-a.progress)[0]??null,[data]);
   return <div className={styles.page}><main className={styles.shell}><AccountSidebar/><section className={styles.content}>
     <header className={styles.hero}><div><span className={styles.eyebrow}>Réputation & badges</span><h1>Votre réputation Petit Annonces</h1><p>Suivez vos badges, comprenez les critères et voyez précisément ce qu’il vous reste à accomplir.</p></div><div className={styles.heroIcon}><AppIcon name="star"/></div></header>
+    <LoyaltyPanel/>
     {loading?<div className={styles.loading}><div/><div/><div/></div>:error?<div className={styles.error}><AppIcon name="info"/><div><strong>Chargement impossible</strong><p>{error}</p><button type="button" onClick={()=>void load()}>Réessayer</button></div></div>:data&&<>
       <section className={styles.summaryGrid}><article className={styles.scoreCard}><span><AppIcon name="shield"/></span><div><small>Indice de confiance</small><strong>{data.reputation.trust.score}<em>/100</em></strong><p>{levelLabel(data.reputation.trust.level)}</p></div></article><article><span><AppIcon name="star"/></span><div><small>Badges obtenus</small><strong>{data.summary.earned}<em>/{data.summary.total}</em></strong><p>{data.summary.earned?"Continuez sur cette lancée":"Votre progression commence ici"}</p></div></article><article><span><AppIcon name="gauge"/></span><div><small>Progression globale</small><strong>{data.summary.overallProgress}<em>%</em></strong><div className={styles.miniProgress}><i style={{width:`${data.summary.overallProgress}%`}}/></div></div></article></section>
 

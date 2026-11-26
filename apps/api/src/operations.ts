@@ -300,6 +300,73 @@ export async function registerOperationsRoutes(app: FastifyInstance) {
     if(!ok)return reply.code(404).send({error:"note_not_found"});return reply.send({deleted:true});
   });
 
+  const loyaltyLevel=(points:number)=>points>=1000?"GOLD":points>=500?"SILVER":points>=100?"BRONZE":"START";
+  app.get("/account/loyalty",async(request,reply)=>{
+    const user=await requireUser(request,reply);if(!user)return;
+    const rows=await prisma.$queryRaw<Array<{points:number}>>`SELECT points FROM "AdminLoyaltyAccount" WHERE "userId"=${user.id}`;
+    const points=rows[0]?.points??0;
+    const history=await prisma.$queryRaw<Array<Record<string,unknown>>>`SELECT id,kind,delta,"balanceAfter","createdAt" FROM "AdminLoyaltyEntry" WHERE "userId"=${user.id} ORDER BY "createdAt" DESC,id LIMIT 20`;
+    return reply.header("Cache-Control","private, no-store").send({points,level:loyaltyLevel(points),history});
+  });
+  app.get("/admin/loyalty",async(request,reply)=>{
+    const admin=await requireAdmin(request,reply,["SUPER_ADMIN","ADMIN"]);if(!admin)return;
+    const q=z.object({q:z.string().trim().max(120).default(""),page:z.coerce.number().int().min(1).max(10000).default(1)}).safeParse(request.query);if(!q.success)return reply.code(400).send({error:"invalid_request"});
+    const search=q.data.q;
+    const [rows,summary]=await prisma.$transaction(async tx=>{
+      await tx.$executeRaw`SET LOCAL statement_timeout='5000ms'`;
+      return Promise.all([
+        tx.$queryRaw<Array<{id:string;email:string;points:number;revision:number}>>`SELECT u.id,u.email,COALESCE(a.points,0)::int AS points,COALESCE(a.revision,0)::int AS revision FROM "User" u LEFT JOIN "AdminLoyaltyAccount" a ON a."userId"=u.id WHERE u.status='ACTIVE' AND NOT EXISTS(SELECT 1 FROM "UserAdminRole" r WHERE r."userId"=u.id) AND (u.email ILIKE '%'||${search}||'%' OR u.id=${search}) ORDER BY COALESCE(a.points,0) DESC,u."createdAt" DESC,u.id LIMIT 31 OFFSET ${(q.data.page-1)*30}`,
+        tx.$queryRaw<Array<{members:number;points:string;rewards:number}>>`SELECT COUNT(*) FILTER(WHERE a.points>0)::int AS members,COALESCE(SUM(a.points),0)::text AS points,(SELECT COUNT(*)::int FROM "AdminLoyaltyEntry" WHERE kind='EXTENSION_REWARD') AS rewards FROM "AdminLoyaltyAccount" a JOIN "User" u ON u.id=a."userId" WHERE u.status='ACTIVE' AND NOT EXISTS(SELECT 1 FROM "UserAdminRole" r WHERE r."userId"=u.id)`
+      ]);
+    },{timeout:10000});
+    return reply.header("Cache-Control","private, no-store").send({rows:rows.slice(0,30).map(x=>({...x,level:loyaltyLevel(x.points)})),hasNext:rows.length>30,summary:summary[0]});
+  });
+  app.get("/admin/loyalty/:id",async(request,reply)=>{
+    const admin=await requireAdmin(request,reply,["SUPER_ADMIN","ADMIN"]);if(!admin)return;
+    const p=z.object({id:z.string().min(1).max(128)}).safeParse(request.params);if(!p.success)return reply.code(400).send({error:"invalid_request"});const id=p.data.id;
+    if(!await crmTarget(prisma,id))return reply.code(404).send({error:"user_not_found"});
+    const [account,entries,listings]=await Promise.all([
+      prisma.$queryRaw<Array<{points:number;revision:number}>>`SELECT points,revision FROM "AdminLoyaltyAccount" WHERE "userId"=${id}`,
+      prisma.$queryRaw<Array<Record<string,unknown>>>`SELECT id,kind,delta,"balanceAfter",reason,"listingId","createdAt" FROM "AdminLoyaltyEntry" WHERE "userId"=${id} ORDER BY "createdAt" DESC,id LIMIT 50`,
+      prisma.$queryRaw<Array<Record<string,unknown>>>`SELECT l.id,l.title,lc."expiresAt" FROM "Listing" l JOIN "Category" c ON c.id=l."categoryId" JOIN "ListingLifecycle" lc ON lc."listingId"=l.id WHERE l."sellerId"=${id} AND l.status='PUBLISHED' AND lc."expiresAt">NOW() AND (c.domain<>'ANIMAL' OR c.slug='animaux-perdus') AND NOT EXISTS(SELECT 1 FROM "AdminListingArchive" a WHERE a."listingId"=l.id) ORDER BY lc."expiresAt",l.id LIMIT 100`
+    ]);
+    const a=account[0]??{points:0,revision:0};
+    return reply.header("Cache-Control","private, no-store").send({...a,level:loyaltyLevel(a.points),entries,listings});
+  });
+  app.post("/admin/loyalty/:id/entry",async(request,reply)=>{
+    const admin=await requireAdmin(request,reply,["SUPER_ADMIN","ADMIN"]);if(!admin)return;
+    const p=z.object({id:z.string().min(1).max(128)}).safeParse(request.params);
+    const q=z.discriminatedUnion("kind",[
+      z.object({kind:z.literal("ADJUSTMENT"),delta:z.number().int().min(-10000).max(10000).refine(n=>n!==0),revision:z.number().int().nonnegative(),reason:z.string().trim().min(5).max(500)}),
+      z.object({kind:z.literal("EXTENSION_REWARD"),listingId:z.string().min(1).max(128),revision:z.number().int().nonnegative(),reason:z.string().trim().min(5).max(500)})
+    ]).safeParse(request.body);
+    if(!p.success||!q.success)return reply.code(400).send({error:"invalid_request"});
+    const id=p.data.id,v=q.data;
+    const result=await prisma.$transaction(async tx=>{
+      if(v.kind==="EXTENSION_REWARD")await tx.$queryRaw`SELECT id FROM "Listing" WHERE id=${v.listingId} FOR UPDATE`;
+      if(!await crmTarget(tx,id,true))return null;
+      const u=await tx.$queryRaw<Array<{status:string}>>`SELECT status::text AS status FROM "User" WHERE id=${id}`;if(u[0]?.status!=="ACTIVE")return null;
+      const a=await tx.$queryRaw<Array<{points:number;revision:number}>>`SELECT points,revision FROM "AdminLoyaltyAccount" WHERE "userId"=${id} FOR UPDATE`;
+      const old=a[0]??{points:0,revision:0},delta=v.kind==="ADJUSTMENT"?v.delta:-100,next=old.points+delta;
+      if(old.revision!==v.revision||next<0||next>1000000)return null;
+      let expiresAt:Date|undefined;
+      if(v.kind==="EXTENSION_REWARD"){
+        const l=await tx.$queryRaw<Array<{expiresAt:Date}>>`SELECT lc."expiresAt" FROM "Listing" l JOIN "Category" c ON c.id=l."categoryId" JOIN "ListingLifecycle" lc ON lc."listingId"=l.id WHERE l.id=${v.listingId} AND l."sellerId"=${id} AND l.status='PUBLISHED' AND lc."expiresAt">NOW() AND (c.domain<>'ANIMAL' OR c.slug='animaux-perdus') AND NOT EXISTS(SELECT 1 FROM "AdminListingArchive" a WHERE a."listingId"=l.id) FOR UPDATE OF lc`;
+        if(!l[0])return null;
+        const updated=await tx.$queryRaw<Array<{expiresAt:Date}>>`UPDATE "ListingLifecycle" SET "expiresAt"="expiresAt"+INTERVAL '7 days',"updatedAt"=NOW() WHERE "listingId"=${v.listingId} RETURNING "expiresAt"`;
+        expiresAt=updated[0]?.expiresAt;if(!expiresAt)throw Error("reward_update_failed");
+      }
+      await tx.$executeRaw`INSERT INTO "AdminLoyaltyAccount" ("userId",points,revision) VALUES (${id},${next},1) ON CONFLICT ("userId") DO UPDATE SET points=${next},revision="AdminLoyaltyAccount".revision+1,"updatedAt"=NOW()`;
+      const entryId=randomUUID();
+      await tx.$executeRaw`INSERT INTO "AdminLoyaltyEntry" (id,"userId","actorId",kind,delta,"balanceAfter",reason,"listingId") VALUES (${entryId},${id},${admin.id},${v.kind},${delta},${next},${v.reason},${v.kind==="EXTENSION_REWARD"?v.listingId:null})`;
+      await tx.$executeRaw`INSERT INTO "AdminAuditEvent" (id,"actorUserId",action,"entityType","entityId",metadata) VALUES (${randomUUID()},${admin.id},'LOYALTY_ENTRY_CREATED','USER',${id},${JSON.stringify({kind:v.kind,delta,before:old.points,after:next,reason:v.reason})}::jsonb)`;
+      if(v.kind==="EXTENSION_REWARD")await tx.$executeRaw`INSERT INTO "AdminAuditEvent" (id,"actorUserId",action,"entityType","entityId",metadata) VALUES (${randomUUID()},${admin.id},'LISTING_LIFETIME_EXTENDED','LISTING',${v.listingId},${JSON.stringify({days:7,reason:v.reason,source:"LOYALTY",expiresAt})}::jsonb)`;
+      return {points:next,revision:old.revision+1,level:loyaltyLevel(next),expiresAt};
+    },{timeout:10000});
+    if(!result)return reply.code(409).send({error:"loyalty_ineligible",message:"Solde, sélection ou compte non éligible. Actualisez avant de réessayer."});
+    return reply.send(result);
+  });
+
   app.get("/admin/dashboard", async (request, reply) => {
     const admin = await requireAdmin(request, reply); if (!admin) return;
     const [users, listings, orders, support, moderation, disputes, audience] = await Promise.all([
