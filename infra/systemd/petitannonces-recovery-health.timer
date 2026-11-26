@@ -1,0 +1,7 @@
+[Unit]
+Description=Refresh recovery health metadata
+[Timer]
+OnCalendar=*:0/15
+Persistent=true
+[Install]
+WantedBy=timers.target

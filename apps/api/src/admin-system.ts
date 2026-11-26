@@ -21,15 +21,25 @@ async function httpCheck(url:string){
 }
 function runtimePorts(){const apiPort=Number(process.env.API_PORT||0);const color=process.env.APP_COLOR||(apiPort===4100?"green":apiPort===4000?"blue":"unknown");return{color,web:Number(process.env.WEB_PORT||(color==="green"?3100:3000)),admin:Number(process.env.ADMIN_PORT||(color==="green"?3101:3001)),api:apiPort||(color==="green"?4100:4000)}}
 async function drStatus(){
-  const healthDir="/var/www/petitannonces/shared/health";
-  const now=Date.now();
-  async function marker(name:string,maxAgeMs:number){
-    try{const raw=JSON.parse(await readFile(`${healthDir}/${name}.json`,"utf8"));const completedAt=String(raw.completedAt??"");const ageMs=completedAt?Math.max(0,now-new Date(completedAt).getTime()):Number.POSITIVE_INFINITY;return{...raw,completedAt,ageMs,fresh:Boolean(raw.ok)&&ageMs<=maxAgeMs}}catch{return{ok:false,fresh:false,completedAt:null,ageMs:null}}
-  }
-  let local:any={ok:false,fresh:false,completedAt:null,ageMs:null};
-  try{const dir="/var/www/petitannonces/backups";const files=(await readdir(dir)).filter(x=>/^petitannonces-.*\.dump$/.test(x));let latest:{name:string;mtimeMs:number;size:number}|null=null;for(const name of files){const st=await stat(`${dir}/${name}`);if(!latest||st.mtimeMs>latest.mtimeMs)latest={name,mtimeMs:st.mtimeMs,size:st.size}}if(latest){local={ok:true,fresh:now-latest.mtimeMs<=26*60*60*1000,completedAt:new Date(latest.mtimeMs).toISOString(),ageMs:now-latest.mtimeMs,backup:latest.name,sizeBytes:latest.size}}}catch{}
-  const [offsite,media,restore]=await Promise.all([marker("offsite-backup",30*60*60*1000),marker("media-inventory",30*60*60*1000),marker("restore-drill",40*24*60*60*1000)]);
-  return{local,offsite,mediaInventory:media,restoreDrill:restore,ok:[local,offsite,media,restore].every(x=>x.fresh)};
+ const now=Date.now();
+ let raw:any={};
+ try{raw=JSON.parse(await readFile("/var/www/petitannonces/recovery-health/recovery-summary.json","utf8"))}catch{}
+ const generatedAt=typeof raw.generatedAt==="string"?raw.generatedAt:null;
+ const age=generatedAt?now-Date.parse(generatedAt):NaN;
+ const monitoringFresh=Number.isFinite(age)&&age>=-60000&&age<=45*60*1000;
+ function marker(key:string,maxAgeMs:number,extraOk=true){
+   const v=raw[key]??{},completedAt=typeof v.completedAt==="string"?v.completedAt:null;
+   const elapsed=completedAt?now-Date.parse(completedAt):NaN;
+   const ageMs=Number.isFinite(elapsed)&&elapsed>=-60000?Math.max(0,elapsed):null;
+   const ok=v.ok===true&&extraOk&&(!v.lastResult||v.lastResult==="success");
+   return {ok,fresh:monitoringFresh&&ok&&ageMs!==null&&ageMs<=maxAgeMs,completedAt,ageMs,sizeBytes:typeof v.sizeBytes==="number"?v.sizeBytes:undefined,objects:typeof v.objects==="number"?v.objects:undefined,copies:typeof v.copies==="number"?v.copies:undefined,tables:typeof v.tables==="number"?v.tables:undefined,scheduled:typeof v.scheduled==="boolean"?v.scheduled:undefined,lastResult:typeof v.lastResult==="string"?v.lastResult:undefined};
+ }
+ const local=marker("snapshot",6*60*60*1000,raw.snapshot?.verified===true&&raw.snapshot?.exists===true);
+ const vault=marker("vault",30*60*60*1000,(raw.vault?.copies??0)>0);
+ const offsite=marker("offsite",30*60*60*1000);
+ const mediaInventory=marker("media",30*60*60*1000);
+ const restoreDrill=marker("restore",40*24*60*60*1000);
+ return{local,vault,offsite,mediaInventory,restoreDrill,monitoringFresh,generatedAt,ok:[local,vault,mediaInventory,restoreDrill].every(x=>x.fresh)&&monitoringFresh};
 }
 
 export async function registerAdminSystemRoutes(app:FastifyInstance){
@@ -89,7 +99,7 @@ export async function registerAdminSystemRoutes(app:FastifyInstance){
     const criticalIssues:string[]=[];const warnings:string[]=[];
     for(const [key,value] of Object.entries(serviceStatus)){const row=value as any;if(row.critical&&!row.ok)criticalIssues.push(`service:${key}`)}
     if(!runtimeWeb.ok)criticalIssues.push("runtime:web");if(!runtimeAdmin.ok)criticalIssues.push("runtime:admin");if(!runtimeApi.ok)criticalIssues.push("runtime:api");
-    if(!disasterRecovery.local.fresh)criticalIssues.push("backup:local");if(!disasterRecovery.offsite.fresh)criticalIssues.push("backup:offsite");
+    if(!disasterRecovery.monitoringFresh)criticalIssues.push("backup:monitoring");if(!disasterRecovery.local.fresh)criticalIssues.push("backup:local");if(!disasterRecovery.vault.fresh)criticalIssues.push("backup:vault");if(!disasterRecovery.offsite.fresh){if(disasterRecovery.offsite.scheduled)criticalIssues.push("backup:offsite");else warnings.push("backup:offsite-disabled");}
     if(!disasterRecovery.mediaInventory.fresh)warnings.push("backup:media-inventory");if(!disasterRecovery.restoreDrill.fresh)warnings.push("backup:restore-drill");
     if(recentFailedNotifications>0)warnings.push("notifications:failed-24h");if(staleNotificationCount>0)warnings.push("notifications:stale");if(recentFailedJobs>0)warnings.push("jobs:failed-24h");if(webhookFailed>0)warnings.push("webhooks:failed");if(unmatchedTotal>0)warnings.push("finance:unmatched-events");
     if(disk&&disk.totalBytes>0&&disk.availableBytes/disk.totalBytes<0.05)warnings.push("host:disk-low");

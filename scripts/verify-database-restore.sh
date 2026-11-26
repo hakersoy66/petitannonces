@@ -1,26 +1,51 @@
 #!/usr/bin/env bash
 set -euo pipefail
-LATEST=$(find /var/www/petitannonces/backups -maxdepth 1 -type f -name 'petitannonces-*.dump' -printf '%T@ %p\n' | sort -nr | sed -n '1s/^[^ ]* //p')
-[ -n "$LATEST" ] || { echo "restore_drill_failed no_backup_found" >&2; exit 1; }
-# The drill must verify recent recovery readiness, not succeed using an obsolete archive.
-BACKUP_AGE_SECONDS=$(( $(date +%s) - $(stat -c %Y "$LATEST") ))
-if (( BACKUP_AGE_SECONDS > 36 * 3600 )); then
-  echo "restore_drill_failed stale_backup age_hours=$(( BACKUP_AGE_SECONDS / 3600 ))" >&2
-  exit 1
-fi
-TMP=/tmp/pa-restore-drill-$$.dump
-TESTDB="petitannonces_restore_drill_$(date +%s)"
-cleanup(){ rm -f "$TMP"; sudo -u postgres dropdb --if-exists "$TESTDB" >/dev/null 2>&1 || true; }
-trap cleanup EXIT
-cp "$LATEST" "$TMP"
-chmod 644 "$TMP"
-sudo -u postgres createdb "$TESTDB"
-sudo -u postgres pg_restore --no-owner --no-acl --dbname="$TESTDB" "$TMP"
-TABLES=$(sudo -u postgres psql -d "$TESTDB" -Atc "select count(*) from pg_tables where schemaname='public';")
-[ "$TABLES" -ge 50 ] || { echo "restore_drill_failed tables=$TABLES" >&2; exit 1; }
-echo "restore_drill_ok backup=$(basename "$LATEST") tables=$TABLES"
+umask 077
 HEALTH_DIR=/var/www/petitannonces/shared/health
 mkdir -p "$HEALTH_DIR"
-printf '{"ok":true,"completedAt":"%s","backup":"%s","tables":%s}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(basename "$LATEST")" "$TABLES" > "$HEALTH_DIR/restore-drill.json.tmp"
-mv "$HEALTH_DIR/restore-drill.json.tmp" "$HEALTH_DIR/restore-drill.json"
-chmod 640 "$HEALTH_DIR/restore-drill.json"
+exec 8>/run/lock/petitannonces-restore-drill.lock
+flock -n 8 || { echo "restore drill already running"; exit 1; }
+exec 9>/run/lock/petitannonces-recovery-snapshot.lock
+flock -s -w 120 9
+LATEST=/srv/petitannonces-recovery/latest/postgresql.dump
+MANIFEST=/srv/petitannonces-recovery/latest/SHA256SUMS
+TESTDB="petitannonces_restore_drill_$(date +%s)_$$"
+created=0
+success=0
+reason=unknown
+write_marker(){
+ local ok="$1" tables="$2" why="$3"
+ local f
+ f=$(mktemp "$HEALTH_DIR/.restore-drill.XXXXXX")
+ printf '{"ok":%s,"completedAt":"%s","source":"recovery-snapshot","tables":%s,"reason":"%s"}\n' "$ok" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$tables" "$why" > "$f"
+ chown root:petitannonces "$f"; chmod 640 "$f"
+ mv -f "$f" "$HEALTH_DIR/restore-drill.json"
+}
+cleanup(){
+ local code=$?
+ if (( created )); then sudo -u postgres dropdb --if-exists "$TESTDB" >/dev/null 2>&1 || { success=0; reason=cleanup_failed; code=1; }; fi
+ if (( success )); then write_marker true "$TABLES" verified; else write_marker false 0 "$reason"; fi
+ exit "$code"
+}
+trap cleanup EXIT
+reason=missing_snapshot
+[[ -s "$LATEST" && -s "$MANIFEST" ]]
+reason=stale_snapshot
+age=$(( $(date +%s) - $(stat -c %Y "$LATEST") ))
+(( age >= 0 && age <= 6 * 3600 ))
+reason=checksum_failed
+expected=$(awk '$2=="postgresql.dump"{print $1}' "$MANIFEST")
+[[ "$expected" =~ ^[0-9a-f]{64}$ ]]
+[[ "$(sha256sum "$LATEST" | cut -d' ' -f1)" == "$expected" ]]
+pg_restore --list "$LATEST" >/dev/null
+reason=create_test_database_failed
+sudo -u postgres createdb "$TESTDB"
+created=1
+reason=restore_failed
+sudo -u postgres pg_restore --exit-on-error --no-owner --no-acl --dbname="$TESTDB" < "$LATEST"
+reason=validation_failed
+TABLES=$(sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d "$TESTDB" -Atc "SELECT COUNT(*) FROM pg_tables WHERE schemaname='public';")
+(( TABLES >= 50 ))
+sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d "$TESTDB" -Atc 'SELECT COUNT(*) FROM "User"; SELECT COUNT(*) FROM "Listing"; SELECT COUNT(*) FROM "MarketplaceOrder";' >/dev/null
+success=1
+echo "restore_drill_ok tables=$TABLES source=recovery-snapshot"
