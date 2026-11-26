@@ -597,17 +597,64 @@ export async function registerOperationsRoutes(app: FastifyInstance) {
     return reply.send({canManagePermissions,permissions,permissionHistory,listingCounts,canManageListingReview,listingReviewMode,listingReviewEligible:reviewEligibility?.eligible??null,listingReviewReason:reviewEligibility?.reason??null,user:{id:user.id,email:user.email,kind:user.kind,status:user.status,emailVerifiedAt:user.emailVerifiedAt,lastLoginAt:user.lastLoginAt,createdAt:user.createdAt,profile:user.profile,business:user.business,roles:user.roles.map(r=>r.role),manualListingReview:user.manualListingReview,reputation:reputationPayload},wallet:walletRows[0]??{balanceMinor:0,currency:"EUR"},stores:user.stores.map(x=>({...x,listingCount:x._count.listings})),subscriptions:user.subscriptions,listings,orders,tickets,reportsReceived,reportsCreated});
   });
 
+  app.put("/admin/listings/:id/lifetime", async(request,reply)=>{
+    const admin=await requireAdmin(request,reply,["SUPER_ADMIN","ADMIN"]);if(!admin)return;
+    const params=z.object({id:z.string().min(1)}).safeParse(request.params);
+    const body=z.object({days:z.number().int().min(1).max(365),reason:z.string().trim().min(5).max(500)}).safeParse(request.body);
+    if(!params.success||!body.success)return reply.code(400).send({error:"invalid_request"});
+    const result=await prisma.$transaction(async tx=>{
+      const rows=await tx.$queryRaw<Array<{status:string;domain:string;slug:string}>>`SELECT l."status"::text AS status,c."domain"::text AS domain,c."slug" FROM "Listing" l JOIN "Category" c ON c."id"=l."categoryId" WHERE l."id"=${params.data.id} FOR UPDATE OF l`;
+      const listing=rows[0];if(!listing)return {error:"listing_not_found"} as const;
+      if(listing.status!=="PUBLISHED")return {error:"listing_not_published"} as const;
+      if(animalCessionRequiresProductionApproval(listing))return {error:"animal_cession_requires_cda_production_validation"} as const;
+      const before=await tx.$queryRaw<Array<{expiresAt:Date}>>`SELECT "expiresAt" FROM "ListingLifecycle" WHERE "listingId"=${params.data.id} FOR UPDATE`;
+      const updated=await tx.$queryRaw<Array<{expiresAt:Date}>>`INSERT INTO "ListingLifecycle" ("listingId","expiresAt") VALUES (${params.data.id},CURRENT_TIMESTAMP+${body.data.days}::int*INTERVAL '1 day') ON CONFLICT ("listingId") DO UPDATE SET "expiresAt"=GREATEST("ListingLifecycle"."expiresAt",CURRENT_TIMESTAMP)+${body.data.days}::int*INTERVAL '1 day',"updatedAt"=CURRENT_TIMESTAMP RETURNING "expiresAt"`;
+      if(!updated[0])throw new Error("listing_lifetime_update_failed");
+      await tx.$executeRaw`INSERT INTO "AdminAuditEvent" ("id","actorUserId","action","entityType","entityId","metadata") VALUES (${randomUUID()},${admin.id},'LISTING_LIFETIME_EXTENDED','LISTING',${params.data.id},${JSON.stringify({previous:before[0]?.expiresAt??null,expiresAt:updated[0].expiresAt,days:body.data.days,reason:body.data.reason})}::jsonb)`;
+      return {expiresAt:updated[0].expiresAt};
+    });
+    if("error" in result)return reply.code(result.error==="listing_not_found"?404:409).send(result);
+    return reply.send(result);
+  });
+
+  app.put("/admin/listings/:id/media-order", async(request,reply)=>{
+    const admin=await requireAdmin(request,reply,["SUPER_ADMIN","ADMIN","MODERATOR"]);if(!admin)return;
+    const params=z.object({id:z.string().min(1)}).safeParse(request.params);
+    const body=z.object({ids:z.array(z.string().min(1)).min(1).max(100),coverId:z.string().min(1),reason:z.string().trim().min(5).max(500)}).safeParse(request.body);
+    if(!params.success||!body.success)return reply.code(400).send({error:"invalid_request"});
+    const result=await prisma.$transaction(async tx=>{
+      const rows=await tx.$queryRaw<Array<{domain:string;slug:string}>>`SELECT c."domain"::text AS domain,c."slug" FROM "Listing" l JOIN "Category" c ON c."id"=l."categoryId" WHERE l."id"=${params.data.id} FOR UPDATE OF l`;
+      if(!rows[0])return {error:"listing_not_found"} as const;
+      if(animalCessionRequiresProductionApproval(rows[0]))return {error:"cda_seller_edit_required"} as const;
+      const media=await tx.$queryRaw<Array<{id:string;sortOrder:number;isCover:boolean}>>`SELECT "id","sortOrder","isCover" FROM "ListingMedia" WHERE "listingId"=${params.data.id} AND "status"='READY' FOR UPDATE`;
+      const ids=body.data.ids;
+      if(new Set(ids).size!==ids.length||ids.length!==media.length||media.some(m=>!ids.includes(m.id))||!ids.includes(body.data.coverId))return {error:"media_changed_refresh_required"} as const;
+      await tx.$executeRaw`UPDATE "ListingMedia" SET "isCover"=FALSE WHERE "listingId"=${params.data.id}`;
+      for(const [index,id] of ids.entries())await tx.$executeRaw`UPDATE "ListingMedia" SET "sortOrder"=${index*10},"isCover"=${id===body.data.coverId},"updatedAt"=NOW() WHERE "id"=${id} AND "listingId"=${params.data.id}`;
+      await tx.$executeRaw`INSERT INTO "AdminAuditEvent" ("id","actorUserId","action","entityType","entityId","metadata") VALUES (${randomUUID()},${admin.id},'LISTING_MEDIA_REORDERED','LISTING',${params.data.id},${JSON.stringify({previous:media,ids,coverId:body.data.coverId,reason:body.data.reason})}::jsonb)`;
+      return {updated:true};
+    });
+    if("error" in result)return reply.code(result.error==="listing_not_found"?404:409).send(result);
+    return reply.send(result);
+  });
+
   app.get("/admin/listings/:id/detail", async (request, reply) => {
     const admin=await requireAdmin(request,reply,["SUPER_ADMIN","ADMIN","MODERATOR","SUPPORT","COMPLIANCE"]);if(!admin)return;
     const params=z.object({id:z.string().min(1)}).safeParse(request.params);if(!params.success)return reply.code(400).send({error:"invalid_request"});
-    const listing=await prisma.listing.findUnique({where:{id:params.data.id},include:{seller:{include:{profile:true,business:true}},category:true,store:true,vehicle:true,property:true,energy:true,attributes:{include:{attribute:true}}}});
+    const listing=await prisma.listing.findUnique({where:{id:params.data.id},include:{seller:{select:{id:true,email:true,kind:true,status:true,profile:{select:{displayName:true,firstName:true,lastName:true}},business:{select:{tradeName:true,legalName:true}}}},category:true,store:true,vehicle:true,property:true,energy:true,attributes:{include:{attribute:true}}}});
     if(!listing)return reply.code(404).send({error:"listing_not_found"});
     const [media,orders,reports]=await Promise.all([
       prisma.$queryRawUnsafe<Array<Record<string,unknown>>>(`SELECT "id","publicUrl","isCover","sortOrder","mimeType","createdAt" FROM "ListingMedia" WHERE "listingId"=$1 AND "status"='READY' ORDER BY "isCover" DESC,"sortOrder" ASC,"createdAt" ASC`,listing.id),
       prisma.$queryRawUnsafe<Array<Record<string,unknown>>>(`SELECT "id","orderNumber","buyerId","sellerId","status","totalAmountMinor","sellerNetMinor","currency","createdAt" FROM "MarketplaceOrder" WHERE "listingId"=$1 ORDER BY "createdAt" DESC LIMIT 50`,listing.id),
       prisma.$queryRawUnsafe<Array<Record<string,unknown>>>(`SELECT "id","reporterId","reason"::text AS "reason","details","status"::text AS "status","createdAt" FROM "TrustReport" WHERE "targetType"='LISTING' AND "targetId"=$1 ORDER BY "createdAt" DESC LIMIT 50`,listing.id),
     ]);
-    return reply.send({listing,media,orders,reports,cda:listing.category.domain==="ANIMAL"?(await adminCdaStatuses([listing.id])).get(listing.id)??null:null});
+    const [lifecycle,history]=await Promise.all([
+      prisma.$queryRaw<Array<{expiresAt:Date;freeRenewalUsed:boolean;renewalCount:number}>>`SELECT "expiresAt","freeRenewalUsed","renewalCount" FROM "ListingLifecycle" WHERE "listingId"=${listing.id}`,
+      prisma.$queryRaw<Array<{id:string;action:string;createdAt:Date;metadata:unknown}>>`SELECT "id","action","createdAt","metadata" FROM "AdminAuditEvent" WHERE "entityType"='LISTING' AND ("entityId"=${listing.id} OR ("action"='LISTING_BULK_STATUS_CHANGED' AND "metadata"->'ids' ? ${listing.id})) ORDER BY "createdAt" DESC LIMIT 50`
+    ]);
+    const canManage=admin.roles.some(r=>["SUPER_ADMIN","ADMIN","MODERATOR"].includes(r.role));
+    const canExtend=admin.roles.some(r=>["SUPER_ADMIN","ADMIN"].includes(r.role));
+    return reply.send({listing,media,orders,reports,lifecycle:lifecycle[0]??null,history,canManage,canExtend,regulated:animalCessionRequiresProductionApproval(listing.category),cda:listing.category.domain==="ANIMAL"?(await adminCdaStatuses([listing.id])).get(listing.id)??null:null});
   });
 
   app.get("/admin/professionals/:id/detail", async (request, reply) => {
