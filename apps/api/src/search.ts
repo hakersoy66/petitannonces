@@ -27,7 +27,7 @@ const searchSchema = z.object({
   east: z.coerce.number().min(-180).max(180).optional(),
   west: z.coerce.number().min(-180).max(180).optional(),
   map: z.literal("1").optional(),
-  page: z.coerce.number().int().min(1).default(1),
+  page: z.coerce.number().int().min(1).max(10000).default(1),
   limit: z.coerce.number().int().min(1).max(50).default(24),
   sort: z.enum(["recent","price_asc","price_desc"]).default("recent"),
 });
@@ -254,10 +254,11 @@ export async function registerSearchRoutes(app: FastifyInstance) {
     if(p.model)vehicleWhere.model={equals:p.model,mode:"insensitive"};
 
     const nearGeo=readGeoToken(p.near);
+    if(p.near&&!nearGeo)return reply.code(400).send({error:"location_expired"});
     let geoLat=nearGeo?.latitude??p.lat,geoLng=nearGeo?.longitude??p.lng;
     if(p.radiusKm!==undefined&&(geoLat===undefined||geoLng===undefined)&&p.city){const geo=await geocodeFrenchSearchLocation(p.city);if(geo){geoLat=geo.latitude;geoLng=geo.longitude}}
     const needsGeo=geoLat!==undefined&&geoLng!==undefined&&p.radiusKm!==undefined;
-    const useOpenSearch = Boolean(p.q) && !p.category && !needsGeo && !hasBounds && p.map!=="1" && requestedAttributeFilters.length===0 && !p.make && !p.model && !p.transactionType && !p.propertyType;
+    const useOpenSearch = p.sort==="recent" && Boolean(p.q) && !p.category && !needsGeo && !hasBounds && p.map!=="1" && requestedAttributeFilters.length===0 && !p.make && !p.model && !p.transactionType && !p.propertyType;
     const os = useOpenSearch ? await searchOpenSearch({ q: p.q, category: p.category, city: p.city, minPriceMinor, maxPriceMinor, page: p.page, limit: p.limit }).catch(() => null) : null;
     if (os?.ids.length) {
       const records = await prisma.listing.findMany({ where: { id: { in: os.ids }, status: "PUBLISHED" }, include: { category: true, vehicle: true, property: true, energy: true } });
@@ -303,7 +304,7 @@ export async function registerSearchRoutes(app: FastifyInstance) {
       return reply.send({ engine: "postgres", page: p.page, limit: p.limit, total: filtered.length, items: await enrichItems(filtered.slice(start, start + p.limit)) });
     }
 
-    const recentOrder=[{ publishedAt: "desc" as const }, { createdAt: "desc" as const }];
+    const recentOrder=[{ publishedAt: "desc" as const }, { createdAt: "desc" as const }, {id:"asc" as const}];
     if(p.sort==="recent"){
       const total=await prisma.listing.count({where});
       const slotCount=availableBoostSlots(p.limit);
