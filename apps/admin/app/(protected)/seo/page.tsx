@@ -92,7 +92,7 @@ const SUBMISSION_KIT=[
 ] as const;
 
 export default async function SeoPage(){
- const d=await adminServerFetch<SeoStatus>("/admin/seo/status");
+ const [d,viewer]=await Promise.all([adminServerFetch<SeoStatus>("/admin/seo/status"),adminServerFetch<{user?:{roles?:string[]}}>("/auth/me")]);
  if(!d)return <div className="admin-card admin-section"><h1>SEO & Google</h1><p>Données SEO indisponibles.</p></div>;
  const g=d.gsc;
  const live=d.gscLive;
@@ -108,7 +108,7 @@ export default async function SeoPage(){
    <article className="admin-card admin-kpi"><div className="admin-kpi-top"><small>Annonces publiées</small><span className="admin-kpi-icon"><AdminIcon name="list"/></span></div><strong>{fmt(d.inventory.publishedListings)}</strong><p>{fmt(d.inventory.activeCategories)} catégories actives</p></article>
   </div>
 
-  <SeoMonitor/>
+  <SeoMonitor canReviewListings={Boolean(viewer?.user?.roles?.some(r=>["SUPER_ADMIN","ADMIN","MODERATOR","SUPPORT","COMPLIANCE"].includes(r)))}/>
   <div className="admin-grid admin-two-col" style={{marginTop:16}}>
    <section className="admin-card admin-section"><div className="admin-section-head"><div><h2>Actions prioritaires</h2><p>Recommandations déterministes basées sur l’inventaire actuel.</p></div></div>
     {d.opportunities.recommendedActions.length?<div className="admin-seo-list">{d.opportunities.recommendedActions.map(action=><div key={action.code} style={{alignItems:'flex-start'}}><span><strong style={{display:'block',color:'#242534',marginBottom:4}}>{action.title}</strong><small style={{lineHeight:1.5}}>{action.detail}</small></span><strong className={priorityClass(action.priority)}>{action.priority==='HIGH'?'Prioritaire':'À optimiser'}</strong></div>)}</div>:<p>Aucune action prioritaire détectée sur le catalogue actuel.</p>}
@@ -124,7 +124,7 @@ export default async function SeoPage(){
   <section className="admin-card admin-section" style={{marginTop:16}}><div className="admin-section-head"><div><h2>Écarts de contenu concurrents</h2><p>Intentions utiles observées chez les grands acteurs et couverture actuelle de Petit Annonces.</p></div><span className="admin-seo-good">{CONTENT_GAPS.filter(x=>x.status==="Publié").length} couverts</span></div><div className="admin-seo-list">{CONTENT_GAPS.map(item=><div key={item.topic} style={{alignItems:"flex-start"}}><span><a href={item.href} target="_blank" rel="noreferrer" style={{fontWeight:850,color:"#5143d7",textDecoration:"none"}}>{item.topic}</a><small style={{display:"block",marginTop:4,lineHeight:1.45}}>{item.detail}</small></span><strong className={item.status==="Publié"?"admin-seo-good":"admin-seo-warn"}>{item.status}</strong></div>)}</div></section>
 
   <section className="admin-card admin-section" style={{marginTop:16}}>
-   <div className="admin-section-head"><div><h2>Kit de soumission backlinks</h2><p>Textes prêts à copier pour les premières plateformes de référencement et de presse.</p></div><a className="admin-btn" href="/presse/petit-annonces-marketplace-francaise" target="_blank" rel="noreferrer"><AdminIcon name="external"/>Communiqué officiel</a></div>
+   <div className="admin-section-head"><div><h2>Kit de soumission backlinks</h2><p>Textes prêts à copier pour les premières plateformes de référencement et de presse.</p></div><a className="admin-btn" href="https://petitannonces.fr/presse/petit-annonces-marketplace-francaise" target="_blank" rel="noreferrer"><AdminIcon name="external"/>Communiqué officiel</a></div>
    <div style={{display:'grid',gap:12}}>{SUBMISSION_KIT.map(pack=><details key={pack.name} style={{border:'1px solid #e7e7ef',borderRadius:14,background:'#fbfbfe',padding:'14px 16px'}}><summary style={{cursor:'pointer',fontWeight:900,color:'#292a35'}}>{pack.name}</summary><div style={{display:'grid',gap:10,marginTop:12}}>{pack.fields.map(([label,value])=><div key={label} style={{display:'grid',gap:5}}><strong style={{fontSize:12,color:'#565765'}}>{label}</strong><pre style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere',margin:0,padding:'10px 12px',borderRadius:10,background:'#fff',border:'1px solid #ececf2',fontFamily:'inherit',fontSize:12,lineHeight:1.55,color:'#343542'}}>{value}</pre></div>)}</div></details>)}</div>
   </section>
 
