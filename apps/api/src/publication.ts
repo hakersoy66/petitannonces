@@ -285,6 +285,14 @@ export async function registerPublicationRoutes(app: FastifyInstance) {
     const originalForEdit=editSession?await prisma.listing.findFirst({where:{id:editSession.originalListingId,sellerId:user.id},select:{id:true,slug:true,publishedAt:true}}):null;
     if(editSession&&!originalForEdit)return reply.code(404).send({error:"edit_original_missing"});
     const targetId=editSession?.originalListingId??result.listing.id;
+    if(user.kind==="PROFESSIONNEL"){
+      const [subscription,occupied,target]=await Promise.all([
+        prisma.professionalSubscription.findFirst({where:{userId:user.id,OR:[{status:"ACTIVE",OR:[{currentPeriodEnd:null},{currentPeriodEnd:{gt:new Date()}}]},{status:"TRIALING",trialEndsAt:{gt:new Date()}}]},select:{id:true}}),
+        prisma.listing.count({where:{sellerId:user.id,id:{not:targetId},status:{in:["PENDING","PUBLISHED"]}}}),
+        prisma.listing.findUnique({where:{id:targetId},select:{status:true}})
+      ]);
+      if(!subscription&&occupied>=10&&target?.status!=="PUBLISHED")return reply.code(409).send({error:"professional_free_listing_limit",limit:10,occupied,message:"Votre compte professionnel sans abonnement est limité à 10 annonces actives ou en attente de validation. Libérez une place ou choisissez un abonnement."});
+    }
     const slug = originalForEdit?.slug ?? result.listing.slug ?? `${slugify(result.listing.title!)}-${randomBytes(4).toString("hex")}`;
     const consentId = randomUUID();
     const userAgent = String(request.headers["user-agent"] ?? "").slice(0, 500) || null;
@@ -312,7 +320,11 @@ export async function registerPublicationRoutes(app: FastifyInstance) {
       );
       if(editSession){await tx.$executeRawUnsafe(`DELETE FROM "ListingEditSession" WHERE "workingListingId"=$1`,editSession.workingListingId);await tx.listing.delete({where:{id:editSession.workingListingId}});}
       return pending;
+    }).catch(error=>{
+      if(String(error).includes("professional_free_listing_limit"))return null;
+      throw error;
     });
+    if(!listing)return reply.code(409).send({error:"professional_free_listing_limit",limit:10,message:"Votre compte professionnel sans abonnement est limité à 10 annonces actives ou en attente de validation."});
     if(editSession)await finalizeEditSessionCleanup(editSession.workingListingId,user.id,oldMediaKeys);
 
     const autoApproval = listing.status === "PENDING" ? await scheduleTrustedListingAutoApproval(listing.id, user.id).catch(() => ({ scheduled:false as const, reason:"schedule_failed" })) : null;
