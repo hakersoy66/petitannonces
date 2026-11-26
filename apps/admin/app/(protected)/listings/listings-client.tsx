@@ -40,7 +40,7 @@ export default function ListingsClient(){
    setRows(p.listings??[]);setCats(cp.categories??[]);
   }finally{setBusy(false)}
  }
- useEffect(()=>{void load()},[]);
+ useEffect(()=>{void load();const id=new URLSearchParams(window.location.search).get("edit");if(!id)return;void (async()=>{try{const response=await fetch(`/api/admin/listings/${encodeURIComponent(id)}/detail`,{credentials:"include",cache:"no-store"});if(!response.ok)throw new Error();const data=await response.json();const l=data.listing,profile=l.seller.profile??{};let stores=l.store?[l.store]:[];const userResponse=await fetch(`/api/admin/users/${encodeURIComponent(l.seller.id)}/detail`,{credentials:"include",cache:"no-store"});if(userResponse.ok){const userData=await userResponse.json();stores=userData.stores??stores}openEdit({...l,category:l.category.name,categorySlug:l.category.slug,domain:l.category.domain,sellerEmail:l.seller.email,sellerName:profile.displayName||l.seller.email,sellerStores:stores,coverUrl:data.media?.[0]?.publicUrl??null,cda:data.cda});window.history.replaceState(null,"",window.location.pathname)}catch{setMsg("Impossible d’ouvrir cette annonce en modification.")}})()},[]);
  useEffect(()=>{const onPointerDown=(event:PointerEvent)=>{const target=event.target as Node|null;document.querySelectorAll<HTMLDetailsElement>(".admin-popover[open]").forEach(menu=>{if(target&&!menu.contains(target))menu.removeAttribute("open")})};document.addEventListener("pointerdown",onPointerDown);return()=>document.removeEventListener("pointerdown",onPointerDown)},[]);
  function closeMenus(){document.querySelectorAll<HTMLDetailsElement>(".admin-popover[open]").forEach(menu=>menu.removeAttribute("open"))}
 
@@ -122,7 +122,7 @@ export default function ListingsClient(){
        <td data-label="Statut"><span className={`admin-badge ${tone(l.status)}`}>{labels[l.status]??l.status}</span>{l.domain==="ANIMAL"&&l.categorySlug!=="animaux-perdus"&&<div style={{marginTop:6}}><span className={`admin-badge ${l.cda?.verified?"green":"orange"}`}>{l.cda?.verified?"Vérifié I-CAD":l.cda?.status==="FAILED"?"I-CAD : échec":l.cda?.status==="UNAVAILABLE"?"I-CAD : indisponible":"I-CAD : non vérifié"}</span></div>}</td>
        <td data-label="Vendeur"><div className="admin-cell-stack"><strong>{l.sellerName}</strong><small>{l.sellerEmail}</small></div></td>
        <td data-label="Actions" data-mobile-actions>
-        <details className="admin-popover admin-action-popover">
+        <div className="admin-direct-actions"><button type="button" className="admin-btn" onClick={()=>openEdit(l)}><AdminIcon name="edit"/>Modifier</button><details className="admin-popover admin-action-popover">
          <summary className="admin-icon-button" aria-label="Actions annonce">•••</summary>
          <div className="admin-popover-panel admin-action-panel">
           <a href={`/listings/${l.id}`} onClick={closeMenus}><AdminIcon name="list"/><span><strong>Ouvrir le détail</strong><small>Voir tout le dossier de l’annonce</small></span></a>
@@ -134,7 +134,7 @@ export default function ListingsClient(){
           <div className="admin-menu-separator"/>
           <button type="button" className="danger" onClick={()=>{closeMenus();setDeleteAction({listing:l,reason:"Suppression administrative",confirmation:"",busy:false})}}><AdminIcon name="warning"/><span><strong>Supprimer définitivement</strong><small>Action irréversible</small></span></button>
          </div>
-        </details>
+        </details></div>
        </td>
       </tr>)}
       {!rows.length&&<tr><td colSpan={6}><div className="admin-empty">Aucune annonce trouvée.</div></td></tr>}
@@ -147,11 +147,11 @@ export default function ListingsClient(){
    <section className="admin-card admin-modal admin-modal-wide" onMouseDown={e=>e.stopPropagation()}>
     <div className="admin-modal-head"><div><span className="admin-modal-icon"><AdminIcon name="edit"/></span><div><h2>Modifier l’annonce</h2><p>{edit.sellerName} · {edit.sellerEmail}</p></div></div><button type="button" className="admin-icon-button" onClick={()=>setEdit(null)}>×</button></div>
     <div className="admin-form-grid admin-form-modern">
-     <label style={{gridColumn:"1/-1"}}>Titre<input className="admin-input" value={form.title} onChange={e=>setForm({...form,title:e.target.value})}/></label>
+     <h3 className="admin-edit-heading">Contenu de l’annonce</h3><label style={{gridColumn:"1/-1"}}>Titre<input className="admin-input" value={form.title} onChange={e=>setForm({...form,title:e.target.value})}/></label>
      <label style={{gridColumn:"1/-1"}}>Description<textarea className="admin-textarea" rows={7} value={form.description} onChange={e=>setForm({...form,description:e.target.value})}/></label>
      <label>Prix (€)<input className="admin-input" type="number" min="0" step="0.01" value={form.price} onChange={e=>setForm({...form,price:e.target.value})}/></label>
      <label>Catégorie<select className="admin-select" value={form.categoryId} onChange={e=>setForm({...form,categoryId:e.target.value})}>{cats.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
-     <label>Code postal<input className="admin-input" value={form.postalCode} onChange={e=>setForm({...form,postalCode:e.target.value})}/></label>
+     <h3 className="admin-edit-heading">Localisation et vitrine</h3><label>Code postal<input className="admin-input" value={form.postalCode} onChange={e=>setForm({...form,postalCode:e.target.value})}/></label>
      <label>Ville<input className="admin-input" value={form.city} onChange={e=>setForm({...form,city:e.target.value})}/></label>
      <label>Région<input className="admin-input" value={form.region} onChange={e=>setForm({...form,region:e.target.value})}/></label>
      <label>Vitrine<select className="admin-select" value={form.storeId} onChange={e=>setForm({...form,storeId:e.target.value})}><option value="">Aucune vitrine</option>{edit.sellerStores.map(s=><option key={s.id} value={s.id}>{s.name} ({s.status})</option>)}</select></label>

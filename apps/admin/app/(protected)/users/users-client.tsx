@@ -42,7 +42,7 @@ export default function UsersClient(){
    setRows(p.users??[]);
   }finally{setBusy(false)}
  }
- useEffect(()=>{void load()},[]);
+ useEffect(()=>{void load();const id=new URLSearchParams(window.location.search).get("edit");if(!id)return;void (async()=>{try{const response=await fetch(`/api/admin/users/${encodeURIComponent(id)}/detail`,{credentials:"include",cache:"no-store"});if(!response.ok)throw new Error();const data=await response.json();const u=data.user,p=u.profile??{};openEdit({...u,displayName:p.displayName,firstName:p.firstName,lastName:p.lastName,phone:p.phone});window.history.replaceState(null,"",window.location.pathname)}catch{setMsg("Impossible d’ouvrir ce compte en modification.")}})()},[]);
  useEffect(()=>{const onPointerDown=(event:PointerEvent)=>{const target=event.target as Node|null;document.querySelectorAll<HTMLDetailsElement>(".admin-popover[open]").forEach(menu=>{if(target&&!menu.contains(target))menu.removeAttribute("open")})};document.addEventListener("pointerdown",onPointerDown);return()=>document.removeEventListener("pointerdown",onPointerDown)},[]);
  function closeMenus(){document.querySelectorAll<HTMLDetailsElement>(".admin-popover[open]").forEach(menu=>menu.removeAttribute("open"))}
 
@@ -125,7 +125,7 @@ export default function UsersClient(){
          </details>
         </td>
         <td data-label="Actions" data-mobile-actions>
-         <details className="admin-popover admin-action-popover">
+         <div className="admin-direct-actions"><button type="button" className="admin-btn" onClick={()=>openEdit(u)}><AdminIcon name="edit"/>Modifier</button><details className="admin-popover admin-action-popover">
           <summary className="admin-icon-button" aria-label="Actions utilisateur">•••</summary>
           <div className="admin-popover-panel admin-action-panel">
            <a href={`/users/${u.id}`} onClick={closeMenus}><AdminIcon name="users"/><span><strong>Ouvrir le compte</strong><small>Voir l’activité complète</small></span></a>
@@ -134,7 +134,7 @@ export default function UsersClient(){
             ?<button type="button" onClick={()=>openStatus(u,"ACTIVE")}><AdminIcon name="check"/><span><strong>Activer</strong><small>Réactiver ce compte</small></span></button>
             :<button type="button" className="danger" onClick={()=>openStatus(u,"SUSPENDED")}><AdminIcon name="warning"/><span><strong>Suspendre</strong><small>Bloquer temporairement l’accès</small></span></button>}
           </div>
-         </details>
+         </details></div>
         </td>
        </tr>
       })}
@@ -148,12 +148,12 @@ export default function UsersClient(){
    <section className="admin-card admin-modal" onMouseDown={e=>e.stopPropagation()}>
     <div className="admin-modal-head"><div><span className="admin-modal-icon"><AdminIcon name="edit"/></span><div><h2>Modifier l’utilisateur</h2><p>{edit.email}</p></div></div><button type="button" className="admin-icon-button" onClick={()=>setEdit(null)}>×</button></div>
     <div className="admin-form-grid admin-form-modern">
-     <label>Nom affiché<input className="admin-input" value={form.displayName} onChange={e=>setForm({...form,displayName:e.target.value})}/></label>
+     <h3 className="admin-edit-heading">Identité et coordonnées</h3><label>Nom affiché<input className="admin-input" value={form.displayName} onChange={e=>setForm({...form,displayName:e.target.value})}/></label>
      <label>E-mail<input className="admin-input" type="email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})}/></label>
      <label>Prénom<input className="admin-input" value={form.firstName} onChange={e=>setForm({...form,firstName:e.target.value})}/></label>
      <label>Nom<input className="admin-input" value={form.lastName} onChange={e=>setForm({...form,lastName:e.target.value})}/></label>
      <label>Téléphone<input className="admin-input" value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})}/></label>
-     <label>Type de compte<select className="admin-select" value={form.kind} onChange={e=>setForm({...form,kind:e.target.value})}><option value="PARTICULIER">Particulier</option><option value="PROFESSIONNEL">Professionnel</option></select></label>
+     <h3 className="admin-edit-heading">Paramètres du compte</h3><label>Type de compte<select className="admin-select" value={form.kind} onChange={e=>setForm({...form,kind:e.target.value})}><option value="PARTICULIER">Particulier</option><option value="PROFESSIONNEL">Professionnel</option></select></label>
      <label className="admin-switch-row"><span><strong>E-mail vérifié</strong><small>Considérer cette adresse comme confirmée.</small></span><input type="checkbox" checked={form.emailVerified} onChange={e=>setForm({...form,emailVerified:e.target.checked})}/></label>
     </div>
     <div className="admin-modal-actions"><button type="button" className="admin-btn" onClick={()=>setEdit(null)}>Annuler</button><button type="button" className="admin-btn primary" onClick={()=>void save()}>Enregistrer</button></div>

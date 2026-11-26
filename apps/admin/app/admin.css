@@ -769,3 +769,19 @@ html,body{font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased;text
 .admin-section-nav a{padding:9px 12px;border-radius:8px;color:#475569;text-decoration:none;background:#f4f6fa;font-size:12px;font-weight:650;white-space:nowrap}
 .admin-section-nav a:hover,.admin-section-nav a:focus-visible{background:#eeebff;color:#5545d9}.admin-section-anchor{scroll-margin-top:100px}
 @media(max-width:760px){.admin-section-nav{flex-wrap:nowrap;overflow-x:auto;padding:9px}.admin-section-nav a{flex-shrink:0}}
+
+/* User and listing detail workspace */
+.admin-detail-workspace .admin-page-head{align-items:flex-start;background:#fff;border:1px solid #e1e6ef;padding:20px;border-radius:14px}
+.admin-detail-workspace .admin-page-head h1{overflow-wrap:anywhere}
+.admin-detail-workspace .admin-kpis{gap:12px}
+.admin-detail-workspace .admin-detail-grid{gap:8px}
+.admin-detail-workspace .admin-detail-grid>div{border:1px solid #e8edf4;background:#f8fafc;border-radius:9px;padding:12px;min-width:0}
+.admin-detail-workspace .admin-detail-grid strong{font-size:13px;overflow-wrap:anywhere}
+.admin-detail-workspace .admin-detail-grid small{font-size:11px;color:#64748b}
+.admin-detail-workspace .admin-section h2{margin-bottom:12px}
+.admin-detail-workspace .admin-section-head h2{margin-bottom:0}
+.admin-detail-workspace .admin-list-row{padding:12px 0;gap:10px}
+@media(max-width:760px){.admin-detail-workspace .admin-page-head{padding:15px}.admin-detail-workspace .admin-section-nav{position:relative}.admin-detail-workspace .admin-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.admin-detail-workspace .admin-detail-grid{grid-template-columns:1fr}}
+
+.admin-direct-actions{display:flex;gap:6px;align-items:center;justify-content:flex-end}.admin-direct-actions .admin-btn{white-space:nowrap}.admin-edit-heading{grid-column:1/-1;font-size:13px;color:#475569;margin:4px 0 0;padding:9px 0;border-bottom:1px solid #e1e6ef}
+@media(max-width:760px){.admin-direct-actions{justify-content:flex-start;flex-wrap:wrap}.admin-direct-actions>.admin-btn{flex:1}}
