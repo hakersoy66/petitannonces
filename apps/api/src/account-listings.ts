@@ -367,6 +367,8 @@ export async function registerAccountListingRoutes(app: FastifyInstance) {
     const listing = await prisma.listing.findFirst({ where: { id: params.data.id, sellerId }, select:{id:true,title:true,status:true} });
     if (!listing) return reply.code(404).send({ error: "listing_not_found" });
 
+    const archived=await prisma.$queryRaw<Array<{listingId:string}>>`SELECT "listingId" FROM "AdminListingArchive" WHERE "listingId"=${listing.id}`;
+    if(archived.length)return reply.code(409).send({error:"admin_listing_archived",message:"Cette annonce est archivée par l’administration. Contactez l’assistance."});
     const orders = await prisma.$queryRawUnsafe<Array<{count:number}>>(`SELECT COUNT(*)::int AS count
       FROM "MarketplaceOrder" o
       WHERE o."listingId"=$1

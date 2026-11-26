@@ -71,19 +71,19 @@ export default function ListingsClient(){
   if(!deleteAction)return;
   const reason=deleteAction.reason.trim();
   if(reason.length<5){setMsg("Saisissez un motif de suppression d’au moins 5 caractères.");return}
-  if(deleteAction.confirmation!=="SUPPRIMER"){setMsg("Tapez SUPPRIMER pour confirmer.");return}
+  if(deleteAction.confirmation!=="ARCHIVER"){setMsg("Tapez ARCHIVER pour confirmer.");return}
   setDeleteAction({...deleteAction,busy:true});
-  const r=await fetch(`/api/admin/listings/${deleteAction.listing.id}`,{method:"DELETE",credentials:"include",headers:{"content-type":"application/json"},body:JSON.stringify({reason,confirmation:"SUPPRIMER"})});
+  const r=await fetch(`/api/admin/listings/${deleteAction.listing.id}`,{method:"DELETE",credentials:"include",headers:{"content-type":"application/json"},body:JSON.stringify({reason,confirmation:"ARCHIVER"})});
   const p=await r.json().catch(()=>({}));
-  if(r.ok){setMsg("Annonce supprimée définitivement.");setDeleteAction(null);setSelected(v=>v.filter(id=>id!==deleteAction.listing.id));await load();return}
+  if(r.ok){setMsg("Annonce archivée.");setDeleteAction(null);setSelected(v=>v.filter(id=>id!==deleteAction.listing.id));await load();return}
   setDeleteAction({...deleteAction,busy:false});
-  setMsg(p.error==="listing_has_orders"?"Cette annonce possède une commande : elle ne peut pas être supprimée. Suspendez-la si nécessaire.":"Suppression impossible.");
+  setMsg(p.error==="listing_has_orders"?"Cette annonce possède une commande : elle ne peut pas être supprimée. Suspendez-la si nécessaire.":"Archivage impossible : vérifiez les commandes, promotions et modifications en cours.");
  }
 
  return <>
   <div className="admin-page-head">
    <div><p>Marketplace</p><h1>Annonces</h1><span className="subtitle">Recherchez, consultez et gérez les annonces.</span></div>
-   <div className="admin-page-actions"><a className="admin-btn primary" href="/moderation"><AdminIcon name="shield"/>File de modération</a></div>
+   <div className="admin-page-actions"><a className="admin-btn" href="/listings/archive">Corbeille</a><a className="admin-btn primary" href="/moderation"><AdminIcon name="shield"/>File de modération</a></div>
   </div>
 
   {msg&&<div className="admin-flash ok">{msg}</div>}
@@ -132,7 +132,7 @@ export default function ListingsClient(){
           {l.status!=="SUSPENDED"&&<button type="button" onClick={()=>openSingle(l,"SUSPENDED")}><AdminIcon name="warning"/><span><strong>Suspendre</strong><small>Retirer temporairement de la diffusion</small></span></button>}
           {l.status!=="EXPIRED"&&<button type="button" onClick={()=>openSingle(l,"EXPIRED")}><AdminIcon name="clock"/><span><strong>Expirer</strong><small>Clôturer la diffusion</small></span></button>}
           <div className="admin-menu-separator"/>
-          <button type="button" className="danger" onClick={()=>{closeMenus();setDeleteAction({listing:l,reason:"Suppression administrative",confirmation:"",busy:false})}}><AdminIcon name="warning"/><span><strong>Supprimer définitivement</strong><small>Action irréversible</small></span></button>
+          <button type="button" className="danger" onClick={()=>{closeMenus();setDeleteAction({listing:l,reason:"Archivage administratif",confirmation:"",busy:false})}}><AdminIcon name="warning"/><span><strong>Archiver</strong><small>Restauration possible</small></span></button>
          </div>
         </details></div>
        </td>
@@ -170,11 +170,11 @@ export default function ListingsClient(){
 
   {deleteAction&&<div className="admin-modal-backdrop" onMouseDown={()=>!deleteAction.busy&&setDeleteAction(null)}>
    <section className="admin-card admin-modal" onMouseDown={e=>e.stopPropagation()}>
-    <div className="admin-modal-head"><div><span className="admin-modal-icon danger"><AdminIcon name="warning"/></span><div><h2>Supprimer définitivement l’annonce</h2><p>{deleteAction.listing.title||"Annonce sans titre"}</p></div></div><button type="button" className="admin-icon-button" disabled={deleteAction.busy} onClick={()=>setDeleteAction(null)}>×</button></div>
-    <div className="admin-flash err">Cette action est irréversible. Une annonce liée à une commande restera protégée afin de conserver l’historique financier.</div>
+    <div className="admin-modal-head"><div><span className="admin-modal-icon danger"><AdminIcon name="warning"/></span><div><h2>Archiver l’annonce</h2><p>{deleteAction.listing.title||"Annonce sans titre"}</p></div></div><button type="button" className="admin-icon-button" disabled={deleteAction.busy} onClick={()=>setDeleteAction(null)}>×</button></div>
+    <div className="admin-flash err">L’annonce sera retirée du site et conservée dans la corbeille administrative. Les commandes, promotions actives et modifications en cours sont protégées.</div>
     <label className="admin-field"><span>Motif</span><textarea className="admin-textarea" rows={4} value={deleteAction.reason} onChange={e=>setDeleteAction({...deleteAction,reason:e.target.value})}/></label>
-    <label className="admin-field" style={{marginTop:12}}><span>Confirmation</span><small>Tapez <strong>SUPPRIMER</strong></small><input className="admin-input" value={deleteAction.confirmation} onChange={e=>setDeleteAction({...deleteAction,confirmation:e.target.value.toUpperCase()})}/></label>
-    <div className="admin-modal-actions"><button type="button" className="admin-btn" disabled={deleteAction.busy} onClick={()=>setDeleteAction(null)}>Annuler</button><button type="button" className="admin-btn danger" disabled={deleteAction.busy||deleteAction.confirmation!=="SUPPRIMER"||deleteAction.reason.trim().length<5} onClick={()=>void deleteListing()}>{deleteAction.busy?"Suppression…":"Supprimer définitivement"}</button></div>
+    <label className="admin-field" style={{marginTop:12}}><span>Confirmation</span><small>Tapez <strong>ARCHIVER</strong></small><input className="admin-input" value={deleteAction.confirmation} onChange={e=>setDeleteAction({...deleteAction,confirmation:e.target.value.toUpperCase()})}/></label>
+    <div className="admin-modal-actions"><button type="button" className="admin-btn" disabled={deleteAction.busy} onClick={()=>setDeleteAction(null)}>Annuler</button><button type="button" className="admin-btn danger" disabled={deleteAction.busy||deleteAction.confirmation!=="ARCHIVER"||deleteAction.reason.trim().length<5} onClick={()=>void deleteListing()}>{deleteAction.busy?"Archivage…":"Archiver"}</button></div>
    </section>
   </div>}
  </>;

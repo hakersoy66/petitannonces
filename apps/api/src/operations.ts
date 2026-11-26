@@ -10,7 +10,7 @@ import { animalCessionRequiresProductionApproval } from "./animal-cession-gate.j
 import { ensurePayoutReconciliationSchema } from "./marketplace-stripe.js";
 import { getPayoutProviderRuntime } from "./marketplace-payout-provider.js";
 import { deliverUserEvent } from "./notification-delivery.js";
-import { deleteStoredObject } from "./storage.js";
+import { notifyListingIndexNow } from "./indexnow.js";
 import { createAiSupportReply, ensureSupportFaqSchema, listSupportFaqs, publishFaqFromResolvedTicket } from "./support-ai.js";
 import { getReputationBadgeHistory, getUserReputation } from "./reputation.js";
 import { queueTransactionalEmail } from "./transactional-email.js";
@@ -231,8 +231,10 @@ export async function registerOperationsRoutes(app: FastifyInstance) {
     }).safeParse(request.query);
     if (!query.success) return reply.code(400).send({ error: "invalid_request" });
     const q = query.data.q;
+    const archived=await prisma.$queryRaw<Array<{listingId:string}>>`SELECT "listingId" FROM "AdminListingArchive"`;
     const rows = await prisma.listing.findMany({
       where: {
+        id:{notIn:archived.map(a=>a.listingId)},
         OR: [{ status: { not: "DRAFT" } }, { draftSavedAt: { not: null } }],
         ...(query.data.status ? { status: query.data.status } : {}),
         ...(q ? { AND: [{ OR: [
@@ -535,22 +537,57 @@ export async function registerOperationsRoutes(app: FastifyInstance) {
     return reply.send({updated:true,listing:updated});
   });
 
-  app.delete("/admin/listings/:id", async (request, reply) => {
+  app.get("/admin/listings/archive",async(request,reply)=>{
+    const admin=await requireAdmin(request,reply,["SUPER_ADMIN","ADMIN"]);if(!admin)return;
+    const rows=await prisma.$queryRaw<Array<Record<string,unknown>>>`SELECT a."listingId" AS id,a."previousStatus",a."reason",a."archivedAt",l."title",u."email" AS "sellerEmail" FROM "AdminListingArchive" a JOIN "Listing" l ON l."id"=a."listingId" JOIN "User" u ON u."id"=l."sellerId" ORDER BY a."archivedAt" DESC LIMIT 200`;
+    return reply.send({listings:rows});
+  });
+
+  app.delete("/admin/listings/:id", async(request,reply)=>{
     const admin=await requireAdmin(request,reply,["SUPER_ADMIN","ADMIN"]);if(!admin)return;
     const params=z.object({id:z.string().min(1)}).safeParse(request.params);
-    const body=z.object({reason:z.string().trim().min(5).max(1000),confirmation:z.literal("SUPPRIMER")}).safeParse(request.body);
+    const body=z.object({reason:z.string().trim().min(5).max(1000),confirmation:z.literal("ARCHIVER")}).safeParse(request.body);
     if(!params.success||!body.success)return reply.code(400).send({error:"invalid_request"});
-    const listing=await prisma.listing.findUnique({where:{id:params.data.id},select:{id:true,title:true,status:true,sellerId:true,slug:true}});
-    if(!listing)return reply.code(404).send({error:"listing_not_found"});
-    const orders=await prisma.$queryRawUnsafe<Array<{count:number}>>(`SELECT COUNT(*)::int AS count FROM "MarketplaceOrder" WHERE "listingId"=$1`,listing.id);
-    if(Number(orders[0]?.count??0)>0)return reply.code(409).send({error:"listing_has_orders",message:"Cette annonce possède un historique de commande et ne peut pas être supprimée définitivement."});
-    const media=await prisma.$queryRawUnsafe<Array<{objectKey:string}>>(`SELECT "objectKey" FROM "ListingMedia" WHERE "listingId"=$1`,listing.id).catch(()=>[]);
-    await prisma.listing.delete({where:{id:listing.id}});
-    await audit(admin.id,"LISTING_DELETED","LISTING",listing.id,{title:listing.title,status:listing.status,slug:listing.slug,reason:body.data.reason,mediaCount:media.length});
-    await deliverUserEvent({userId:listing.sellerId,eventKind:"LISTING",notificationKind:"SYSTEM",title:"Annonce supprimée par l’administration",body:`Votre annonce « ${listing.title||"Sans titre"} » a été supprimée. Motif : ${body.data.reason}.`,actionUrl:"/mon-compte/annonces",metadata:{listingId:listing.id,adminDeleted:true,reason:body.data.reason}}).catch(()=>undefined);
-    for(const item of media)void deleteStoredObject(item.objectKey).catch(()=>undefined);
-    return reply.send({deleted:true,id:listing.id});
+    const result=await prisma.$transaction(async tx=>{
+      const rows=await tx.$queryRaw<Array<{id:string;title:string|null;status:string;sellerId:string}>>`SELECT "id","title","status"::text AS status,"sellerId" FROM "Listing" WHERE "id"=${params.data.id} FOR UPDATE`;
+      const listing=rows[0];if(!listing)return {error:"listing_not_found"} as const;
+      const orders=await tx.$queryRaw<Array<{count:number}>>`SELECT COUNT(*)::int AS count FROM "MarketplaceOrder" WHERE "listingId"=${listing.id}`;
+      if(orders[0]?.count)return {error:"listing_has_orders"} as const;
+      const promos=await tx.$queryRaw<Array<{count:number}>>`SELECT COUNT(*)::int AS count FROM "ListingPromotion" WHERE "listingId"=${listing.id} AND ("status"='PENDING' OR ("status"='ACTIVE' AND ("endsAt" IS NULL OR "endsAt">CURRENT_TIMESTAMP)))`;
+      if(promos[0]?.count)return {error:"listing_has_active_promotions"} as const;
+      const edits=await tx.$queryRaw<Array<{count:number}>>`SELECT COUNT(*)::int AS count FROM "ListingEditSession" WHERE "originalListingId"=${listing.id} OR "workingListingId"=${listing.id}`;
+      if(edits[0]?.count)return {error:"listing_has_active_edit"} as const;
+      const inserted=await tx.$executeRaw`INSERT INTO "AdminListingArchive" ("listingId","previousStatus","archivedByUserId","reason") VALUES (${listing.id},${listing.status},${admin.id},${body.data.reason}) ON CONFLICT ("listingId") DO NOTHING`;
+      if(!inserted)return {error:"listing_already_archived"} as const;
+      await tx.listing.update({where:{id:listing.id},data:{status:"SUSPENDED"}});
+      await tx.$executeRaw`UPDATE "ListingAutoApprovalQueue" SET "status"='CANCELLED',"reason"='admin_archived',"processedAt"=CURRENT_TIMESTAMP,"updatedAt"=CURRENT_TIMESTAMP WHERE "listingId"=${listing.id} AND "status" IN ('SCHEDULED','PROCESSING')`;
+      await tx.$executeRaw`UPDATE "ModerationCase" SET "status"='CLOSED',"updatedAt"=CURRENT_TIMESTAMP WHERE "targetType"='LISTING' AND "targetId"=${listing.id} AND "status" NOT IN ('RESOLVED','CLOSED') AND NOT EXISTS (SELECT 1 FROM "ModerationCaseReport" cr WHERE cr."caseId"="ModerationCase"."id")`;
+      await tx.$executeRaw`INSERT INTO "AdminAuditEvent" ("id","actorUserId","action","entityType","entityId","metadata") VALUES (${randomUUID()},${admin.id},'LISTING_ARCHIVED','LISTING',${listing.id},${JSON.stringify({previousStatus:listing.status,reason:body.data.reason})}::jsonb)`;
+      return {listing};
+    });
+    if("error" in result)return reply.code(result.error==="listing_not_found"?404:409).send(result);
+    await notifyListingIndexNow(result.listing.id,true).catch(()=>undefined);
+    await deliverUserEvent({userId:result.listing.sellerId,eventKind:"LISTING",notificationKind:"SYSTEM",title:"Annonce archivée par l’administration",body:`Votre annonce « ${result.listing.title??"Sans titre"} » a été retirée de la publication. Motif : ${body.data.reason}.`,actionUrl:"/mon-compte/annonces",metadata:{listingId:result.listing.id,adminArchived:true}}).catch(()=>undefined);
+    return reply.send({archived:true,id:result.listing.id});
   });
+
+  app.post("/admin/listings/:id/restore",async(request,reply)=>{
+    const admin=await requireAdmin(request,reply,["SUPER_ADMIN","ADMIN"]);if(!admin)return;
+    const params=z.object({id:z.string().min(1)}).safeParse(request.params);
+    const body=z.object({reason:z.string().trim().min(5).max(1000)}).safeParse(request.body);
+    if(!params.success||!body.success)return reply.code(400).send({error:"invalid_request"});
+    const restored=await prisma.$transaction(async tx=>{
+      await tx.$queryRaw`SELECT "id" FROM "Listing" WHERE "id"=${params.data.id} FOR UPDATE`;
+      const removed=await tx.$executeRaw`DELETE FROM "AdminListingArchive" WHERE "listingId"=${params.data.id}`;
+      if(!removed)return false;
+      await tx.listing.update({where:{id:params.data.id},data:{status:"DRAFT",draftSavedAt:new Date()}});
+      await tx.$executeRaw`INSERT INTO "AdminAuditEvent" ("id","actorUserId","action","entityType","entityId","metadata") VALUES (${randomUUID()},${admin.id},'LISTING_RESTORED','LISTING',${params.data.id},${JSON.stringify({status:"DRAFT",reason:body.data.reason})}::jsonb)`;
+      return true;
+    });
+    if(!restored)return reply.code(404).send({error:"archived_listing_not_found"});
+    return reply.send({restored:true,status:"DRAFT"});
+  });
+
 
   app.get("/admin/professionals", async (request, reply) => {
     const admin=await requireAdmin(request,reply,["SUPER_ADMIN","ADMIN","SUPPORT","COMPLIANCE"]);if(!admin)return;
@@ -634,6 +671,31 @@ export async function registerOperationsRoutes(app: FastifyInstance) {
     return reply.send({canManagePermissions,permissions,permissionHistory,listingCounts,canManageListingReview,listingReviewMode,listingReviewEligible:reviewEligibility?.eligible??null,listingReviewReason:reviewEligibility?.reason??null,user:{id:user.id,email:user.email,kind:user.kind,status:user.status,emailVerifiedAt:user.emailVerifiedAt,lastLoginAt:user.lastLoginAt,createdAt:user.createdAt,profile:user.profile,business:user.business,roles:user.roles.map(r=>r.role),manualListingReview:user.manualListingReview,reputation:reputationPayload},wallet:walletRows[0]??{balanceMinor:0,currency:"EUR"},stores:user.stores.map(x=>({...x,listingCount:x._count.listings})),subscriptions:user.subscriptions,listings,orders,tickets,reportsReceived,reportsCreated});
   });
 
+  app.post("/admin/listings/:id/complimentary-promotion",async(request,reply)=>{
+    const admin=await requireAdmin(request,reply,["SUPER_ADMIN","ADMIN"]);if(!admin)return;
+    const params=z.object({id:z.string().min(1)}).safeParse(request.params);
+    const body=z.object({productId:z.string().min(1),days:z.number().int().min(1).max(30),reason:z.string().trim().min(5).max(500)}).safeParse(request.body);
+    if(!params.success||!body.success)return reply.code(400).send({error:"invalid_request"});
+    const result=await prisma.$transaction(async tx=>{
+      await tx.$queryRaw`SELECT "id" FROM "Listing" WHERE "id"=${params.data.id} FOR UPDATE`;
+      const listing=await tx.listing.findUnique({where:{id:params.data.id},select:{id:true,status:true,sellerId:true,seller:{select:{status:true}},category:{select:{domain:true,slug:true}}}});
+      if(!listing||listing.status!=="PUBLISHED"||listing.seller.status!=="ACTIVE"||animalCessionRequiresProductionApproval(listing.category))return {error:"promotion_listing_ineligible"} as const;
+      const products=await tx.$queryRaw<Array<{id:string}>>`SELECT "id" FROM "PromotionProduct" WHERE "id"=${body.data.productId} AND "isActive"=TRUE AND "type" IN ('URGENT','FEATURED')`;
+      if(!products[0])return {error:"promotion_product_not_found"} as const;
+      const existing=await tx.$queryRaw<Array<{id:string}>>`SELECT lp."id" FROM "ListingPromotion" lp JOIN "PromotionProduct" pp ON pp."id"=lp."productId" WHERE lp."listingId"=${listing.id} AND pp."type"=(SELECT "type" FROM "PromotionProduct" WHERE "id"=${body.data.productId}) AND (lp."status"='PENDING' OR (lp."status"='ACTIVE' AND (lp."endsAt" IS NULL OR lp."endsAt">CURRENT_TIMESTAMP))) LIMIT 1`;
+      if(existing[0])return {error:"promotion_already_active"} as const;
+      const id=randomUUID();
+      const endsAt=new Date(Date.now()+body.data.days*86400000);
+      const lifecycle=await tx.$queryRaw<Array<{expiresAt:Date}>>`SELECT "expiresAt" FROM "ListingLifecycle" WHERE "listingId"=${listing.id}`;
+      if(!lifecycle[0]||lifecycle[0].expiresAt<endsAt)return {error:"promotion_exceeds_listing_lifetime"} as const;
+      await tx.$executeRaw`INSERT INTO "ListingPromotion" ("id","listingId","userId","productId","status","startsAt","endsAt","source") VALUES (${id},${listing.id},${listing.sellerId},${body.data.productId},'ACTIVE',CURRENT_TIMESTAMP,${endsAt},'ADMIN')`;
+      await tx.$executeRaw`INSERT INTO "AdminAuditEvent" ("id","actorUserId","action","entityType","entityId","metadata") VALUES (${randomUUID()},${admin.id},'LISTING_COMPLIMENTARY_PROMOTION','LISTING',${listing.id},${JSON.stringify({promotionId:id,productId:body.data.productId,days:body.data.days,reason:body.data.reason,amountMinor:0})}::jsonb)`;
+      return {promotionId:id,endsAt};
+    });
+    if("error" in result)return reply.code(409).send(result);
+    return reply.send(result);
+  });
+
   app.put("/admin/listings/:id/lifetime", async(request,reply)=>{
     const admin=await requireAdmin(request,reply,["SUPER_ADMIN","ADMIN"]);if(!admin)return;
     const params=z.object({id:z.string().min(1)}).safeParse(request.params);
@@ -691,7 +753,12 @@ export async function registerOperationsRoutes(app: FastifyInstance) {
     ]);
     const canManage=admin.roles.some(r=>["SUPER_ADMIN","ADMIN","MODERATOR"].includes(r.role));
     const canExtend=admin.roles.some(r=>["SUPER_ADMIN","ADMIN"].includes(r.role));
-    return reply.send({listing,media,orders,reports,lifecycle:lifecycle[0]??null,history,canManage,canExtend,regulated:animalCessionRequiresProductionApproval(listing.category),cda:listing.category.domain==="ANIMAL"?(await adminCdaStatuses([listing.id])).get(listing.id)??null:null});
+    const [archive,promotionProducts,promotions]=await Promise.all([
+      prisma.$queryRaw<Array<Record<string,unknown>>>`SELECT "previousStatus","reason","archivedAt" FROM "AdminListingArchive" WHERE "listingId"=${listing.id}`,
+      canExtend?prisma.$queryRaw<Array<Record<string,unknown>>>`SELECT "id","name","type"::text AS "type" FROM "PromotionProduct" WHERE "isActive"=TRUE AND "type" IN ('URGENT','FEATURED') ORDER BY "type","name"`:[],
+      prisma.$queryRaw<Array<Record<string,unknown>>>`SELECT lp."id",pp."name",lp."source",lp."endsAt" FROM "ListingPromotion" lp JOIN "PromotionProduct" pp ON pp."id"=lp."productId" WHERE lp."listingId"=${listing.id} AND lp."status"='ACTIVE' AND (lp."endsAt" IS NULL OR lp."endsAt">CURRENT_TIMESTAMP) ORDER BY lp."endsAt"`
+    ]);
+    return reply.send({listing,media,orders,reports,archive:archive[0]??null,promotionProducts,promotions,lifecycle:lifecycle[0]??null,history,canManage,canExtend,regulated:animalCessionRequiresProductionApproval(listing.category),cda:listing.category.domain==="ANIMAL"?(await adminCdaStatuses([listing.id])).get(listing.id)??null:null});
   });
 
   app.get("/admin/professionals/:id/detail", async (request, reply) => {
