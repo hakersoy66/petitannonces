@@ -1,3 +1,4 @@
+import {registerSystemFeatureRoutes,systemFeaturePreHandler} from "./system-feature-controls.js";
 import cookie from "@fastify/cookie";
 import Fastify from "fastify";
 import rawBody from "fastify-raw-body";
@@ -134,6 +135,8 @@ app.addHook("preHandler",async(request,reply)=>{
   if(!source||!allowed.has(source))return reply.code(403).send({error:"invalid_request_origin"});
 });
 app.addHook("preHandler",spamHoldPreHandler);
+app.addHook("preHandler",systemFeaturePreHandler);
+await registerSystemFeatureRoutes(app);
 await registerHealthRoutes(app);
 await registerListingContentPolicyRoutes(app);
 registerCdaPreproductionRoutes(app);

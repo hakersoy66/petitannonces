@@ -1,5 +1,6 @@
 "use client";
 
+import SystemFeatureControls from "./system-feature-controls";
 import {useEffect,useMemo,useState} from "react";
 
 type HealthCheck={ok:boolean;status?:number;latencyMs?:number;error?:string;critical?:boolean;optional?:boolean;enabled?:boolean;mode?:string;note?:string;provider?:string;skipped?:boolean};
@@ -44,6 +45,7 @@ export default function SystemClient(){
  const failedQueue=useMemo(()=>data?.queues.notifications.filter(x=>x.status==="FAILED").reduce((a,x)=>a+x.count,0)??0,[data]);
  const flash=data?.status==="degraded"?{c:"err",t:"Un composant critique est indisponible. Une intervention est nécessaire."}:data?.status==="attention"?{c:"system-attention",t:"La plateforme fonctionne, mais certains éléments méritent une vérification."}:{c:"ok",t:"Les composants critiques répondent correctement."};
  return <div className="admin-system-page">
+  <SystemFeatureControls/>
   <div className="admin-page-head"><div><p>Infrastructure</p><h1>État du système</h1><span className="subtitle">Disponibilité réelle des services, files, sauvegardes et intégrations. Les services optionnels n’abaissent plus l’état global.</span></div><button type="button" className="admin-btn primary" onClick={()=>void load()} disabled={busy}>{busy?"Vérification…":"Actualiser l’état"}</button></div>
   {error&&<div className="admin-flash err admin-system-load-error"><span>{error}</span><button className="admin-btn" onClick={()=>void load()}>Réessayer</button></div>}
   {!error&&<div className={`admin-flash ${flash.c}`}>{flash.t}</div>}
