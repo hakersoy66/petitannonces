@@ -65,6 +65,13 @@ async function adminId(request:any){
   return row&&!row.revokedAt&&row.expiresAt>new Date()?row.userId:null;
 }
 
+// Individual grants are recorded in the administrative audit history.
+export async function getIndividualListingReviewMode(sellerId:string){
+  const rows=await prisma.$queryRaw<Array<{mode:string|null;manual:string|null}>>`SELECT "metadata"->>'mode' AS mode,"metadata"->>'manualListingReview' AS manual FROM "AdminAuditEvent" WHERE "entityType"='USER' AND "entityId"=${sellerId} AND "action"='USER_LISTING_REVIEW_PREFERENCE_UPDATED' ORDER BY "createdAt" DESC,"id" DESC LIMIT 1`;
+  const row=rows[0];
+  return row?.mode==="ENABLED"||(!row?.mode&&row?.manual==="false")?"ENABLED":row?.mode==="DISABLED"||(!row?.mode&&row?.manual==="true")?"DISABLED":"DEFAULT";
+}
+
 export async function evaluateAutoApprovalEligibility(sellerId:string,settings?:AutoApprovalSettings){
   const cfg=settings??await getAutoApprovalSettings();
   if(!cfg.enabled)return{eligible:false as const,reason:"disabled"};
@@ -96,6 +103,7 @@ export async function evaluateAutoApprovalEligibility(sellerId:string,settings?:
   ]);
   if(!user||user.status!=="ACTIVE")return{eligible:false as const,reason:"account_not_active"};
   if(user.manualListingReview)return{eligible:false as const,reason:"manual_review_required_by_admin"};
+  if(await getIndividualListingReviewMode(sellerId)!=="ENABLED")return{eligible:false as const,reason:"individual_admin_permission_required"};
   if(!rep)return{eligible:false as const,reason:"reputation_unavailable"};
   const ageDays=(Date.now()-user.createdAt.getTime())/86400000;
   const manualApprovals=history[0]?.approved??0;
@@ -168,6 +176,9 @@ async function approveOne(listingId:string){
   const firstPublication=listing.publishedAt==null;
   const publishedAt=listing.publishedAt??new Date();
   const changed=await prisma.$transaction(async tx=>{
+    await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id"=${listing.sellerId} FOR UPDATE`;
+    const preference=await tx.$queryRaw<Array<{mode:string|null;manual:string|null}>>`SELECT "metadata"->>'mode' AS mode,"metadata"->>'manualListingReview' AS manual FROM "AdminAuditEvent" WHERE "entityType"='USER' AND "entityId"=${listing.sellerId} AND "action"='USER_LISTING_REVIEW_PREFERENCE_UPDATED' ORDER BY "createdAt" DESC,"id" DESC LIMIT 1`;
+    if(!(preference[0]?.mode==="ENABLED"||(!preference[0]?.mode&&preference[0]?.manual==="false")))return false;
     const u=await tx.listing.updateMany({where:{id:listing.id,status:"PENDING",seller:{manualListingReview:false}},data:{status:"PUBLISHED",publishedAt}});
     if(!u.count)return false;
     const professionalDocumentPath=eligibility.reason==="professional_documents_verified";

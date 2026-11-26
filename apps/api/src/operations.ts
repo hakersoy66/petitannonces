@@ -1,4 +1,4 @@
-import { evaluateAutoApprovalEligibility } from "./auto-approval.js";
+import { evaluateAutoApprovalEligibility, getIndividualListingReviewMode } from "./auto-approval.js";
 import { adminCdaStatuses } from "./cda-production.js";
 import { createHash, randomUUID } from "node:crypto";
 import { prisma } from "@pa/database";
@@ -568,8 +568,7 @@ export async function registerOperationsRoutes(app: FastifyInstance) {
     const [reputation,reputationHistory]=await Promise.all([getUserReputation(user.id),getReputationBadgeHistory(user.id,30)]);
     const reputationPayload=reputation?{...reputation,history:reputationHistory}:null;
     const canManageListingReview=admin.roles.some((r:{role:string})=>["SUPER_ADMIN","ADMIN"].includes(r.role));
-    const reviewHistory=canManageListingReview?await prisma.$queryRaw<Array<{mode:string|null;manual:string|null}>>`SELECT "metadata"->>'mode' AS mode,"metadata"->>'manualListingReview' AS manual FROM "AdminAuditEvent" WHERE "entityType"='USER' AND "entityId"=${user.id} AND "action"='USER_LISTING_REVIEW_PREFERENCE_UPDATED' ORDER BY "createdAt" DESC,"id" DESC LIMIT 1`:[];
-    const listingReviewMode=user.manualListingReview?"DISABLED":reviewHistory[0]?.mode==="ENABLED"||(!reviewHistory[0]?.mode&&reviewHistory[0]?.manual==="false")?"ENABLED":"DEFAULT";
+    const listingReviewMode=user.manualListingReview?"DISABLED":canManageListingReview?await getIndividualListingReviewMode(user.id):"DEFAULT";
     const reviewEligibility=canManageListingReview?await evaluateAutoApprovalEligibility(user.id).catch(()=>null):null;
     return reply.send({canManageListingReview,listingReviewMode,listingReviewEligible:reviewEligibility?.eligible??null,listingReviewReason:reviewEligibility?.reason??null,user:{id:user.id,email:user.email,kind:user.kind,status:user.status,emailVerifiedAt:user.emailVerifiedAt,lastLoginAt:user.lastLoginAt,createdAt:user.createdAt,profile:user.profile,business:user.business,roles:user.roles.map(r=>r.role),manualListingReview:user.manualListingReview,reputation:reputationPayload},wallet:walletRows[0]??{balanceMinor:0,currency:"EUR"},stores:user.stores.map(x=>({...x,listingCount:x._count.listings})),subscriptions:user.subscriptions,listings,orders,tickets,reportsReceived,reportsCreated});
   });
