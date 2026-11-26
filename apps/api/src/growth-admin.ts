@@ -21,6 +21,21 @@ async function requireGrowthAdmin(request: FastifyRequest, reply: FastifyReply) 
 }
 
 export async function registerGrowthAdminRoutes(app: FastifyInstance) {
+  app.get("/admin/growth/performance",async(request,reply)=>{
+    const admin=await requireGrowthAdmin(request,reply);if(!admin)return;
+    const q=z.object({days:z.coerce.number().int().refine(n=>[7,30,90].includes(n)).default(30)}).safeParse(request.query);
+    if(!q.success)return reply.code(400).send({error:"invalid_period"});
+    const days=q.data.days;
+    const [coupons,promotions,channels]=await prisma.$transaction(async tx=>{
+      await tx.$executeRaw`SET LOCAL statement_timeout='8000ms'`;
+      return Promise.all([
+        tx.$queryRaw<Array<Record<string,unknown>>>`SELECT COUNT(*)::int AS total,COUNT(*) FILTER(WHERE "isActive" AND ("startsAt" IS NULL OR "startsAt"<=NOW()) AND ("endsAt" IS NULL OR "endsAt">NOW()) AND ("maxRedemptions" IS NULL OR redemptions<"maxRedemptions"))::int AS available,COUNT(*) FILTER(WHERE "isActive" AND "startsAt">NOW() AND ("endsAt" IS NULL OR "endsAt">NOW()) AND ("maxRedemptions" IS NULL OR redemptions<"maxRedemptions"))::int AS scheduled,COUNT(*) FILTER(WHERE "endsAt"<=NOW())::int AS expired,COUNT(*) FILTER(WHERE "maxRedemptions" IS NOT NULL AND redemptions>="maxRedemptions")::int AS exhausted FROM "Coupon" WHERE type IN ('PERCENT','FIXED')`,
+        tx.$queryRaw<Array<Record<string,unknown>>>`SELECT pp.name,pp.type::text,lp.source,COUNT(*) FILTER(WHERE lp."startsAt">=NOW()-${days}::int*INTERVAL '1 day' AND lp."startsAt"<=NOW() AND lp.status IN ('ACTIVE','EXPIRED'))::int AS started,COUNT(*) FILTER(WHERE lp.status='ACTIVE' AND lp."startsAt"<=NOW() AND (lp."endsAt" IS NULL OR lp."endsAt">NOW()))::int AS active,COUNT(*) FILTER(WHERE lp.status='ACTIVE' AND lp."startsAt">NOW())::int AS scheduled,COUNT(*) FILTER(WHERE lp.status='PENDING')::int AS pending FROM "ListingPromotion" lp JOIN "PromotionProduct" pp ON pp.id=lp."productId" GROUP BY pp.name,pp.type,lp.source ORDER BY active DESC,started DESC,pp.name,lp.source`,
+        tx.$queryRaw<Array<Record<string,unknown>>>`WITH sessions AS (SELECT "sessionId","visitorId",COALESCE(NULLIF(source,''),'direct') AS source,COALESCE(NULLIF(medium,''),'none') AS medium FROM "SiteAnalyticsSession" WHERE "startedAt">=NOW()-${days}::int*INTERVAL '1 day'), events AS (SELECT "sessionId","event" FROM "SiteAnalyticsEvent" WHERE "createdAt">=NOW()-${days}::int*INTERVAL '1 day' AND "event" IN ('SIGN_UP_COMPLETED','LISTING_SUBMITTED','PRO_TRIAL_STARTED')) SELECT s.source,s.medium,COUNT(DISTINCT s."sessionId")::int AS sessions,COUNT(DISTINCT s."visitorId")::int AS visitors,COUNT(DISTINCT s."sessionId") FILTER(WHERE e.event='SIGN_UP_COMPLETED')::int AS "signupSessions",COUNT(DISTINCT s."sessionId") FILTER(WHERE e.event='LISTING_SUBMITTED')::int AS "listingSessions",COUNT(DISTINCT s."sessionId") FILTER(WHERE e.event='PRO_TRIAL_STARTED')::int AS "trialSessions" FROM sessions s LEFT JOIN events e ON e."sessionId"=s."sessionId" GROUP BY s.source,s.medium ORDER BY sessions DESC,s.source,s.medium LIMIT 30`
+      ]);
+    },{timeout:12000});
+    return reply.header("Cache-Control","no-store").send({days,coupons:coupons[0],promotions,channels,generatedAt:new Date().toISOString()});
+  });
   app.get("/admin/growth/coupons", async (request, reply) => {
     const admin = await requireGrowthAdmin(request, reply); if (!admin) return;
     const rows = await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(`SELECT "id","code","type","value","currency","maxRedemptions","redemptions","startsAt","endsAt","isActive","createdAt" FROM "Coupon" ORDER BY "createdAt" DESC LIMIT 100`);
@@ -30,31 +45,43 @@ export async function registerGrowthAdminRoutes(app: FastifyInstance) {
   app.post("/admin/growth/coupons", async (request, reply) => {
     const admin = await requireGrowthAdmin(request, reply); if (!admin) return;
     const parsed = z.object({
-      code: z.string().trim().min(3).max(40).transform((v) => v.toUpperCase()),
+      code: z.string().trim().min(3).max(40).regex(/^[A-Za-z0-9_-]+$/).transform((v) => v.toUpperCase()),
       type: z.enum(["PERCENT","FIXED"]),
       value: z.number().int().positive().max(100000),
       currency: z.string().length(3).default("EUR"),
       maxRedemptions: z.number().int().positive().max(1_000_000).optional(),
       startsAt: z.coerce.date().optional(),
       endsAt: z.coerce.date().optional(),
+      reason:z.string().trim().min(5).max(500),
     }).safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: "invalid_request", details: parsed.error.flatten() });
     if (parsed.data.type === "PERCENT" && parsed.data.value > 100) return reply.code(400).send({ error: "percent_above_100" });
     if (parsed.data.startsAt && parsed.data.endsAt && parsed.data.endsAt <= parsed.data.startsAt) return reply.code(400).send({ error: "invalid_period" });
     try {
       const id = randomUUID();
-      await prisma.$executeRawUnsafe(`INSERT INTO "Coupon" ("id","code","type","value","currency","maxRedemptions","startsAt","endsAt") VALUES ($1,$2,$3::"CouponType",$4,$5,$6,$7,$8)`, id, parsed.data.code, parsed.data.type, parsed.data.value, parsed.data.currency.toUpperCase(), parsed.data.maxRedemptions ?? null, parsed.data.startsAt ?? null, parsed.data.endsAt ?? null);
-      await prisma.$executeRawUnsafe(`INSERT INTO "GrowthEvent" ("id","userId","eventName","channel","campaign","properties") VALUES ($1,$2,'COUPON_CREATED','ADMIN',$3,$4::jsonb)`, randomUUID(), admin.id, parsed.data.code, JSON.stringify({ type: parsed.data.type, value: parsed.data.value }));
+      await prisma.$transaction(async tx=>{
+        await tx.$executeRawUnsafe(`INSERT INTO "Coupon" ("id","code","type","value","currency","maxRedemptions","startsAt","endsAt") VALUES ($1,$2,$3::"CouponType",$4,$5,$6,$7,$8)`,id,parsed.data.code,parsed.data.type,parsed.data.value,parsed.data.currency.toUpperCase(),parsed.data.maxRedemptions??null,parsed.data.startsAt??null,parsed.data.endsAt??null);
+        await tx.$executeRaw`INSERT INTO "GrowthEvent" ("id","userId","eventName","channel","campaign","properties") VALUES (${randomUUID()},${admin.id},'COUPON_CREATED','ADMIN',${parsed.data.code},${JSON.stringify({type:parsed.data.type,value:parsed.data.value})}::jsonb)`;
+        await tx.$executeRaw`INSERT INTO "AdminAuditEvent" ("id","actorUserId","action","entityType","entityId","metadata") VALUES (${randomUUID()},${admin.id},'COUPON_CREATED','COUPON',${id},${JSON.stringify(parsed.data)}::jsonb)`;
+      });
       return reply.code(201).send({ coupon: { id, ...parsed.data, isActive: true } });
-    } catch { return reply.code(409).send({ error: "coupon_code_exists" }); }
+    } catch(error) { if(String(error).includes("23505")||String(error).includes("P2002"))return reply.code(409).send({error:"coupon_code_exists"});throw error; }
   });
 
   app.patch("/admin/growth/coupons/:id", async (request, reply) => {
     const admin = await requireGrowthAdmin(request, reply); if (!admin) return;
     const params = z.object({ id: z.string().min(1) }).safeParse(request.params);
-    const body = z.object({ isActive: z.boolean() }).safeParse(request.body);
+    const body = z.object({ isActive: z.boolean(),reason:z.string().trim().min(5).max(500) }).safeParse(request.body);
     if (!params.success || !body.success) return reply.code(400).send({ error: "invalid_request" });
-    await prisma.$executeRawUnsafe(`UPDATE "Coupon" SET "isActive"=$1 WHERE "id"=$2`, body.data.isActive, params.data.id);
+    const updated=await prisma.$transaction(async tx=>{
+      const rows=await tx.$queryRaw<Array<{isActive:boolean}>>`SELECT "isActive" FROM "Coupon" WHERE id=${params.data.id} AND type IN ('PERCENT','FIXED') FOR UPDATE`;
+      if(!rows[0])return false;
+      if(rows[0].isActive===body.data.isActive)return true;
+      await tx.$executeRaw`UPDATE "Coupon" SET "isActive"=${body.data.isActive} WHERE id=${params.data.id}`;
+      await tx.$executeRaw`INSERT INTO "AdminAuditEvent" ("id","actorUserId","action","entityType","entityId","metadata") VALUES (${randomUUID()},${admin.id},'COUPON_STATUS_UPDATED','COUPON',${params.data.id},${JSON.stringify({previous:rows[0].isActive,...body.data})}::jsonb)`;
+      return true;
+    });
+    if(!updated)return reply.code(404).send({error:"coupon_not_found"});
     return reply.send({ updated: true });
   });
 
