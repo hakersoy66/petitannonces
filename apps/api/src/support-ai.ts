@@ -1,3 +1,4 @@
+import {classifySupportIntent, RENEWAL_GUIDANCE, selectCuratedFaq, normalizeSupportText} from "./support-intent.js";
 import { createHash, randomUUID } from "node:crypto";
 import { prisma } from "@pa/database";
 import { getRuntimeIntegration } from "./admin-control.js";
@@ -16,7 +17,7 @@ export async function ensureSupportFaqSchema(){
   ["faq-seed-address","ajouter-adresse","ACCOUNT","Comment ajouter ou modifier mon adresse ?","Ouvrez Mon compte > Adresses. Vous pouvez ajouter une nouvelle adresse manuellement ou utiliser Ma position actuelle pour demander la localisation de votre appareil. Si vous autorisez l’accès, Petit Annonces tente de remplir automatiquement l’adresse, le code postal, la ville et la région. Vérifiez toujours les informations détectées avant d’enregistrer. Une adresse existante peut ensuite être modifiée depuis sa carte."],
   ["faq-seed-account-password","mot-de-passe-oublie","ACCOUNT","J’ai oublié mon mot de passe, que faire ?","Depuis la page Connexion, ouvrez Mot de passe oublié puis renseignez l’adresse e-mail associée à votre compte. Si l’adresse est reconnue, un e-mail de réinitialisation est envoyé. Le lien de réinitialisation est temporaire afin de protéger votre compte. Choisissez ensuite un nouveau mot de passe suffisamment long et unique."],
   ["faq-seed-pro-open","ouvrir-compte-pro","PROFESSIONAL","Comment ouvrir un compte professionnel sur Petit Annonces ?","Sur la page Inscription, choisissez Professionnel. Le parcours Pro commence par la saisie de votre numéro SIRET à 14 chiffres. Petit Annonces vérifie le SIRET auprès du registre officiel des entreprises françaises. Si l’entreprise est active et que le numéro est valide, les informations disponibles comme la raison sociale, le SIREN, le SIRET, l’adresse, la ville, le code postal et le code NAF sont récupérées automatiquement. Vous complétez ensuite les informations du responsable du compte et vos identifiants de connexion, puis vous choisissez le nom de votre boutique. À la fin du parcours, le compte professionnel, le profil entreprise et la boutique sont créés ensemble et vous êtes dirigé vers l’Espace Pro."],
-  ["faq-seed-pro-siret","verification-siret-boutique","PROFESSIONAL","Comment fonctionne la vérification SIRET ?","Lors d’une inscription professionnelle, saisissez votre SIRET à 14 chiffres dans l’étape de vérification. Petit Annonces interroge le registre officiel des entreprises afin de vérifier que l’établissement existe et qu’il est actif. Si le contrôle réussit, les informations de l’entreprise sont préremplies automatiquement et le statut de vérification professionnelle est enregistré comme vérifié. Si le SIRET n’est pas reconnu, est incomplet ou correspond à un établissement inactif, vous ne pouvez pas passer à l’étape suivante tant que le problème n’est pas corrigé."],
+  ["faq-seed-pro-siret","verification-siret-boutique","PROFESSIONAL","Comment fonctionne la vérification SIRET ?","Lors d’une inscription professionnelle, saisissez votre SIRET à 14 chiffres dans l’étape de vérification. Petit Annonces interroge le registre officiel des entreprises afin de vérifier que l’établissement existe et qu’il est actif. Si le contrôle réussit, les informations de l’entreprise sont préremplies automatiquement et les informations sont enregistrées ; la validation des justificatifs et du représentant reste nécessaire avant la vérification professionnelle définitive. Si le SIRET n’est pas reconnu, est incomplet ou correspond à un établissement inactif, vous ne pouvez pas passer à l’étape suivante tant que le problème n’est pas corrigé."],
   ["faq-seed-pro-store","creer-boutique-pro","PROFESSIONAL","Comment créer ma boutique professionnelle ?","Lors de la création d’un compte Pro, une étape Boutique vous permet de choisir le nom de votre boutique avant la fin de l’inscription. Après création, ouvrez Espace Pro > Ma boutique pour ajouter votre logo, votre image de couverture, votre description, vos coordonnées et votre site si nécessaire. Vous pouvez également associer ou retirer vos annonces actives directement depuis l’écran de gestion de la boutique."],
   ["faq-seed-listing-create","deposer-annonce","LISTING","Comment déposer une annonce sur Petit Annonces ?","Connectez-vous puis cliquez sur Déposer une annonce. Le dépôt se fait avec un assistant en plusieurs étapes. Vous choisissez d’abord la catégorie, puis vous renseignez les informations principales de l’annonce. Selon la catégorie, Petit Annonces peut demander des champs spécifiques, par exemple les caractéristiques du produit, des informations véhicule ou les données énergétiques pour l’immobilier. Vous ajoutez ensuite vos photos, votre prix, les informations de livraison ou de remise, puis vous vérifiez le récapitulatif avant publication. Une fois envoyée, l’annonce peut être publiée immédiatement ou passer par une étape de vérification selon le cas."],
   ["faq-seed-listing-steps","etapes-depot-annonce","LISTING","Quelles sont les étapes du formulaire de dépôt d’annonce ?","Le formulaire de dépôt est organisé en 5 étapes afin d’éviter un formulaire trop long. Le parcours couvre la catégorie et le type d’annonce, les informations et caractéristiques, les photos, le prix et les modalités de remise ou livraison, puis la vérification finale avant envoi. Les boutons Suivant et Précédent permettent de passer d’une étape à l’autre avec une transition visuelle. Une annonce commencée peut aussi être conservée comme brouillon afin d’être reprise plus tard."],
@@ -32,6 +33,7 @@ export async function ensureSupportFaqSchema(){
   ["faq-seed-shipping-label","preparer-mon-envoi","SHIPPING","Comment préparer l’envoi d’une vente ?","Depuis la commande concernée, utilisez le bouton Préparer mon envoi lorsque l’expédition est disponible. Suivez ensuite les instructions affichées et conservez le suivi de livraison dans la commande."],
   ["faq-seed-listing-delete","supprimer-annonce","LISTING","Comment supprimer définitivement une annonce ?","Ouvrez Mon compte > Mes annonces, repérez l’annonce concernée puis utilisez l’action Supprimer. Confirmez la suppression uniquement si vous ne souhaitez plus conserver l’annonce. Si l’annonce est liée à une transaction, un litige ou une opération en cours, certaines actions peuvent être limitées jusqu’à la fin du traitement."],
   ["faq-seed-listing-duplicate","annonce-en-double","LISTING","Pourquoi Petit Annonces refuse une annonce en double ?","Petit Annonces peut bloquer la création d’une annonce lorsqu’une annonce très similaire existe déjà sur le même compte. Vérifiez d’abord Mes annonces et vos brouillons. Si l’annonce existe déjà, modifiez ou reprenez l’annonce existante plutôt que d’en créer une seconde."],
+  ["faq-seed-listing-renewal","prolonger-annonce","LISTING","Comment prolonger ou renouveler une annonce ?",RENEWAL_GUIDANCE],
   ["faq-seed-listing-import","importer-annonce-existante","LISTING","Comment importer une annonce existante ?","Lorsque l’outil d’import est disponible dans votre espace, ouvrez Importer une annonce puis indiquez l’URL de l’annonce source. Vérifiez toujours les photos, le titre, la description, le prix et la catégorie avant publication. Si l’import s’arrête avant la fin, reprenez le brouillon créé plutôt que de relancer plusieurs imports identiques."],
   ["faq-seed-order-unpaid","acheteur-paiement-non-finalise","ORDER","L’acheteur n’a pas terminé son paiement, est-ce une vente ?","Non. Une tentative de commande dont le paiement n’est pas confirmé ne constitue pas une vente. Aucun montant ne doit être considéré comme encaissé et l’annonce ne doit pas être comptée comme vendue pour cette seule tentative. Le support vérifie le statut réel de la commande avant de confirmer la situation."],
   ["faq-seed-messaging-start","message-vendeur-conversation","OTHER","Pourquoi une conversation ne démarre-t-elle pas après avoir contacté un vendeur ?","Vérifiez d’abord que vous êtes connecté, puis réessayez depuis le bouton Contacter de l’annonce. Consultez ensuite Messages pour voir si la conversation existe déjà. Si le bouton semble fonctionner mais qu’aucune conversation n’apparaît, répondez dans votre ticket : le support peut vérifier la conversation et ses derniers événements côté système."],
@@ -43,7 +45,7 @@ export async function ensureSupportFaqSchema(){
   ["faq-seed-shipping-tracking","suivi-colis-retard","SHIPPING","Le suivi de mon colis ne bouge plus, que faire ?","Ouvrez la commande et vérifiez le dernier événement de suivi ainsi que le transporteur indiqué. Un délai entre deux scans n’indique pas automatiquement une perte. Si le statut passe à anomalie, retour ou colis perdu, poursuivez votre demande de support afin qu’un agent vérifie la transaction avant toute décision de remboursement ou de versement."],
   ["faq-seed-safety-scam","messages-suspects","SAFETY","Que faire si un message ou un utilisateur me paraît suspect ?","Ne communiquez jamais votre mot de passe, un code OTP, vos codes de récupération ou vos coordonnées bancaires complètes. Utilisez les fonctions de signalement et de blocage disponibles sur Petit Annonces, et ouvrez une demande de support si vous pensez que votre compte ou une transaction est à risque."]
  ];
- for(const [id,slug,category,question,answer] of seeds){await prisma.$executeRawUnsafe(`INSERT INTO "SupportFaq" ("id","slug","category","question","answer","sortOrder") VALUES ($1,$2,$3::"SupportTicketCategory",$4,$5,10) ON CONFLICT ("id") DO NOTHING`,id,slug,category,question,answer)}
+ for(const [id,slug,category,question,answer] of seeds){await prisma.$executeRawUnsafe(`INSERT INTO "SupportFaq" ("id","slug","category","question","answer","sortOrder") VALUES ($1,$2,$3::"SupportTicketCategory",$4,$5,10) ON CONFLICT ("id") DO UPDATE SET "answer"=EXCLUDED."answer","updatedAt"=CURRENT_TIMESTAMP WHERE "SupportFaq"."id" IN ('faq-seed-pro-siret','faq-seed-listing-renewal') AND "SupportFaq"."answer" IS DISTINCT FROM EXCLUDED."answer"`,id,slug,category,question,answer)}
 }
 function slugify(v:string){const b=v.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,72)||"question";return `${b}-${createHash("sha1").update(v).digest("hex").slice(0,8)}`}
 function redact(v:string){return v.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi,"[e-mail]").replace(/(?:\+33|0)[1-9](?:[ .-]?\d{2}){4}/g,"[téléphone]").replace(/\b(?:SUP|CMD|ORD|PA|ANN)[-_ ]?[A-Z0-9-]{5,}\b/gi,"[référence]").replace(/\b[A-F0-9]{8}-[A-F0-9-]{20,}\b/gi,"[identifiant]").replace(/\s+/g," ").trim()}
@@ -493,24 +495,9 @@ function verifiedOrderReply(order:SupportOrderContext){
 export async function createAiSupportReply(args:{ticketId:string;category:string;subject:string;body:string}){
  await ensureSupportFaqSchema();
  const faq=await listSupportFaqs(args.category);
- const context=faq.slice(0,8).map(x=>`Q: ${x.question}\nR: ${x.answer}`).join("\n\n");
- const previousMessages=await prisma.$queryRawUnsafe<Array<{authorType:string;body:string}>>(
-   `SELECT "authorType"::text AS "authorType","body"
-    FROM "SupportTicketMessage"
-    WHERE "ticketId"=$1 AND "internalNote"=FALSE
-    ORDER BY "createdAt" DESC
-    LIMIT 10`,
-   args.ticketId,
- ).catch(()=>[]);
- const conversationContext=previousMessages.reverse().map(m=>{
-   const who=m.authorType==="CUSTOMER"?"Client":m.authorType==="AGENT"?"Agent":"Assistant";
-   return `${who}: ${redact(m.body).slice(0,1000)}`;
- }).join("\n");
-
- const [orderContext,systemContext,activityContext]=await Promise.all([
+ const [orderContext,systemContext]=await Promise.all([
    getSupportOrderContext(args.ticketId,args.subject,args.body).catch(()=>null),
    getSupportSystemContext(args.ticketId).catch(()=>null),
-   getSupportActivityContext(args.ticketId).catch(()=>null),
  ]);
  const categoryRequiresHuman=HUMAN_REVIEW.has(args.category);
  const paymentCaptured=orderContext?["AUTHORIZED","CAPTURED","PARTIALLY_REFUNDED","REFUNDED"].includes(String(orderContext.paymentStatus)):false;
@@ -531,94 +518,37 @@ export async function createAiSupportReply(args:{ticketId:string;category:string
  );
  const proRequiresHuman=Boolean(systemContext?.businessVerificationStatus==="REJECTED"||systemContext?.businessVerificationStatus==="SUSPENDED"||systemContext?.storeStatus==="SUSPENDED");
  const requiresHuman=categoryRequiresHuman||ambiguousFinancial||orderContext?.orderStatus==="DISPUTED"||listingRequiresHuman||operationalRequiresHuman||proRequiresHuman;
- const verifiedOrder=!requiresHuman&&orderContext?verifiedOrderReply(orderContext):null;
- const verifiedSystem=!requiresHuman?verifiedSystemReply(args.category,`${args.subject} ${args.body}`,systemContext):null;
- const verifiedReply=verifiedOrder||verifiedSystem;
+ const intent=classifySupportIntent(args.category,args.subject,args.body);
+ const question=normalizeSupportText(args.subject+" "+args.body);
+ const orderQuestion=["PAYMENT","ORDER","SHIPPING"].includes(args.category)&&/\b(?:paiement|commande|vente|achat|colis|livr\w*|rembours\w*|versement|transaction)\b/.test(question);
+ const listingStatusQuestion=args.category==="LISTING"&&/\b(?:statut|moderation|verification|en attente|publiee|publication|visible|refusee)\b/.test(question);
+ const systemRelevant=args.category==="ACCOUNT"||args.category==="PAYMENT"||listingStatusQuestion||(args.category==="PROFESSIONAL"&&/\b(?:verification|siret|entreprise|abonnement|boutique)\b/.test(question));
+ const verifiedOrder=!requiresHuman&&orderQuestion&&orderContext?verifiedOrderReply(orderContext):null;
+ const verifiedSystem=!requiresHuman&&!intent&&systemRelevant?verifiedSystemReply(args.category,`${args.subject} ${args.body}`,systemContext):null;
+ const intentReply=!requiresHuman&&intent==="renewal"?RENEWAL_GUIDANCE:!requiresHuman&&intent==="import"?faq.find(x=>x.id==="faq-seed-listing-import")?.answer??null:null;
+ const verifiedReply=intentReply||verifiedOrder||verifiedSystem;
 
- const orderSystemText=orderContext
-  ?`Commande vérifiée: ${orderContext.orderNumber}; rôle client=${orderContext.customerRole}; commande=${orderContext.orderStatus}; paiement=${orderContext.paymentStatus??"inconnu"}; remboursement=${orderContext.refundStatus??"aucun"}; expédition=${orderContext.shipmentStatus??"aucune"}; transporteur=${orderContext.shipmentCarrier??"inconnu"}; livraison estimée=${frDate(orderContext.estimatedDeliveryAt)??"inconnue"}; livré=${frDate(orderContext.deliveredAt)??"non"}; versement vendeur=${orderContext.payoutStatus??"aucun"}; versement disponible=${frDate(orderContext.payoutAvailableAt)??"inconnu"}; versement payé=${frDate(orderContext.payoutPaidAt)??"non"}; annonce=${orderContext.listingStatus??"inconnue"}.`
-  :"Aucune commande liée vérifiée.";
-
- const input=`Tu es l’assistant du service client de Petit Annonces, plateforme française de petites annonces. Tu dois d’abord raisonner à partir des données système vérifiées ci-dessous, puis répondre au client.
-
-Règles impératives :
-- Réponds directement à la question dès la première phrase.
-- Utilise l’historique du ticket et ne redemande jamais une information déjà fournie.
-- Les données système vérifiées ont priorité sur une supposition ou sur une FAQ générique.
-- Ne parle que des données appartenant au client et fournies dans le contexte vérifié.
-- Si aucune donnée vérifiée n’existe pour un point précis, dis-le clairement au lieu d’inventer.
-- Une tentative de paiement non finalisée n’est jamais une vente côté vendeur.
-- N’invente jamais paiement, remboursement, expédition, versement, modération, vérification de compte ou statut Pro.
-- Pour un e-mail marqué ACCEPTED, dis qu’il a été accepté par le serveur d’envoi, pas qu’il a forcément été livré dans la boîte de réception.
-- Pour un e-mail marqué DELIVERED, tu peux dire que le fournisseur l’indique comme livré.
-- Pour une annonce suspendue, un litige, une incohérence financière, un remboursement ambigu, un versement bloqué ou une question de sécurité/conformité, demande une vérification humaine.
-- Ne demande jamais mot de passe, code OTP, code de secours, numéro complet de carte ou coordonnées bancaires complètes.
-- Structure la réponse de façon utile : réponse directe, puis ce qui a été vérifié si cela aide, puis 1 à 3 actions concrètes maximum.
-- Lorsque le système contient une cause probable et vérifiée, explique-la simplement au lieu de donner une FAQ générique.
-- Si une action a déjà réussi dans le système, ne demande pas au client de la recommencer.
-- Si une action est encore en attente, indique son état et évite de faire multiplier les tentatives.
-- Si un ancien ticket traite déjà du même problème, utilise ce contexte sans demander au client d’ouvrir une nouvelle demande.
-- Si une notification ou un e-mail est en erreur, précise qu’un nouvel essai peut être nécessaire ; s’il est DELIVERED, ne demande pas un renvoi par défaut.
-- Pour les annonces, tiens compte du statut réel, des promotions récentes et du crédit disponible avant de proposer une action.
-- Pour les réservations Vacances ou hôtels partenaires, distingue toujours demande, confirmation, annulation et simple vérification de disponibilité.
-- Ne promets aucun remboursement, versement, publication, réactivation ou décision.
-- N’utilise un montant, une date, un statut, une référence ou un nom d’hôtel que s’il apparaît dans les données vérifiées.
-- N’expose jamais de donnée technique interne, token, clé API, identifiant de session ou détail fournisseur inutile au client.
-- Réponds en français naturel et professionnel. Vise environ 120 à 280 mots quand le dossier nécessite une explication ; reste plus court si la réponse est évidente.
-${requiresHuman?"- Ce dossier nécessite une revue humaine : explique ce qui est déjà vérifié, mais ne présente aucune conclusion définitive sur la décision ou les fonds. Précise qu’un agent poursuivra dans ce même ticket.":""}
-
-Catégorie: ${args.category}
-Sujet: ${redact(args.subject)}
-Dernier message client: ${redact(args.body)}
-
-Historique récent:
-${conversationContext||"Aucun historique supplémentaire."}
-
-Données système vérifiées du compte:
-${systemContextText(systemContext)}
-
-Données transactionnelles vérifiées:
-${orderSystemText}
-
-Activité récente vérifiée du compte:
-${activityContextText(activityContext)}
-
-Conclusion système déjà déterminée, si disponible:
-${verifiedReply??"Aucune conclusion déterministe supplémentaire."}
-
-FAQ disponibles:
-${context||"Aucune FAQ pertinente."}`;
-
- const generated=await callAi(input,1200);
- const normalizeMatch=(value:string)=>value.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLocaleLowerCase("fr-FR").replace(/[^a-z0-9]+/g," ").trim();
- const normalized=normalizeMatch(`${args.subject} ${args.body}`);const userTokens=new Set(normalized.split(/\s+/).filter(w=>w.length>=4));
- const relevant=faq.map(x=>{const hay=normalizeMatch(`${x.question} ${x.answer}`);const tokens=new Set(hay.split(/\s+/).filter(w=>w.length>=4));let score=0;for(const token of userTokens){if(tokens.has(token))score+=2;else if(token.length>=6&&hay.includes(token))score+=1}const nq=normalizeMatch(x.question);if(nq&&normalized.includes(nq))score+=8;return{x,score}}).sort((a,b)=>b.score-a.score)[0];
- const faqFallback=relevant&&relevant.score>0
-  ?`${relevant.x.answer}\n\nSi le problème persiste, répondez directement dans ce ticket : le support conservera l’historique et vérifiera les données déjà disponibles sans vous demander de tout recommencer.`
-  :null;
+ // Auto-send only a verified rule or an unambiguous curated FAQ.
+ // Unverified generative output is deliberately not sent to customers.
+ const relevant=!requiresHuman&&!intent?selectCuratedFaq(faq,args.subject,args.body):null;
+ const faqFallback=relevant?relevant.answer:null;
  const humanFallback=requiresHuman
   ?"Merci pour votre message. Les données système indiquent que ce dossier nécessite une vérification humaine avant toute conclusion. Un agent va poursuivre l’examen directement dans cette demande ; vous n’avez pas besoin de renvoyer les mêmes informations."
   :"Merci pour votre message. Les données système disponibles ne permettent pas de confirmer la cause sans risque d’erreur. Votre demande est transmise à un agent ; vous n’avez pas besoin de renvoyer les mêmes informations.";
- const finalRequiresHuman=requiresHuman||(!verifiedReply&&!generated&&!faqFallback);
- const text=(generated||verifiedReply||faqFallback||humanFallback).slice(0,6000);
- const updated=await prisma.$queryRawUnsafe<Array<{id:string}>>(
-   `UPDATE "SupportTicket"
-    SET "firstResponseAt"=COALESCE("firstResponseAt",CURRENT_TIMESTAMP),
-        "lastMessageAt"=CURRENT_TIMESTAMP,
-        "status"=$1::"SupportTicketStatus",
-        "updatedAt"=CURRENT_TIMESTAMP
-    WHERE "id"=$2 AND "status"<>'CLOSED'
-    RETURNING "id"`,
-   finalRequiresHuman?"PENDING_INTERNAL":"PENDING_CUSTOMER",
-   args.ticketId,
- );
- const mode=generated?(verifiedReply?"ai-verified-system":"ai-system"):verifiedReply?"verified-system":faqFallback?"faq":"human-handoff";
- if(!updated.length)return{answered:false,mode,requiresHuman:finalRequiresHuman};
- await prisma.$executeRawUnsafe(
-   `INSERT INTO "SupportTicketMessage" ("id","ticketId","authorType","body") VALUES ($1,$2,'SYSTEM',$3)`,
-   randomUUID(),args.ticketId,text,
- );
+ const finalRequiresHuman=requiresHuman||intent==="ambiguous"||(!verifiedReply&&!faqFallback);
+ const text=(finalRequiresHuman?humanFallback:verifiedReply||faqFallback||humanFallback).slice(0,6000);
+ const mode=finalRequiresHuman?"human-handoff":intentReply?"verified-intent":verifiedReply?"verified-system":"curated-faq";
+ const answered=await prisma.$transaction(async tx=>{
+   const locked=await tx.$queryRaw<Array<{status:string}>>`SELECT "status"::text AS status FROM "SupportTicket" WHERE "id"=${args.ticketId} FOR UPDATE`;
+   if(!locked[0]||["CLOSED","RESOLVED"].includes(locked[0].status))return false;
+   const latest=await tx.$queryRaw<Array<{authorType:string;body:string}>>`SELECT "authorType"::text AS "authorType","body" FROM "SupportTicketMessage" WHERE "ticketId"=${args.ticketId} AND "internalNote"=FALSE ORDER BY "createdAt" DESC,"id" DESC LIMIT 1`;
+   if(latest[0]?.authorType!=="CUSTOMER"||latest[0].body!==args.body)return false;
+   await tx.$executeRaw`INSERT INTO "SupportTicketMessage" ("id","ticketId","authorType","body") VALUES (${randomUUID()},${args.ticketId},'SYSTEM',${text})`;
+   await tx.$executeRaw`UPDATE "SupportTicket" SET "firstResponseAt"=COALESCE("firstResponseAt",CURRENT_TIMESTAMP),"lastMessageAt"=CURRENT_TIMESTAMP,"status"=${finalRequiresHuman?"PENDING_INTERNAL":"PENDING_CUSTOMER"}::"SupportTicketStatus","updatedAt"=CURRENT_TIMESTAMP WHERE "id"=${args.ticketId}`;
+   return true;
+ });
+ if(!answered)return {answered:false,mode,requiresHuman:finalRequiresHuman};
  return{answered:true,mode,requiresHuman:finalRequiresHuman};
 }
 
-export async function publishFaqFromResolvedTicket(ticketId:string){await ensureSupportFaqSchema();const tickets=await prisma.$queryRawUnsafe<Array<{id:string;category:string;subject:string}>>(`SELECT "id","category"::text,"subject" FROM "SupportTicket" WHERE "id"=$1 LIMIT 1`,ticketId);const ticket=tickets[0];if(!ticket)return null;const messages=await prisma.$queryRawUnsafe<Array<{authorType:string;body:string}>>(`SELECT "authorType"::text,"body" FROM "SupportTicketMessage" WHERE "ticketId"=$1 AND "internalNote"=FALSE ORDER BY "createdAt" ASC`,ticketId);const customer=messages.filter(m=>m.authorType==="CUSTOMER").map(m=>redact(m.body)).join("\n").slice(0,5000);const solution=messages.filter(m=>m.authorType==="AGENT"||m.authorType==="SYSTEM").map(m=>redact(m.body)).join("\n").slice(-7000);if(!customer||!solution)return null;const prompt=`Transforme ce ticket résolu en une FAQ publique de Petit Annonces. Réponds STRICTEMENT en JSON valide avec les clés question et answer. La question doit être générale et courte. La réponse doit être utile en 2 à 6 phrases. Supprime ou généralise tout nom, e-mail, téléphone, adresse précise, identifiant, numéro d’annonce/commande/ticket et donnée personnelle. N’invente rien. Catégorie: ${ticket.category}. Sujet: ${redact(ticket.subject)}. Question utilisateur: ${customer}. Solution apportée: ${solution}`;const generated=await callAi(prompt,500);let question=redact(ticket.subject).replace(/\[[^\]]+\]/g,"").trim();let answer=redact(solution).slice(0,1800);if(generated){try{const j=JSON.parse(generated.replace(/^```json\s*/i,"").replace(/```$/,""));if(typeof j.question==="string"&&typeof j.answer==="string"){question=redact(j.question).slice(0,220);answer=redact(j.answer).slice(0,2200)}}catch{}}if(question.length<8||answer.length<20)return null;const old=await prisma.$queryRawUnsafe<Array<{id:string}>>(`SELECT "id" FROM "SupportFaq" WHERE "sourceTicketId"=$1 LIMIT 1`,ticketId);if(old[0]){await prisma.$executeRawUnsafe(`UPDATE "SupportFaq" SET "category"=$1::"SupportTicketCategory","question"=$2,"answer"=$3,"published"=TRUE,"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$4`,ticket.category,question,answer,old[0].id);return old[0].id}const id=randomUUID();await prisma.$executeRawUnsafe(`INSERT INTO "SupportFaq" ("id","slug","category","question","answer","sourceTicketId") VALUES ($1,$2,$3::"SupportTicketCategory",$4,$5,$6)`,id,slugify(question),ticket.category,question,answer,ticketId);return id}
+export async function publishFaqFromResolvedTicket(ticketId:string){await ensureSupportFaqSchema();const tickets=await prisma.$queryRawUnsafe<Array<{id:string;category:string;subject:string}>>(`SELECT "id","category"::text,"subject" FROM "SupportTicket" WHERE "id"=$1 LIMIT 1`,ticketId);const ticket=tickets[0];if(!ticket)return null;const messages=await prisma.$queryRawUnsafe<Array<{authorType:string;body:string}>>(`SELECT "authorType"::text,"body" FROM "SupportTicketMessage" WHERE "ticketId"=$1 AND "internalNote"=FALSE ORDER BY "createdAt" ASC`,ticketId);const customer=messages.filter(m=>m.authorType==="CUSTOMER").map(m=>redact(m.body)).join("\n").slice(0,5000);const solution=messages.filter(m=>m.authorType==="AGENT").map(m=>redact(m.body)).join("\n").slice(-7000);if(!customer||!solution)return null;const prompt=`Transforme ce ticket résolu en une FAQ publique de Petit Annonces. Réponds STRICTEMENT en JSON valide avec les clés question et answer. La question doit être générale et courte. La réponse doit être utile en 2 à 6 phrases. Supprime ou généralise tout nom, e-mail, téléphone, adresse précise, identifiant, numéro d’annonce/commande/ticket et donnée personnelle. N’invente rien. Catégorie: ${ticket.category}. Sujet: ${redact(ticket.subject)}. Question utilisateur: ${customer}. Solution apportée: ${solution}`;const generated=await callAi(prompt,500);let question=redact(ticket.subject).replace(/\[[^\]]+\]/g,"").trim();let answer=redact(solution).slice(0,1800);if(generated){try{const j=JSON.parse(generated.replace(/^```json\s*/i,"").replace(/```$/,""));if(typeof j.question==="string"&&typeof j.answer==="string"){question=redact(j.question).slice(0,220);answer=redact(j.answer).slice(0,2200)}}catch{}}if(question.length<8||answer.length<20)return null;const old=await prisma.$queryRawUnsafe<Array<{id:string}>>(`SELECT "id" FROM "SupportFaq" WHERE "sourceTicketId"=$1 LIMIT 1`,ticketId);if(old[0]){await prisma.$executeRawUnsafe(`UPDATE "SupportFaq" SET "category"=$1::"SupportTicketCategory","question"=$2,"answer"=$3,"published"=FALSE,"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$4`,ticket.category,question,answer,old[0].id);return old[0].id}const id=randomUUID();await prisma.$executeRawUnsafe(`INSERT INTO "SupportFaq" ("id","slug","category","question","answer","sourceTicketId","published") VALUES ($1,$2,$3::"SupportTicketCategory",$4,$5,$6,FALSE)`,id,slugify(question),ticket.category,question,answer,ticketId);return id}
