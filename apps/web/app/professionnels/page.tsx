@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { CampaignLink } from "../../components/campaign-link";
 import { AppIcon } from "../../components/app-icon";
 import styles from "./page.module.css";
 import {BlackFridayProRibbon} from "../../components/black-friday-pro-ribbon";
@@ -191,7 +192,7 @@ export default async function ProfessionalsPage({ searchParams }: { searchParams
                 <h1>Boutiques et professionnels en France.<br /><em>Ouvrez votre vitrine Pro.</em></h1>
                 <p>Publiez vos annonces professionnelles, présentez votre commerce ou votre magasin, importez votre catalogue et centralisez messages, visibilité et activité dans un espace conçu pour vendre plus simplement sur Petit Annonces.</p>
                 <div className={styles.actions}>
-                  <a className={styles.primary} href="/inscription/pro">Créer ma boutique Pro <AppIcon name="arrow-right" /></a>
+                  <CampaignLink className={styles.primary} href="/inscription/pro" cta="pro_hero_signup" landing="/professionnels" campaign="internal_navigation">Créer ma boutique Pro <AppIcon name="arrow-right" /></CampaignLink>
                   <a className={styles.secondary} href="#annuaire">Voir les professionnels</a>
                 </div>
                 <div className={styles.heroMicro}><AppIcon name="shield" /><span><strong>90 jours offerts</strong> · sans carte bancaire · aucun prélèvement automatique à la fin de l’essai.</span></div>
@@ -222,7 +223,7 @@ export default async function ProfessionalsPage({ searchParams }: { searchParams
           <div className={styles.shell}>
             <div className={styles.proConversionHead}>
               <div><span>Conçu pour les professionnels</span><h2>Votre catalogue en ligne, sans perdre du temps.</h2></div>
-              <a href="/inscription/pro">Démarrer gratuitement <AppIcon name="arrow-right" /></a>
+              <CampaignLink href="/inscription/pro" cta="pro_start_signup" landing="/professionnels" campaign="internal_navigation">Démarrer gratuitement <AppIcon name="arrow-right" /></CampaignLink>
             </div>
             <div className={styles.proConversionGrid}>
               <article><i><AppIcon name="user-shield" /></i><div><strong>Identité professionnelle vérifiée</strong><p>Présentez votre entreprise avec un SIRET vérifié et une vitrine clairement identifiable.</p></div></article>
@@ -297,7 +298,7 @@ export default async function ProfessionalsPage({ searchParams }: { searchParams
               {page < pageCount && <a href={directoryUrl({ q, city, sector, page: page + 1 })}>Suivant →</a>}
             </nav>}
 
-            <div className={styles.directoryCta}><div><span>Vous êtes professionnel ?</span><h3>Déposez vos annonces et ouvrez votre boutique Pro.</h3><p>Créez votre vitrine professionnelle, publiez vos annonces en France et profitez de l’offre de lancement avec 90 jours Pro offerts.</p></div><a href="/inscription/pro">Créer ma boutique Pro <AppIcon name="arrow-right" /></a></div>
+            <div className={styles.directoryCta}><div><span>Vous êtes professionnel ?</span><h3>Déposez vos annonces et ouvrez votre boutique Pro.</h3><p>Créez votre vitrine professionnelle, publiez vos annonces en France et profitez de l’offre de lancement avec 90 jours Pro offerts.</p></div><CampaignLink href="/inscription/pro" cta="pro_directory_signup" landing="/professionnels" campaign="internal_navigation">Créer ma boutique Pro <AppIcon name="arrow-right" /></CampaignLink></div>
           </div>
         </section>
 
@@ -328,7 +329,7 @@ export default async function ProfessionalsPage({ searchParams }: { searchParams
         <section id="tarifs" className={styles.pricing}>
           <div className={styles.shell}>
             <div className={styles.sectionHead}><span>Tarifs professionnels</span><h2>Choisissez l’offre adaptée à votre activité.</h2><p>Les tarifs ci-dessous sont gérés depuis l’administration Petit Annonces et peuvent évoluer selon les services activés.</p></div>
-            <div className={styles.cards}>{ps.map((p, index) => <article className={`${styles.plan} ${index === 1 ? styles.featured : ""}`} key={p.id}>{index === 1 && <div className={styles.popular}>Le plus choisi</div>}<span className={styles.planCode}>{p.code}</span><h3>{p.name}</h3><p>{p.description ?? "Une formule professionnelle pour développer votre présence."}</p><div className={styles.price}><strong>{euro(p.monthlyPriceMinor, p.currency)}</strong><span>/ mois</span></div>{p.yearlyPriceMinor && <small className={styles.year}>ou {euro(p.yearlyPriceMinor, p.currency)} / an</small>}<a className={styles.planButton} href={`/inscription/pro?plan=${encodeURIComponent(p.code)}`}>Choisir {p.name}</a><ul>{features(p).map(([label, value]) => <li key={label}><span>{value === "—" ? "—" : "✓"}</span><div><strong>{label}</strong><small>{value}</small></div></li>)}</ul></article>)}</div>
+            <div className={styles.cards}>{ps.map((p, index) => <article className={`${styles.plan} ${index === 1 ? styles.featured : ""}`} key={p.id}>{index === 1 && <div className={styles.popular}>Le plus choisi</div>}<span className={styles.planCode}>{p.code}</span><h3>{p.name}</h3><p>{p.description ?? "Une formule professionnelle pour développer votre présence."}</p><div className={styles.price}><strong>{euro(p.monthlyPriceMinor, p.currency)}</strong><span>/ mois</span></div>{p.yearlyPriceMinor && <small className={styles.year}>ou {euro(p.yearlyPriceMinor, p.currency)} / an</small>}<CampaignLink className={styles.planButton} href={`/inscription/pro?plan=${encodeURIComponent(p.code)}`} cta="pro_plan_signup" landing="/professionnels" campaign="internal_navigation">Choisir {p.name}</CampaignLink><ul>{features(p).map(([label, value]) => <li key={label}><span>{value === "—" ? "—" : "✓"}</span><div><strong>{label}</strong><small>{value}</small></div></li>)}</ul></article>)}</div>
             <div className={styles.note}><AppIcon name="info" /><p>La création du compte professionnel et de la fiche entreprise est distincte de l’activation d’une formule payante. Les paiements d’abonnement seront proposés uniquement lorsqu’un moyen de paiement compatible est configuré.</p></div>
           </div>
         </section>
@@ -344,7 +345,7 @@ export default async function ProfessionalsPage({ searchParams }: { searchParams
             </div>
           </div>
         </section>
-        <section className={styles.cta}><div className={styles.shell}><div><span>Passez à une présence professionnelle</span><h2>Créez votre vitrine et commencez à structurer vos ventes.</h2></div><a href="/inscription/pro">Créer mon compte professionnel <AppIcon name="arrow-right" /></a></div></section>
+        <section className={styles.cta}><div className={styles.shell}><div><span>Passez à une présence professionnelle</span><h2>Créez votre vitrine et commencez à structurer vos ventes.</h2></div><CampaignLink href="/inscription/pro" cta="pro_footer_signup" landing="/professionnels" campaign="internal_navigation">Créer mon compte professionnel <AppIcon name="arrow-right" /></CampaignLink></div></section>
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c") }} />
       </main>
       

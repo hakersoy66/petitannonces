@@ -177,3 +177,5 @@
  .recentActions{grid-template-columns:minmax(0,1fr) 46px;gap:8px}
 }
 @media(min-width:701px){.recentActionSheet{bottom:24px}}
+
+.activationPanel{background:linear-gradient(135deg,#fff,#f7f5ff);border:1px solid #e5e0ff;border-radius:18px;padding:18px;margin:16px 0;display:grid;gap:12px}.activationHead{display:flex;gap:13px;align-items:flex-start}.activationIcon{display:grid;place-items:center;background:#eeeaff;color:#5545cc;width:42px;height:42px;border-radius:13px;flex:none}.activationIcon svg{width:22px;height:22px}.activationHead h2{font-size:18px;margin:0 0 5px;color:#24243e}.activationHead p,.activationHint{margin:0;font-size:13px;line-height:1.5;color:#646477}.activationActions{display:flex;flex-wrap:wrap;gap:8px}.activationHint{font-size:12px}@media(max-width:520px){.activationActions a{width:100%;text-align:center;justify-content:center}}
