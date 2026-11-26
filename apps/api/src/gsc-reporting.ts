@@ -65,10 +65,11 @@ function metric(row:GscRow|undefined){return{clicks:Number(row?.clicks??0),impre
 function priority(score:number):GscSeoPriority{return score>=72?"HIGH":score>=45?"MEDIUM":"LOW"}
 function targetCtr(position:number){if(position<=3)return 20;if(position<=5)return 12;if(position<=10)return 7;if(position<=20)return 3;if(position<=30)return 1.5;return .8}
 function pagePath(page:string){try{return new URL(page).pathname.replace(/\/+$/,"")||"/"}catch{return page}}
-function isLegacyPage(page:string){
+export function isLegacyPage(page:string){
  const path=pagePath(page).toLowerCase();if(page.startsWith("http://"))return true;
- const canonicalStatic=new Set(["/","/assistance","/conditions-generales","/confidentialite","/conformite","/cookies","/deposer-annonce-gratuite","/deposer-une-annonce","/importer-une-annonce","/mentions-legales","/classement-referencement","/retractation","/ouvrir-boutique-pro","/professionnels","/qui-sommes-nous","/recherche","/signaler-contenu-illicite","/vendre-voiture"]);
+ const canonicalStatic=new Set(["/","/assistance","/conditions-generales","/confidentialite","/conformite","/cookies","/deposer-annonce-gratuite","/deposer-une-annonce","/importer-une-annonce","/mentions-legales","/classement-referencement","/retractation","/ouvrir-boutique-pro","/professionnels","/qui-sommes-nous","/recherche","/signaler-contenu-illicite","/vendre-voiture","/presse","/blog","/observatoire","/presse/petit-annonces-marketplace-francaise"]);
  if(canonicalStatic.has(path))return false;
+ if(/^\/blog\/[^/]+$/.test(path)||/^\/emploi\/(?:metiers\/[^/]+|offres\/[^/]+\/[^/]+)$/.test(path))return false;
  if(/^\/(annonce|boutique|c|categorie|immobilier|pro|profil|professionnels|vacances|vehicules|ville)(\/|$)/.test(path))return false;
  return true
 }
