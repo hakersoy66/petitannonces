@@ -1,0 +1,8 @@
+[Unit]
+Description=Petit Annonces internal task automation
+After=network.target nginx.service
+[Service]
+Type=oneshot
+User=petitannonces
+EnvironmentFile=/var/www/petitannonces/shared/.env
+ExecStart=/bin/sh -c 'test -n "$INTERNAL_CRON_SECRET" && /usr/bin/curl -fsS --max-time 30 -X POST -H "x-internal-secret: $INTERNAL_CRON_SECRET" http://127.0.0.1/api/internal/admin-task-automation/sweep'

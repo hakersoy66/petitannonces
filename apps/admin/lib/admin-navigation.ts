@@ -17,6 +17,7 @@ export const adminNavGroups:AdminNavGroup[]=[
   {icon:"dashboard",label:"Tableau de bord",href:"/"},
   {icon:"bell",label:"Centre de notifications",href:"/alerts"},
   {icon:"list",label:"Tâches administratives",href:"/tasks"},
+  {icon:"settings",label:"Automatisation",href:"/tasks/automation",roles:top},
   {icon:"shield",label:"Modération",href:"/moderation",roles:moderation},
   {icon:"list",label:"Annonces",href:"/listings",roles:[...top,"MODERATOR","SUPPORT"]},
   {icon:"users",label:"Utilisateurs",href:"/users",roles:[...top,"SUPPORT","COMPLIANCE"]},
