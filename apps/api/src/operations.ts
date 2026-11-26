@@ -1,3 +1,4 @@
+import { evaluateAutoApprovalEligibility } from "./auto-approval.js";
 import { adminCdaStatuses } from "./cda-production.js";
 import { createHash, randomUUID } from "node:crypto";
 import { prisma } from "@pa/database";
@@ -434,13 +435,18 @@ export async function registerOperationsRoutes(app: FastifyInstance) {
   app.put("/admin/users/:id/listing-review-preference", async(request,reply)=>{
     const admin=await requireAdmin(request,reply,["SUPER_ADMIN","ADMIN"]);if(!admin)return;
     const params=z.object({id:z.string().min(1)}).safeParse(request.params);
-    const body=z.object({manualListingReview:z.boolean()}).safeParse(request.body);
+    const body=z.object({mode:z.enum(["DEFAULT","ENABLED","DISABLED"])}).safeParse(request.body);
     if(!params.success||!body.success)return reply.code(400).send({error:"invalid_request"});
     const target=await prisma.user.findUnique({where:{id:params.data.id},include:{roles:true}});
     if(!target||target.roles.some(r=>r.role==="SUPER_ADMIN"))return reply.code(404).send({error:"user_not_found"});
-    const updated=await prisma.user.update({where:{id:target.id},data:{manualListingReview:body.data.manualListingReview},select:{manualListingReview:true}});
-    await audit(admin.id,"USER_LISTING_REVIEW_PREFERENCE_UPDATED","USER",target.id,{previous:target.manualListingReview,manualListingReview:updated.manualListingReview});
-    return reply.send(updated);
+    const mode=body.data.mode;
+    const updated=await prisma.$transaction(async tx=>{
+      const result=await tx.user.update({where:{id:target.id},data:{manualListingReview:mode==="DISABLED"},select:{manualListingReview:true}});
+      await tx.$executeRaw`INSERT INTO "AdminAuditEvent" ("id","actorUserId","action","entityType","entityId","metadata") VALUES (${randomUUID()},${admin.id},'USER_LISTING_REVIEW_PREFERENCE_UPDATED','USER',${target.id},${JSON.stringify({previous:target.manualListingReview,manualListingReview:result.manualListingReview,mode})}::jsonb)`;
+      return result;
+    });
+    const eligibility=await evaluateAutoApprovalEligibility(target.id).catch(()=>null);
+    return reply.send({...updated,mode,eligible:eligibility?.eligible??null,reason:eligibility?.reason??null});
   });
 
   app.patch("/admin/users/:id", async (request, reply) => {
@@ -561,7 +567,11 @@ export async function registerOperationsRoutes(app: FastifyInstance) {
     ]);
     const [reputation,reputationHistory]=await Promise.all([getUserReputation(user.id),getReputationBadgeHistory(user.id,30)]);
     const reputationPayload=reputation?{...reputation,history:reputationHistory}:null;
-    return reply.send({canManageListingReview:admin.roles.some((r:{role:string})=>["SUPER_ADMIN","ADMIN"].includes(r.role)),user:{id:user.id,email:user.email,kind:user.kind,status:user.status,emailVerifiedAt:user.emailVerifiedAt,lastLoginAt:user.lastLoginAt,createdAt:user.createdAt,profile:user.profile,business:user.business,roles:user.roles.map(r=>r.role),manualListingReview:user.manualListingReview,reputation:reputationPayload},wallet:walletRows[0]??{balanceMinor:0,currency:"EUR"},stores:user.stores.map(x=>({...x,listingCount:x._count.listings})),subscriptions:user.subscriptions,listings,orders,tickets,reportsReceived,reportsCreated});
+    const canManageListingReview=admin.roles.some((r:{role:string})=>["SUPER_ADMIN","ADMIN"].includes(r.role));
+    const reviewHistory=canManageListingReview?await prisma.$queryRaw<Array<{mode:string|null;manual:string|null}>>`SELECT "metadata"->>'mode' AS mode,"metadata"->>'manualListingReview' AS manual FROM "AdminAuditEvent" WHERE "entityType"='USER' AND "entityId"=${user.id} AND "action"='USER_LISTING_REVIEW_PREFERENCE_UPDATED' ORDER BY "createdAt" DESC,"id" DESC LIMIT 1`:[];
+    const listingReviewMode=user.manualListingReview?"DISABLED":reviewHistory[0]?.mode==="ENABLED"||(!reviewHistory[0]?.mode&&reviewHistory[0]?.manual==="false")?"ENABLED":"DEFAULT";
+    const reviewEligibility=canManageListingReview?await evaluateAutoApprovalEligibility(user.id).catch(()=>null):null;
+    return reply.send({canManageListingReview,listingReviewMode,listingReviewEligible:reviewEligibility?.eligible??null,listingReviewReason:reviewEligibility?.reason??null,user:{id:user.id,email:user.email,kind:user.kind,status:user.status,emailVerifiedAt:user.emailVerifiedAt,lastLoginAt:user.lastLoginAt,createdAt:user.createdAt,profile:user.profile,business:user.business,roles:user.roles.map(r=>r.role),manualListingReview:user.manualListingReview,reputation:reputationPayload},wallet:walletRows[0]??{balanceMinor:0,currency:"EUR"},stores:user.stores.map(x=>({...x,listingCount:x._count.listings})),subscriptions:user.subscriptions,listings,orders,tickets,reportsReceived,reportsCreated});
   });
 
   app.get("/admin/listings/:id/detail", async (request, reply) => {
