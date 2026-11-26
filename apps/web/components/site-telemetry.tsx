@@ -9,7 +9,7 @@ export type SiteAnalyticsEvent=
  | "PWA_ONBOARDING_STARTED" | "PWA_ONBOARDING_COMPLETED" | "PWA_INSTALL_GUIDE_OPENED"
  | "PWA_PUSH_PROMPTED" | "PWA_PUSH_ACCEPTED" | "PWA_PUSH_DECLINED"
  | "SIGN_UP_COMPLETED" | "PHONE_VERIFIED" | "LISTING_SUBMITTED" | "MESSAGE_SENT"
- | "CHECKOUT_STARTED" | "PURCHASE_COMPLETED" | "PRO_TRIAL_STARTED" | "LANDING_CTA_CLICKED" | "JOB_SEARCHED" | "JOB_APPLY_CLICKED" | "JOB_RESOURCE_CLICKED"
+ | "LISTING_BUY_CLICKED" | "CHECKOUT_STARTED" | "PURCHASE_COMPLETED" | "PRO_TRIAL_STARTED" | "LANDING_CTA_CLICKED" | "JOB_SEARCHED" | "JOB_APPLY_CLICKED" | "JOB_RESOURCE_CLICKED"
  | "PHOTO_UPLOAD_FAILED" | "LISTING_PUBLISH_CLICKED" | "LISTING_PUBLISH_SUCCEEDED" | "LISTING_PUBLISH_FAILED" | "CHECKOUT_FAILED";
 export function analyticsAllowed(){try{const saved=JSON.parse(localStorage.getItem(CONSENT_KEY)||"null");return cookieDecisionValid(saved)&&saved.analytics}catch{return false}}
 function advertisingAllowed(){try{const saved=JSON.parse(localStorage.getItem(CONSENT_KEY)||"null");return cookieDecisionValid(saved)&&saved.advertising}catch{return false}}
