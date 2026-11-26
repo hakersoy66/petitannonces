@@ -528,9 +528,14 @@ export async function registerOperationsRoutes(app: FastifyInstance) {
     const params=z.object({id:z.string().min(1)}).safeParse(request.params);
     const body=z.object({title:z.string().trim().min(5).max(120),description:z.string().trim().min(20).max(12000),price:z.number().nonnegative().nullable(),city:z.string().trim().max(100).nullable(),postalCode:z.string().trim().max(20).nullable(),region:z.string().trim().max(120).nullable(),categoryId:z.string().min(1),storeId:z.string().nullable().optional()}).safeParse(request.body);
     if(!params.success||!body.success)return reply.code(400).send({error:"invalid_request"});
-    const listing=await prisma.listing.findUnique({where:{id:params.data.id},select:{id:true,sellerId:true,category:{select:{domain:true,slug:true}}}});if(!listing)return reply.code(404).send({error:"listing_not_found"});
-    const category=await prisma.category.findUnique({where:{id:body.data.categoryId},select:{id:true,domain:true,slug:true}});if(!category)return reply.code(400).send({error:"category_not_found"});
+    const listing=await prisma.listing.findUnique({where:{id:params.data.id},select:{id:true,sellerId:true,status:true,categoryId:true,category:{select:{domain:true,slug:true}}}});if(!listing)return reply.code(404).send({error:"listing_not_found"});
+    const category=await prisma.category.findFirst({where:{id:body.data.categoryId,isActive:true},select:{id:true,domain:true,slug:true}});if(!category)return reply.code(400).send({error:"category_not_found"});
     if(animalCessionRequiresProductionApproval(listing.category)||animalCessionRequiresProductionApproval(category))return reply.code(423).send({error:"cda_seller_edit_required"});
+    if(listing.categoryId!==category.id){
+      if(listing.status!=="DRAFT"||listing.category.domain!=="GENERAL"||category.domain!=="GENERAL")return reply.code(409).send({error:"category_change_requires_seller_review",message:"La modification de catégorie nécessite un brouillon de catégorie générale. Les autres annonces doivent être corrigées par le vendeur et soumises à validation."});
+      const attributes=await prisma.listingAttributeValue.count({where:{listingId:listing.id}});
+      if(attributes)return reply.code(409).send({error:"category_change_requires_seller_review",message:"Cette annonce contient des caractéristiques spécifiques. Le vendeur doit effectuer le changement de catégorie."});
+    }
     if(body.data.storeId){const store=await prisma.store.findFirst({where:{id:body.data.storeId,ownerId:listing.sellerId},select:{id:true}});if(!store)return reply.code(400).send({error:"store_not_owned_by_seller"});}
     const updated=await prisma.listing.update({where:{id:listing.id},data:{title:body.data.title,description:body.data.description,priceMinor:body.data.price==null?null:Math.round(body.data.price*100),city:body.data.city||null,postalCode:body.data.postalCode||null,region:body.data.region||null,categoryId:body.data.categoryId,...(body.data.storeId!==undefined?{storeId:body.data.storeId||null}:{})}});
     await audit(admin.id,"LISTING_CONTENT_UPDATED","LISTING",listing.id,{fields:["title","description","price","location","category","store"]});
@@ -800,6 +805,24 @@ export async function registerOperationsRoutes(app: FastifyInstance) {
     await deliverUserEvent({userId:user.id,eventKind:"LISTING",notificationKind:"SYSTEM",title:body.data.title,body:body.data.body,actionUrl:body.data.actionUrl||"/mon-compte/notifications",metadata:{adminMessage:true,actorUserId:admin.id}});
     await audit(admin.id,"ADMIN_USER_NOTIFICATION","USER",user.id,{title:body.data.title,actionUrl:body.data.actionUrl||null});
     return reply.send({sent:true});
+  });
+
+  app.post("/admin/listings/bulk-lifetime",async(request,reply)=>{
+    const admin=await requireAdmin(request,reply,["SUPER_ADMIN","ADMIN"]);if(!admin)return;
+    const body=z.object({ids:z.array(z.string().min(1)).min(1).max(100),days:z.number().int().min(1).max(365),reason:z.string().trim().min(5).max(500)}).safeParse(request.body);
+    if(!body.success)return reply.code(400).send({error:"invalid_request"});
+    const ids=[...new Set(body.data.ids)].sort();
+    const result=await prisma.$transaction(async tx=>{
+      const rows=await tx.$queryRaw<Array<{id:string;status:string;domain:string;slug:string;expiresAt:Date|null}>>`SELECT l."id",l."status"::text AS status,c."domain"::text AS domain,c."slug",lc."expiresAt" FROM "Listing" l JOIN "Category" c ON c."id"=l."categoryId" LEFT JOIN "ListingLifecycle" lc ON lc."listingId"=l."id" WHERE l."id"=ANY(${ids}::text[]) ORDER BY l."id" FOR UPDATE OF l`;
+      if(rows.length!==ids.length||rows.some(l=>l.status!=="PUBLISHED"||animalCessionRequiresProductionApproval(l)))return null;
+      for(const l of rows){
+        const updated=await tx.$queryRaw<Array<{expiresAt:Date}>>`INSERT INTO "ListingLifecycle" ("listingId","expiresAt") VALUES (${l.id},CURRENT_TIMESTAMP+${body.data.days}::int*INTERVAL '1 day') ON CONFLICT ("listingId") DO UPDATE SET "expiresAt"=GREATEST("ListingLifecycle"."expiresAt",CURRENT_TIMESTAMP)+${body.data.days}::int*INTERVAL '1 day',"updatedAt"=CURRENT_TIMESTAMP RETURNING "expiresAt"`;
+        await tx.$executeRaw`INSERT INTO "AdminAuditEvent" ("id","actorUserId","action","entityType","entityId","metadata") VALUES (${randomUUID()},${admin.id},'LISTING_LIFETIME_EXTENDED','LISTING',${l.id},${JSON.stringify({previous:l.expiresAt,expiresAt:updated[0]?.expiresAt,days:body.data.days,reason:body.data.reason,bulk:true})}::jsonb)`;
+      }
+      return rows.length;
+    },{timeout:30000});
+    if(result===null)return reply.code(409).send({error:"bulk_lifetime_ineligible",message:"Toutes les annonces doivent être publiées et éligibles. Aucune modification effectuée."});
+    return reply.send({updated:result});
   });
 
   app.post("/admin/listings/bulk-status", async (request, reply) => {

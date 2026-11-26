@@ -28,6 +28,9 @@ export default function ListingsClient(){
  const[statusAction,setStatusAction]=useState<{ids:string[];next:"PUBLISHED"|"SUSPENDED"|"EXPIRED";reason:string}|null>(null);
  const[deleteAction,setDeleteAction]=useState<{listing:L;reason:string;confirmation:string;busy:boolean}|null>(null);
 
+ const[bulkLifetime,setBulkLifetime]=useState<{ids:string[];days:number;reason:string}|null>(null);
+ const[bulkBusy,setBulkBusy]=useState(false);
+ async function extendBulk(){if(!bulkLifetime||bulkLifetime.reason.trim().length<5)return;setBulkBusy(true);try{const r=await fetch("/api/admin/listings/bulk-lifetime",{method:"POST",credentials:"include",headers:{"content-type":"application/json"},body:JSON.stringify(bulkLifetime)});const p=await r.json();if(!r.ok){setMsg(p.message??"Prolongation groupée impossible.");return}setMsg(p.updated+" annonce(s) prolongée(s).");setBulkLifetime(null);setSelected([]);await load()}catch{setMsg("Prolongation groupée impossible.")}finally{setBulkBusy(false)}}
  async function load(){
   setBusy(true);
   try{
@@ -49,7 +52,7 @@ export default function ListingsClient(){
   if(!edit||!form)return;
   const r=await fetch(`/api/admin/listings/${edit.id}`,{method:"PATCH",credentials:"include",headers:{"content-type":"application/json"},body:JSON.stringify({title:form.title,description:form.description,price:form.price===""?null:Number(form.price),city:form.city||null,postalCode:form.postalCode||null,region:form.region||null,categoryId:form.categoryId,storeId:form.storeId||null})});
   const p=await r.json().catch(()=>({}));
-  setMsg(r.ok?"Annonce modifiée.":p.error==="store_not_owned_by_seller"?"La vitrine sélectionnée n’appartient pas au vendeur.":p.error==="cda_seller_edit_required"?"Le vendeur doit corriger l’annonce animale et renouveler le contrôle CDA.":"Impossible de modifier l’annonce.");
+  setMsg(r.ok?"Annonce modifiée.":p.error==="category_change_requires_seller_review"?(p.message??"Changement de catégorie réservé au vendeur."):p.error==="store_not_owned_by_seller"?"La vitrine sélectionnée n’appartient pas au vendeur.":p.error==="cda_seller_edit_required"?"Le vendeur doit corriger l’annonce animale et renouveler le contrôle CDA.":"Impossible de modifier l’annonce.");
   if(r.ok){setEdit(null);await load()}
  }
  function openBulk(next:"PUBLISHED"|"SUSPENDED"|"EXPIRED"){if(!selected.length)return;setStatusAction({ids:selected,next,reason:next==="PUBLISHED"?"Validation administrative groupée":"Décision administrative groupée"})}
@@ -101,7 +104,7 @@ export default function ListingsClient(){
      <button type="button" className="admin-btn success" onClick={()=>openBulk("PUBLISHED")}><AdminIcon name="check"/>Publier</button>
      <button type="button" className="admin-btn danger" onClick={()=>openBulk("SUSPENDED")}><AdminIcon name="warning"/>Suspendre</button>
      <button type="button" className="admin-btn" onClick={()=>openBulk("EXPIRED")}><AdminIcon name="clock"/>Expirer</button>
-     <button type="button" className="admin-icon-button" onClick={()=>setSelected([])}>×</button>
+     <button type="button" className="admin-btn" disabled={selected.length>100||rows.some(x=>selected.includes(x.id)&&x.status!=="PUBLISHED")} onClick={()=>setBulkLifetime({ids:[...selected],days:30,reason:""})}>Prolonger</button><button type="button" className="admin-icon-button" onClick={()=>setSelected([])}>×</button>
     </div>
    </div>}
 
@@ -168,6 +171,7 @@ export default function ListingsClient(){
    </section>
   </div>}
 
+  {bulkLifetime&&<div className="admin-modal-backdrop"><section className="admin-card admin-modal" role="dialog" aria-modal="true"><h2>Prolongation groupée gratuite</h2><p>{bulkLifetime.ids.length} annonces publiées. Si une annonce est inéligible, aucune modification n’est appliquée.</p><select className="admin-select" value={bulkLifetime.days} onChange={e=>setBulkLifetime({...bulkLifetime,days:Number(e.target.value)})}>{[7,15,30,60,90,180,365].map(n=><option key={n} value={n}>{n} jours</option>)}</select><textarea className="admin-input" rows={3} maxLength={500} placeholder="Motif obligatoire" value={bulkLifetime.reason} onChange={e=>setBulkLifetime({...bulkLifetime,reason:e.target.value})}/><div className="admin-modal-actions"><button className="admin-btn" disabled={bulkBusy} onClick={()=>setBulkLifetime(null)}>Annuler</button><button className="admin-btn primary" disabled={bulkBusy||bulkLifetime.reason.trim().length<5} onClick={()=>void extendBulk()}>Confirmer</button></div></section></div>}
   {deleteAction&&<div className="admin-modal-backdrop" onMouseDown={()=>!deleteAction.busy&&setDeleteAction(null)}>
    <section className="admin-card admin-modal" onMouseDown={e=>e.stopPropagation()}>
     <div className="admin-modal-head"><div><span className="admin-modal-icon danger"><AdminIcon name="warning"/></span><div><h2>Archiver l’annonce</h2><p>{deleteAction.listing.title||"Annonce sans titre"}</p></div></div><button type="button" className="admin-icon-button" disabled={deleteAction.busy} onClick={()=>setDeleteAction(null)}>×</button></div>

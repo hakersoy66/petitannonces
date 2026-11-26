@@ -1,5 +1,6 @@
+import { animalCessionRequiresProductionApproval } from "./animal-cession-gate.js";
 import { execFile } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -93,6 +94,71 @@ export async function registerMediaRoutes(app: FastifyInstance) {
   for (const mime of IMAGE_MIME_TYPES) {
     if (!app.hasContentTypeParser(mime)) app.addContentTypeParser(mime, { parseAs: "buffer", bodyLimit: MAX_IMAGE_BYTES }, (_request, body, done) => done(null, body));
   }
+
+  async function adminActor(request:any){
+    const token=request.cookies.pa_session;
+    if(!token)return null;
+    const session=await prisma.session.findUnique({where:{tokenHash:createHash("sha256").update(token).digest("hex")},select:{userId:true}});
+    return session?.userId??null;
+  }
+  async function editableMedia(tx:any,id:string){
+    await tx.$queryRaw`SELECT "id" FROM "Listing" WHERE "id"=${id} FOR UPDATE`;
+    const l=await tx.listing.findUnique({where:{id},select:{id:true,status:true,category:{select:{domain:true,slug:true}}}});
+    if(!l||!["DRAFT","PENDING","PUBLISHED"].includes(l.status)||animalCessionRequiresProductionApproval(l.category))return false;
+    const rows=await tx.$queryRaw`SELECT 1 FROM "MarketplaceOrder" WHERE "listingId"=${id} UNION ALL SELECT 1 FROM "ListingEditSession" WHERE "originalListingId"=${id} OR "workingListingId"=${id} UNION ALL SELECT 1 FROM "AdminListingArchive" WHERE "listingId"=${id} LIMIT 1`;
+    return rows.length===0;
+  }
+  app.post("/admin/listings/:id/media/upload",{preHandler:requireAdminRoles(["SUPER_ADMIN","ADMIN"]),bodyLimit:MAX_IMAGE_BYTES},async(request,reply)=>{
+    const params=z.object({id:z.string().min(1)}).safeParse(request.params);
+    const query=z.object({reason:z.string().trim().min(5).max(500)}).safeParse(request.query);
+    if(!params.success||!query.success)return reply.code(400).send({error:"invalid_request"});
+    const actor=await adminActor(request);if(!actor)return reply.code(401).send({error:"unauthorized"});
+    if(!storageConfigured())return reply.code(503).send({error:"object_storage_not_configured"});
+    const mime=String(request.headers["content-type"]??"").split(";")[0]?.trim().toLowerCase();
+    if(!mime||!IMAGE_MIME_TYPES.has(mime))return reply.code(415).send({error:"unsupported_media_type"});
+    if(!Buffer.isBuffer(request.body)||!request.body.length)return reply.code(400).send({error:"empty_media"});
+    let normalized:Buffer;
+    try{
+      const input=HEIC_MIME_TYPES.has(mime)?await decodeHeicToJpeg(request.body):request.body;
+      normalized=await sharp(input,{failOn:"error",limitInputPixels:80_000_000}).rotate().resize({width:2560,height:2560,fit:"inside",withoutEnlargement:true}).webp({quality:84}).toBuffer();
+      if(!normalized.length||normalized.length>MAX_IMAGE_BYTES)throw new Error("invalid_image");
+    }catch{return reply.code(422).send({error:"image_processing_failed"});}
+    const id=randomUUID();const key=`listings/${params.data.id}/${id}.webp`;
+    let uploaded=false;
+    try{
+      const result=await prisma.$transaction(async tx=>{
+        if(!await editableMedia(tx,params.data.id))return {error:"listing_media_protected"} as const;
+        const rows=await tx.$queryRaw<Array<{count:number;maxOrder:number;hasCover:boolean}>>`SELECT COUNT(*)::int AS count,COALESCE(MAX("sortOrder"),-10)::int AS "maxOrder",COALESCE(BOOL_OR("isCover" AND "status"='READY'),FALSE) AS "hasCover" FROM "ListingMedia" WHERE "listingId"=${params.data.id} AND "status"<>'FAILED'`;
+        const row=rows[0];if(!row||row.count>=MAX_IMAGES_PER_LISTING)return {error:"media_limit_reached"} as const;
+        const url=await uploadStoredObject(key,"image/webp",normalized);uploaded=true;
+        await tx.$executeRaw`INSERT INTO "ListingMedia" ("id","listingId","objectKey","publicUrl","mimeType","sizeBytes","status","sortOrder","isCover","createdAt","updatedAt") VALUES (${id},${params.data.id},${key},${url},'image/webp',${normalized.length},'READY',${row.maxOrder+10},${!row.hasCover},NOW(),NOW())`;
+        await tx.$executeRaw`INSERT INTO "AdminAuditEvent" ("id","actorUserId","action","entityType","entityId","metadata") VALUES (${randomUUID()},${actor},'LISTING_MEDIA_ADDED','LISTING',${params.data.id},${JSON.stringify({mediaId:id,reason:query.data.reason})}::jsonb)`;
+        return {id,url};
+      },{timeout:30000});
+      if("error" in result)return reply.code(409).send(result);
+      return reply.code(201).send(result);
+    }catch(error){if(uploaded){const refs=await prisma.$queryRaw<Array<{count:number}>>`SELECT COUNT(*)::int AS count FROM "ListingMedia" WHERE "objectKey"=${key}`.catch(()=>null);if(refs?.[0]?.count===0)await deleteStoredObject(key).catch(()=>undefined);}throw error;}
+  });
+  app.delete("/admin/listings/:id/media/:mediaId",{preHandler:requireAdminRoles(["SUPER_ADMIN","ADMIN"])},async(request,reply)=>{
+    const params=z.object({id:z.string().min(1),mediaId:z.string().uuid()}).safeParse(request.params);
+    const body=z.object({reason:z.string().trim().min(5).max(500)}).safeParse(request.body);
+    if(!params.success||!body.success)return reply.code(400).send({error:"invalid_request"});
+    const actor=await adminActor(request);if(!actor)return reply.code(401).send({error:"unauthorized"});
+    const result=await prisma.$transaction(async tx=>{
+      if(!await editableMedia(tx,params.data.id))return {error:"listing_media_protected"} as const;
+      const rows=await tx.$queryRaw<Array<{id:string;objectKey:string;isCover:boolean}>>`SELECT "id","objectKey","isCover" FROM "ListingMedia" WHERE "listingId"=${params.data.id} AND "status"='READY' ORDER BY "sortOrder","createdAt" FOR UPDATE`;
+      const media=rows.find(m=>m.id===params.data.mediaId);if(!media)return {error:"media_not_found"} as const;
+      if(rows.length<=1)return {error:"last_photo_protected"} as const;
+      await tx.$executeRaw`DELETE FROM "ListingMedia" WHERE "id"=${media.id} AND "listingId"=${params.data.id}`;
+      if(media.isCover){const next=rows.find(m=>m.id!==media.id);if(next)await tx.$executeRaw`UPDATE "ListingMedia" SET "isCover"=TRUE,"updatedAt"=NOW() WHERE "id"=${next.id}`;}
+      await tx.$executeRaw`INSERT INTO "AdminAuditEvent" ("id","actorUserId","action","entityType","entityId","metadata") VALUES (${randomUUID()},${actor},'LISTING_MEDIA_REMOVED','LISTING',${params.data.id},${JSON.stringify({mediaId:media.id,reason:body.data.reason})}::jsonb)`;
+      return {objectKey:media.objectKey};
+    });
+    if("error" in result)return reply.code(409).send(result);
+    const refs=await prisma.$queryRaw<Array<{count:number}>>`SELECT COUNT(*)::int AS count FROM "ListingMedia" WHERE "objectKey"=${result.objectKey}`.catch(()=>null);
+    if(refs?.[0]?.count===0)await deleteStoredObject(result.objectKey).catch(()=>undefined);
+    return reply.send({removed:true});
+  });
 
   app.post("/admin/media/fingerprint/verify",{preHandler:requireAdminRoles(["SUPER_ADMIN","ADMIN","MODERATOR","COMPLIANCE"]),bodyLimit:MAX_IMAGE_BYTES},async(request,reply)=>{
     const mimeType=String(request.headers["content-type"]??"").split(";")[0]?.trim().toLowerCase();
