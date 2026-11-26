@@ -1,4 +1,6 @@
 import net from "node:net";
+import os from "node:os";
+import {statfs} from "node:fs/promises";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { prisma } from "@pa/database";
 import type { FastifyInstance } from "fastify";
@@ -9,11 +11,11 @@ import { ensureJobTables } from "./job-observability.js";
 import { ensurePayoutReconciliationSchema } from "./marketplace-stripe.js";
 
 const ROLES=["SUPER_ADMIN","ADMIN"] as const;
-async function redisCheck(){const raw=process.env.REDIS_URL;if(!raw)return{ok:true,skipped:true};try{const u=new URL(raw);const started=Date.now();return await new Promise<{ok:boolean;latencyMs?:number;error?:string}>(resolve=>{const socket=net.createConnection({host:u.hostname,port:Number(u.port||6379)});const done=(x:any)=>{socket.destroy();resolve(x)};socket.setTimeout(1200);socket.once("connect",()=>done({ok:true,latencyMs:Date.now()-started}));socket.once("timeout",()=>done({ok:false,error:"timeout"}));socket.once("error",e=>done({ok:false,error:e.message}))})}catch{return{ok:false,error:"invalid_redis_url"}}}
+async function redisCheck(){const raw=process.env.REDIS_URL;if(!raw)return{ok:process.env.REQUIRE_REDIS_READY!=="true",skipped:true};try{const u=new URL(raw);const started=Date.now();return await new Promise<{ok:boolean;latencyMs?:number;error?:string}>(resolve=>{const socket=net.createConnection({host:u.hostname,port:Number(u.port||6379)});const done=(x:any)=>{socket.destroy();resolve(x)};socket.setTimeout(1200);socket.once("connect",()=>done({ok:true,latencyMs:Date.now()-started}));socket.once("timeout",()=>done({ok:false,error:"timeout"}));socket.once("error",e=>done({ok:false,error:e.message}))})}catch{return{ok:false,error:"invalid_redis_url"}}}
 function envConfigured(...names:string[]){return names.every(name=>Boolean(process.env[name]))}
 async function httpCheck(url:string){
   const started=Date.now();const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),1600);
-  try{const response=await fetch(url,{signal:controller.signal,redirect:"manual"});return{ok:response.status>=200&&response.status<500,status:response.status,latencyMs:Date.now()-started}}
+  try{const response=await fetch(url,{signal:controller.signal,redirect:"manual"});return{ok:response.status>=200&&response.status<400,status:response.status,latencyMs:Date.now()-started}}
   catch(error){return{ok:false,latencyMs:Date.now()-started,error:error instanceof Error?error.message:"http_check_failed"}}
   finally{clearTimeout(timer)}
 }
@@ -36,7 +38,7 @@ export async function registerAdminSystemRoutes(app:FastifyInstance){
     const dbStart=Date.now();let database:any={ok:false};
     try{await prisma.$queryRaw`SELECT 1`;database={ok:true,latencyMs:Date.now()-dbStart}}catch(e){database={ok:false,error:e instanceof Error?e.message:"database_error"}}
     const ports=runtimePorts();
-    const [redis,outbox,moderation,support,integrations,jobs,webhooks,unmatchedProviderEvents,recentNotificationFailures,staleNotifications,recentJobFailures,runtimeWeb,runtimeAdmin,runtimeApi]=await Promise.all([
+    const [redis,outbox,moderation,support,integrations,jobs,webhooks,unmatchedProviderEvents,recentNotificationFailures,staleNotifications,recentJobFailures,runtimeWeb,runtimeAdmin,runtimeApi,webhookCounts,disk,jobSummary,notificationFailures]=await Promise.all([
       redisCheck(),
       prisma.$queryRawUnsafe<Array<{status:string;channel:string;count:bigint}>>(`SELECT "status","channel",COUNT(*)::bigint AS count FROM "NotificationDeliveryOutbox" GROUP BY "status","channel"`),
       prisma.$queryRawUnsafe<Array<{count:bigint}>>(`SELECT COUNT(*)::bigint AS count FROM "ModerationCase" mc JOIN "Listing" l ON l."id"=mc."targetId" WHERE mc."targetType"='LISTING' AND mc."status" NOT IN ('RESOLVED','CLOSED') AND l."status"='PENDING'`),
@@ -51,6 +53,11 @@ export async function registerAdminSystemRoutes(app:FastifyInstance){
       httpCheck(`http://127.0.0.1:${ports.web}/`),
       httpCheck(`http://127.0.0.1:${ports.admin}/`),
       httpCheck(`http://127.0.0.1:${ports.api}/health/ready`),
+      prisma.$queryRaw<Array<{failed:number;pending:number;unmatched:number}>>`SELECT COUNT(*) FILTER(WHERE "processedAt" IS NULL AND "lastError" IS NOT NULL AND "lastError"<>'')::int AS failed,COUNT(*) FILTER(WHERE "processedAt" IS NULL)::int AS pending,(SELECT COUNT(*)::int FROM "MarketplaceUnmatchedProviderEvent") AS unmatched FROM "PaymentWebhookEvent"`,
+      statfs("/var/www/petitannonces").then(d=>({totalBytes:Number(d.blocks)*Number(d.bsize),availableBytes:Number(d.bavail)*Number(d.bsize)})).catch(()=>null),
+      prisma.$queryRaw<Array<{jobName:string;status:string;startedAt:Date;finishedAt:Date|null;processed:number;failed:number}>>`SELECT DISTINCT ON ("jobName") "jobName",status,"startedAt","finishedAt",processed,failed FROM "MarketplaceJobRun" ORDER BY "jobName","startedAt" DESC`,
+      prisma.$queryRaw<Array<{channel:string;eventKind:string;count:number;lastAt:Date}>>`SELECT channel,"eventKind",COUNT(*)::int AS count,MAX("updatedAt") AS "lastAt" FROM "NotificationDeliveryOutbox" WHERE status='FAILED' AND "updatedAt">=CURRENT_TIMESTAMP-INTERVAL '24 hours' GROUP BY channel,"eventKind" ORDER BY count DESC LIMIT 50`,
+
     ]);
     const map=Object.fromEntries(integrations.map(([name,row])=>[name,{enabled:Boolean(row?.enabled),configured:Boolean(row&&(Object.keys(row.secrets).length||Object.keys(row.config).length))}]));
     const stripeRuntime=resolveStripeBillingIntegration(integrations.find(([name])=>name==="stripe-billing")?.[1]??null);
@@ -78,15 +85,16 @@ export async function registerAdminSystemRoutes(app:FastifyInstance){
     const disasterRecovery=await drStatus();
     const runtime={color:ports.color,web:runtimeWeb,admin:runtimeAdmin,api:runtimeApi};
     const recentFailedNotifications=Number(recentNotificationFailures[0]?.count??0);const staleNotificationCount=Number(staleNotifications[0]?.count??0);const recentFailedJobs=Number(recentJobFailures[0]?.count??0);
-    const webhookFailed=webhooks.filter((x:any)=>x.lastError&&!x.processedAt).length;const webhookPending=webhooks.filter((x:any)=>!x.processedAt).length;
+    const webhookFailed=webhookCounts[0]?.failed??0;const webhookPending=webhookCounts[0]?.pending??0;const unmatchedTotal=webhookCounts[0]?.unmatched??0;
     const criticalIssues:string[]=[];const warnings:string[]=[];
     for(const [key,value] of Object.entries(serviceStatus)){const row=value as any;if(row.critical&&!row.ok)criticalIssues.push(`service:${key}`)}
     if(!runtimeWeb.ok)criticalIssues.push("runtime:web");if(!runtimeAdmin.ok)criticalIssues.push("runtime:admin");if(!runtimeApi.ok)criticalIssues.push("runtime:api");
     if(!disasterRecovery.local.fresh)criticalIssues.push("backup:local");if(!disasterRecovery.offsite.fresh)criticalIssues.push("backup:offsite");
     if(!disasterRecovery.mediaInventory.fresh)warnings.push("backup:media-inventory");if(!disasterRecovery.restoreDrill.fresh)warnings.push("backup:restore-drill");
-    if(recentFailedNotifications>0)warnings.push("notifications:failed-24h");if(staleNotificationCount>0)warnings.push("notifications:stale");if(recentFailedJobs>0)warnings.push("jobs:failed-24h");if(webhookFailed>0)warnings.push("webhooks:failed");if(unmatchedProviderEvents.length>0)warnings.push("finance:unmatched-events");
+    if(recentFailedNotifications>0)warnings.push("notifications:failed-24h");if(staleNotificationCount>0)warnings.push("notifications:stale");if(recentFailedJobs>0)warnings.push("jobs:failed-24h");if(webhookFailed>0)warnings.push("webhooks:failed");if(unmatchedTotal>0)warnings.push("finance:unmatched-events");
+    if(disk&&disk.totalBytes>0&&disk.availableBytes/disk.totalBytes<0.05)warnings.push("host:disk-low");
     const status=criticalIssues.length?"degraded":warnings.length?"attention":"operational";
     const memory=process.memoryUsage();
-    return reply.send({status,timestamp:new Date().toISOString(),health:{criticalIssues,warnings,recentFailedNotifications,staleNotifications:staleNotificationCount,recentFailedJobs},disasterRecovery,runtime:{...runtime,node:process.version,uptimeSeconds:Math.round(process.uptime()),rssBytes:memory.rss,heapUsedBytes:memory.heapUsed,appVersion:process.env.APP_VERSION??"dev",environment:process.env.NODE_ENV??"development"},services:serviceStatus,queues:{notifications:outbox.map(x=>({...x,count:Number(x.count)})),moderation:Number(moderation[0]?.count??0),support:Number(support[0]?.count??0)},jobs,webhooks:{items:webhooks,failed:webhookFailed,pending:webhookPending},unmatchedProviderEvents})
+    return reply.header("Cache-Control","no-store").send({host:{totalMemoryBytes:os.totalmem(),freeMemoryBytes:os.freemem(),load1:os.loadavg()[0],cpuCount:os.availableParallelism(),disk},jobSummary,notificationFailures,unmatchedTotal,status,timestamp:new Date().toISOString(),health:{criticalIssues,warnings,recentFailedNotifications,staleNotifications:staleNotificationCount,recentFailedJobs},disasterRecovery,runtime:{...runtime,node:process.version,uptimeSeconds:Math.round(process.uptime()),rssBytes:memory.rss,heapUsedBytes:memory.heapUsed,appVersion:process.env.APP_VERSION??"dev",environment:process.env.NODE_ENV??"development"},services:serviceStatus,queues:{notifications:outbox.map(x=>({...x,count:Number(x.count)})),moderation:Number(moderation[0]?.count??0),support:Number(support[0]?.count??0)},jobs,webhooks:{items:webhooks,failed:webhookFailed,pending:webhookPending},unmatchedProviderEvents})
   })
 }
