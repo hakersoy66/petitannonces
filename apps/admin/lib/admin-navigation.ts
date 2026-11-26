@@ -24,6 +24,7 @@ export const adminNavGroups:AdminNavGroup[]=[
   {icon:"list",label:"Opérations groupées",href:"/bulk",roles:top},
   {icon:"support",label:"Support",href:"/support",roles:[...top,"SUPPORT"]},
   {icon:"chart",label:"Analytics",href:"/analytics"},
+  {icon:"chart",label:"Rapports de gestion",href:"/reports"},
  ]},
  {label:"Sécurité & conformité",items:[
   {icon:"shield",label:"Sécurité administrative",href:"/security",roles:top},

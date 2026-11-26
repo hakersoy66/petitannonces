@@ -1,3 +1,4 @@
+import {registerCentralReports} from "./admin-central-reports.js";
 import {registerAdminProfessionalOverviewRoutes} from "./admin-professional-overview.js";
 import {registerAdminFinanceReportRoutes} from "./admin-finance-report.js";
 import {registerAdminDailyReportRoutes} from "./admin-daily-report.js";
@@ -199,6 +200,7 @@ await registerRiskRoutes(app);
 await registerAdminInspectionRoutes(app);
 await registerAdminAlertRoutes(app);
 await registerAdminDailyReportRoutes(app);
+await registerCentralReports(app);
 await registerAdminFinanceReportRoutes(app);
 await registerAdminProfessionalOverviewRoutes(app);
 await registerCommerceRiskRoutes(app);
