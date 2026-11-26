@@ -171,6 +171,57 @@ export async function registerOperationsRoutes(app: FastifyInstance) {
     return reply.send({closed:true,alreadyClosed:!closed});
   });
 
+  const taskFields=z.object({title:z.string().trim().min(3).max(160),description:z.string().trim().max(2000).default(""),priority:z.enum(["LOW","NORMAL","HIGH","URGENT"]).default("NORMAL"),assigneeId:z.string().min(1).max(128).nullable().default(null),dueAt:z.string().datetime({offset:true}).nullable().default(null)});
+  const taskTop=(actor:{roles:{role:string}[]})=>actor.roles.some(r=>["SUPER_ADMIN","ADMIN"].includes(r.role));
+  async function taskAssigneeValid(tx:any,id:string|null){if(!id)return true;const rows=await tx.$queryRaw`SELECT u.id FROM "User" u WHERE u.id=${id} AND u.status='ACTIVE' AND EXISTS(SELECT 1 FROM "UserAdminRole" a WHERE a."userId"=u.id) FOR UPDATE OF u`;return rows.length===1;}
+  app.get("/admin/tasks",async(request,reply)=>{
+    const actor=await requireAdmin(request,reply);if(!actor)return;
+    const top=taskTop(actor);const q=z.object({view:z.enum(["OPEN","DONE","ALL"]).default("OPEN"),scope:z.enum(["ALL","MINE","UNASSIGNED"]).default("ALL"),page:z.coerce.number().int().min(1).max(10000).default(1)}).safeParse(request.query);if(!q.success)return reply.code(400).send({error:"invalid_request"});
+    const {view,scope,page}=q.data;
+    const [rows,summary,assignees]=await prisma.$transaction(async tx=>{
+      await tx.$executeRaw`SET LOCAL statement_timeout='5000ms'`;
+      return Promise.all([
+        tx.$queryRaw<Array<Record<string,unknown>>>`SELECT t.*,u.email AS "assigneeEmail",c.email AS "creatorEmail" FROM "AdminTask" t LEFT JOIN "User" u ON u.id=t."assigneeId" LEFT JOIN "User" c ON c.id=t."createdById" WHERE (${top} OR t."assigneeId"=${actor.id}) AND (${scope}='ALL' OR (${scope}='MINE' AND t."assigneeId"=${actor.id}) OR (${scope}='UNASSIGNED' AND t."assigneeId" IS NULL)) AND (${view}='ALL' OR (${view}='OPEN' AND t.status IN ('OPEN','IN_PROGRESS')) OR (${view}='DONE' AND t.status IN ('DONE','CANCELLED'))) ORDER BY CASE WHEN t.status IN ('OPEN','IN_PROGRESS') THEN 0 ELSE 1 END,CASE t.priority WHEN 'URGENT' THEN 0 WHEN 'HIGH' THEN 1 WHEN 'NORMAL' THEN 2 ELSE 3 END,t."dueAt" ASC NULLS LAST,t."createdAt" DESC,t.id LIMIT 31 OFFSET ${(page-1)*30}`,
+        tx.$queryRaw<Array<Record<string,number>>>`SELECT COUNT(*) FILTER(WHERE status='OPEN')::int AS open,COUNT(*) FILTER(WHERE status='IN_PROGRESS')::int AS progress,COUNT(*) FILTER(WHERE status='DONE')::int AS done,COUNT(*) FILTER(WHERE status IN ('OPEN','IN_PROGRESS') AND "dueAt"<NOW())::int AS overdue,COUNT(*) FILTER(WHERE status IN ('OPEN','IN_PROGRESS') AND priority='URGENT')::int AS urgent FROM "AdminTask" WHERE ${top} OR "assigneeId"=${actor.id}`,
+        top?tx.$queryRaw<Array<{id:string;email:string}>>`SELECT u.id,u.email FROM "User" u WHERE u.status='ACTIVE' AND EXISTS(SELECT 1 FROM "UserAdminRole" a WHERE a."userId"=u.id) ORDER BY u.email LIMIT 200`:Promise.resolve([])
+      ]);
+    },{timeout:10000});
+    return reply.header("Cache-Control","private, no-store").send({tasks:rows.slice(0,30),hasNext:rows.length>30,summary:summary[0],assignees,canManage:top});
+  });
+  app.post("/admin/tasks",async(request,reply)=>{
+    const actor=await requireAdmin(request,reply,["SUPER_ADMIN","ADMIN"]);if(!actor)return;
+    const q=taskFields.safeParse(request.body);if(!q.success)return reply.code(400).send({error:"invalid_request"});
+    const v=q.data,id=randomUUID();
+    const ok=await prisma.$transaction(async tx=>{
+      if(!await taskAssigneeValid(tx,v.assigneeId))return false;
+      await tx.$executeRaw`INSERT INTO "AdminTask" (id,title,description,priority,"assigneeId","createdById","dueAt") VALUES (${id},${v.title},${v.description},${v.priority},${v.assigneeId},${actor.id},${v.dueAt?new Date(v.dueAt):null})`;
+      await tx.$executeRaw`INSERT INTO "AdminAuditEvent" (id,"actorUserId",action,"entityType","entityId",metadata) VALUES (${randomUUID()},${actor.id},'ADMIN_TASK_CREATED','ADMIN_TASK',${id},${JSON.stringify({priority:v.priority,status:"OPEN",assigneeId:v.assigneeId,dueAt:v.dueAt})}::jsonb)`;
+      return true;
+    });
+    if(!ok)return reply.code(409).send({error:"assignee_unavailable"});return reply.code(201).send({id});
+  });
+  app.patch("/admin/tasks/:id",async(request,reply)=>{
+    const actor=await requireAdmin(request,reply);if(!actor)return;
+    const p=z.object({id:z.string().min(1).max(128)}).safeParse(request.params);
+    const q=z.object({revision:z.number().int().min(1),status:z.enum(["OPEN","IN_PROGRESS","DONE","CANCELLED"]),details:taskFields.optional(),reason:z.string().trim().min(5).max(500)}).safeParse(request.body);
+    if(!p.success||!q.success)return reply.code(400).send({error:"invalid_request"});
+    const top=taskTop(actor),v=q.data;
+    if(!top&&(v.details||v.status==="CANCELLED"))return reply.code(403).send({error:"forbidden"});
+    const result=await prisma.$transaction(async tx=>{
+      const rows=await tx.$queryRaw<Array<{id:string;status:string;revision:number;assigneeId:string|null;title:string;description:string;priority:string;dueAt:Date|null}>>`SELECT id,status,revision,"assigneeId",title,description,priority,"dueAt" FROM "AdminTask" WHERE id=${p.data.id} FOR UPDATE`;
+      const old=rows[0];if(!old||(!top&&old.assigneeId!==actor.id))return "not_found";
+      if(old.revision!==v.revision)return "stale";
+      if(!top&&["DONE","CANCELLED"].includes(old.status))return "closed";
+      const detail=v.details??{title:old.title,description:old.description,priority:old.priority,assigneeId:old.assigneeId,dueAt:old.dueAt?.toISOString()??null};
+      if(v.details&&!await taskAssigneeValid(tx,detail.assigneeId))return "assignee";
+      await tx.$executeRaw`UPDATE "AdminTask" SET title=${detail.title},description=${detail.description},priority=${detail.priority},"assigneeId"=${detail.assigneeId},"dueAt"=${detail.dueAt?new Date(detail.dueAt):null},status=${v.status},"completedAt"=CASE WHEN ${v.status}='DONE' THEN COALESCE("completedAt",CURRENT_TIMESTAMP) ELSE NULL END,revision=revision+1,"updatedAt"=CURRENT_TIMESTAMP WHERE id=${old.id}`;
+      await tx.$executeRaw`INSERT INTO "AdminAuditEvent" (id,"actorUserId",action,"entityType","entityId",metadata) VALUES (${randomUUID()},${actor.id},'ADMIN_TASK_UPDATED','ADMIN_TASK',${old.id},${JSON.stringify({before:{status:old.status,priority:old.priority,assigneeId:old.assigneeId,dueAt:old.dueAt},after:{status:v.status,priority:detail.priority,assigneeId:detail.assigneeId,dueAt:detail.dueAt},reason:v.reason})}::jsonb)`;
+      return "ok";
+    });
+    if(result!=="ok")return reply.code(result==="not_found"?404:409).send({error:result,message:"Le dossier a changé ou l’action est impossible. Actualisez la liste."});
+    return reply.send({updated:true});
+  });
+
   app.get("/admin/dashboard", async (request, reply) => {
     const admin = await requireAdmin(request, reply); if (!admin) return;
     const [users, listings, orders, support, moderation, disputes, audience] = await Promise.all([
