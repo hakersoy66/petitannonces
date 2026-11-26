@@ -669,8 +669,20 @@ export async function registerOperationsRoutes(app: FastifyInstance) {
       prisma.$queryRawUnsafe<Array<Record<string,unknown>>>(`SELECT "id","rating","comment","direction"::text AS "direction","createdAt" FROM "MarketplaceReview" WHERE "revieweeId"=$1 ORDER BY "createdAt" DESC LIMIT 50`,user.id),
       prisma.professionalPlan.findMany({where:{isActive:true},orderBy:{monthlyPriceMinor:"asc"}}),
     ]);
+    const [entitlements,counts,permissions,history]=await Promise.all([
+      prisma.$queryRaw<Array<{id:string;name:string;status:string;maxActiveListings:number|null;maxStores:number;trialEndsAt:Date|null;currentPeriodEnd:Date|null;externalProvider:string|null}>>`SELECT s."id",p."name",s."status"::text AS status,p."maxActiveListings",p."maxStores",s."trialEndsAt",s."currentPeriodEnd",s."externalProvider" FROM "ProfessionalSubscription" s JOIN "ProfessionalPlan" p ON p."id"=s."planId" WHERE s."userId"=${user.id} AND ((s."status"='TRIALING' AND s."trialEndsAt">CURRENT_TIMESTAMP) OR (s."status"='ACTIVE' AND (s."currentPeriodEnd" IS NULL OR s."currentPeriodEnd">CURRENT_TIMESTAMP))) ORDER BY p."maxActiveListings" DESC NULLS FIRST,s."createdAt" DESC`,
+      prisma.listing.groupBy({by:["status"],where:{sellerId:user.id},_count:{_all:true}}),
+      getAdminUserPermissions(user.id),
+      prisma.$queryRaw<Array<{id:string;action:string;createdAt:Date;metadata:unknown}>>`SELECT "id","action","createdAt","metadata" FROM "AdminAuditEvent" WHERE "entityType"='USER' AND "entityId"=${user.id} AND "action" IN ('PRO_SUBSCRIPTION_OVERRIDE','PROFESSIONAL_PROFILE_UPDATED','PRO_BUSINESS_APPROVED','PRO_BUSINESS_REJECTED','USER_PERMISSIONS_UPDATED','USER_LISTING_REVIEW_PREFERENCE_UPDATED') ORDER BY "createdAt" DESC LIMIT 30`
+    ]);
+    const entitlement=entitlements[0]??null;
+    const planCap=entitlement?entitlement.maxActiveListings:10;
+    const effectiveCap=permissions.listingCap===null?planCap:planCap===null?permissions.listingCap:Math.min(planCap,permissions.listingCap);
+    const published=counts.find(x=>x.status==="PUBLISHED")?._count._all??0;
+    const pending=counts.find(x=>x.status==="PENDING")?._count._all??0;
+    const canManage=admin.roles.some(r=>["SUPER_ADMIN","ADMIN"].includes(r.role));
     const totalNet=sales.reduce((sum,row)=>sum+Number(row.sellerNetMinor??0),0);
-    return reply.send({professional:{id:user.id,email:user.email,status:user.status,createdAt:user.createdAt,profile:user.profile,business:user.business},plans,stores:user.stores.map(x=>({...x,listingCount:x._count.listings})),subscriptions:user.subscriptions,listings,sales,tickets,reviews,summary:{listings:listings.length,stores:user.stores.length,sales:sales.length,totalNetMinor:totalNet}});
+    return reply.send({canManage,entitlement,capacity:{planCap,effectiveCap,published,pending,remaining:effectiveCap===null?null:Math.max(0,effectiveCap-published-pending),storeLimit:entitlement?.maxStores??1},permissions,history,professional:{id:user.id,email:user.email,status:user.status,createdAt:user.createdAt,profile:user.profile,business:user.business},plans,stores:user.stores.map(x=>({...x,listingCount:x._count.listings})),subscriptions:user.subscriptions,listings,sales,tickets,reviews,summary:{listings:listings.length,stores:user.stores.length,sales:sales.length,totalNetMinor:totalNet}});
   });
 
 
@@ -703,12 +715,25 @@ export async function registerOperationsRoutes(app: FastifyInstance) {
     const params=z.object({id:z.string().min(1)}).safeParse(request.params);
     const body=z.object({planId:z.string().min(1),status:z.enum(["TRIALING","ACTIVE","PAST_DUE","CANCELED"]).default("ACTIVE"),extendDays:z.number().int().min(0).max(3650).default(0),reason:z.string().trim().min(5).max(500)}).safeParse(request.body);
     if(!params.success||!body.success)return reply.code(400).send({error:"invalid_request"});
-    const [user,plan]=await Promise.all([prisma.user.findFirst({where:{id:params.data.id,kind:"PROFESSIONNEL"},select:{id:true}}),prisma.professionalPlan.findUnique({where:{id:body.data.planId}})]);if(!user)return reply.code(404).send({error:"professional_not_found"});if(!plan)return reply.code(400).send({error:"plan_not_found"});
-    const current=await prisma.professionalSubscription.findFirst({where:{userId:user.id},orderBy:{createdAt:"desc"}});const now=new Date();let end=current?.currentPeriodEnd??null;if(body.data.extendDays>0){const base=end&&end>now?end:now;end=new Date(base.getTime()+body.data.extendDays*86400000)}else if(!current){end=new Date(now.getTime()+30*86400000)}
-    const subscription=current?await prisma.professionalSubscription.update({where:{id:current.id},data:{planId:plan.id,status:body.data.status,currentPeriodStart:current.currentPeriodStart??now,currentPeriodEnd:end}}):await prisma.professionalSubscription.create({data:{userId:user.id,planId:plan.id,status:body.data.status,currentPeriodStart:now,currentPeriodEnd:end}});
-    await audit(admin.id,"PRO_SUBSCRIPTION_OVERRIDE","USER",user.id,{subscriptionId:subscription.id,planId:plan.id,status:body.data.status,extendDays:body.data.extendDays,reason:body.data.reason,externalManaged:Boolean(current?.externalSubscriptionId)});
+    const [user,plan]=await Promise.all([prisma.user.findFirst({where:{id:params.data.id,kind:"PROFESSIONNEL"},select:{id:true}}),prisma.professionalPlan.findUnique({where:{id:body.data.planId}})]);if(!user)return reply.code(404).send({error:"professional_not_found"});if(!plan||!plan.isActive)return reply.code(400).send({error:"plan_not_found"});
+    const outcome=await prisma.$transaction(async tx=>{
+      await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id"=${user.id} FOR UPDATE`;
+      const external=await tx.professionalSubscription.findFirst({where:{userId:user.id,externalSubscriptionId:{not:null},status:{in:["ACTIVE","TRIALING","PAST_DUE"]}},select:{id:true}});
+      if(external)return null;
+      const current=await tx.professionalSubscription.findFirst({where:{userId:user.id,externalSubscriptionId:null},orderBy:{createdAt:"desc"}});
+      const now=new Date();const base=current?.currentPeriodEnd&&current.currentPeriodEnd>now?current.currentPeriodEnd:now;
+      const end=body.data.extendDays>0?new Date(base.getTime()+body.data.extendDays*86400000):current?.currentPeriodEnd??new Date(now.getTime()+30*86400000);
+      if(["ACTIVE","TRIALING"].includes(body.data.status)&&end<=now)return {expired:true} as const;
+      const data={planId:plan.id,status:body.data.status,currentPeriodStart:current?.currentPeriodStart??now,currentPeriodEnd:end,trialEndsAt:body.data.status==="TRIALING"?end:null};
+      const subscription=current?await tx.professionalSubscription.update({where:{id:current.id},data}):await tx.professionalSubscription.create({data:{...data,userId:user.id,externalProvider:"admin"}});
+      await tx.$executeRaw`INSERT INTO "AdminAuditEvent" ("id","actorUserId","action","entityType","entityId","metadata") VALUES (${randomUUID()},${admin.id},'PRO_SUBSCRIPTION_OVERRIDE','USER',${user.id},${JSON.stringify({subscriptionId:subscription.id,planId:plan.id,status:body.data.status,extendDays:body.data.extendDays,reason:body.data.reason,previous:current?{planId:current.planId,status:current.status,currentPeriodEnd:current.currentPeriodEnd}:null})}::jsonb)`;
+      return {subscription};
+    });
+    if(!outcome)return reply.code(409).send({error:"external_subscription_managed",message:"Cet abonnement est géré par le prestataire de paiement. Utilisez la gestion de facturation."});
+    if("expired" in outcome)return reply.code(409).send({error:"subscription_extension_required",message:"La période est expirée. Indiquez une durée de prolongation."});
+    const subscription=outcome.subscription;
     await deliverUserEvent({userId:user.id,eventKind:"LISTING",notificationKind:"SYSTEM",title:"Mise à jour de votre abonnement Pro",body:`Votre formule Petit Annonces Pro est maintenant « ${plan.name} »${body.data.extendDays>0?` et votre accès a été prolongé de ${body.data.extendDays} jour${body.data.extendDays>1?"s":""}.`:"."}`,actionUrl:"/espace-pro/abonnement",metadata:{planId:plan.id,status:body.data.status,extendDays:body.data.extendDays}});
-    return reply.send({updated:true,subscription,plan,externalManaged:Boolean(current?.externalSubscriptionId)});
+    return reply.send({updated:true,subscription,plan,externalManaged:false});
   });
 
   app.get("/admin/analytics/daily", async (request, reply) => {

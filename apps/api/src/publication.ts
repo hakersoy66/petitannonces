@@ -323,10 +323,12 @@ export async function registerPublicationRoutes(app: FastifyInstance) {
       if(editSession){await tx.$executeRawUnsafe(`DELETE FROM "ListingEditSession" WHERE "workingListingId"=$1`,editSession.workingListingId);await tx.listing.delete({where:{id:editSession.workingListingId}});}
       return pending;
     }).catch(error=>{
+      if(String(error).includes("professional_plan_listing_limit"))return "PLAN_LIMIT" as const;
       if(String(error).includes("professional_free_listing_limit"))return null;
       if(String(error).includes("admin_listing_cap_reached")||String(error).includes("admin_publication_blocked"))return "ADMIN_RESTRICTED" as const;
       throw error;
     });
+    if(listing==="PLAN_LIMIT")return reply.code(409).send({error:"professional_plan_listing_limit",message:"La limite d’annonces de votre formule est atteinte. Libérez une place ou choisissez une formule supérieure."});
     if(listing==="ADMIN_RESTRICTED")return reply.code(409).send({error:"admin_user_permission_restricted",message:"La publication est restreinte par votre limite individuelle ou par une décision administrative. Contactez l’assistance."});
     if(!listing)return reply.code(409).send({error:"professional_free_listing_limit",limit:10,message:"Votre compte professionnel sans abonnement est limité à 10 annonces actives ou en attente de validation."});
     if(editSession)await finalizeEditSessionCleanup(editSession.workingListingId,user.id,oldMediaKeys);
