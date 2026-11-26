@@ -1,3 +1,5 @@
+import {getCommercialPermission} from "./admin-commercial-permissions.js";
+import {canProfessionalPublish} from "./pro-reverification.js";
 import {getAdminUserPermissions} from "./admin-user-permissions.js";
 import { evaluateAutoApprovalEligibility, getIndividualListingReviewMode } from "./auto-approval.js";
 import { adminCdaStatuses } from "./cda-production.js";
@@ -644,10 +646,31 @@ export async function registerOperationsRoutes(app: FastifyInstance) {
     const params=z.object({id:z.string().min(1)}).safeParse(request.params);
     const body=z.object({name:z.string().trim().min(2).max(120),slug:z.string().trim().min(2).max(120).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),description:z.string().trim().max(3000).nullable(),websiteUrl:z.union([z.string().url(),z.literal("")]).nullable(),phone:z.string().trim().max(40).nullable(),email:z.union([z.string().email(),z.literal("")]).nullable(),city:z.string().trim().max(100).nullable(),postalCode:z.string().trim().max(20).nullable(),countryCode:z.string().trim().length(2),status:z.enum(["DRAFT","ACTIVE","SUSPENDED"]),isVerified:z.boolean(),reason:z.string().trim().max(500).optional()}).superRefine((v,ctx)=>{if(v.status==="SUSPENDED"&&(!v.reason||v.reason.length<5))ctx.addIssue({code:"custom",message:"suspension_reason_required",path:["reason"]})}).safeParse(request.body);
     if(!params.success||!body.success)return reply.code(400).send({error:"invalid_request"});
-    const existing=await prisma.store.findUnique({where:{id:params.data.id},select:{id:true,status:true}});if(!existing)return reply.code(404).send({error:"store_not_found"});
-    try{const store=await prisma.store.update({where:{id:existing.id},data:{name:body.data.name,slug:body.data.slug,description:body.data.description||null,websiteUrl:body.data.websiteUrl||null,phone:body.data.phone||null,email:body.data.email||null,city:body.data.city||null,postalCode:body.data.postalCode||null,countryCode:body.data.countryCode.toUpperCase(),status:body.data.status,isVerified:body.data.isVerified,publishedAt:body.data.status==="ACTIVE"?(existing.status==="ACTIVE"?undefined:new Date()):undefined}});await audit(admin.id,"STORE_UPDATED","STORE",store.id,{status:body.data.status,isVerified:body.data.isVerified,reason:body.data.reason??null});if(body.data.status==="SUSPENDED"){const owner=await prisma.store.findUnique({where:{id:store.id},select:{ownerId:true}});if(owner)await deliverUserEvent({userId:owner.ownerId,eventKind:"LISTING",notificationKind:"SYSTEM",title:"Vitrine suspendue",body:`Votre vitrine « ${store.name} » a été suspendue. Motif : ${body.data.reason}.`,actionUrl:"/espace-pro/boutiques",metadata:{storeId:store.id,reason:body.data.reason}})}return reply.send({updated:true,store});}catch(error:any){if(String(error?.code)==="P2002")return reply.code(409).send({error:"store_slug_already_used"});request.log.error(error);return reply.code(500).send({error:"update_failed"});}
+    const existing=await prisma.store.findUnique({where:{id:params.data.id},select:{id:true,status:true,ownerId:true,isVerified:true}});if(!existing)return reply.code(404).send({error:"store_not_found"});
+    if((body.data.status!==existing.status||body.data.isVerified!==existing.isVerified)&&!admin.roles.some(r=>["SUPER_ADMIN","ADMIN"].includes(r.role)))return reply.code(403).send({error:"forbidden"});
+    if(((body.data.status==="ACTIVE"&&existing.status!=="ACTIVE")||(body.data.isVerified&&!existing.isVerified))&&!await canProfessionalPublish(existing.ownerId))return reply.code(409).send({error:"professional_verification_required",message:"La validation professionnelle officielle est requise."});
+    try{const store=await prisma.store.update({where:{id:existing.id},data:{name:body.data.name,slug:body.data.slug,description:body.data.description||null,websiteUrl:body.data.websiteUrl||null,phone:body.data.phone||null,email:body.data.email||null,city:body.data.city||null,postalCode:body.data.postalCode||null,countryCode:body.data.countryCode.toUpperCase(),status:body.data.status,isVerified:body.data.isVerified,publishedAt:body.data.status==="ACTIVE"?(existing.status==="ACTIVE"?undefined:new Date()):undefined}});await audit(admin.id,"STORE_UPDATED","STORE",store.id,{status:body.data.status,isVerified:body.data.isVerified,reason:body.data.reason??null});if(body.data.status==="SUSPENDED"){const owner=await prisma.store.findUnique({where:{id:store.id},select:{ownerId:true}});if(owner)await deliverUserEvent({userId:owner.ownerId,eventKind:"LISTING",notificationKind:"SYSTEM",title:"Vitrine suspendue",body:`Votre vitrine « ${store.name} » a été suspendue. Motif : ${body.data.reason}.`,actionUrl:"/espace-pro/boutiques",metadata:{storeId:store.id,reason:body.data.reason}})}return reply.send({updated:true,store});}catch(error:any){if(String(error).includes("admin_store_cap_reached")||String(error).includes("admin_store_creation_blocked"))return reply.code(409).send({error:"store_limit_reached"});if(String(error?.code)==="P2002")return reply.code(409).send({error:"store_slug_already_used"});request.log.error(error);return reply.code(500).send({error:"update_failed"});}
   });
 
+
+  app.put("/admin/users/:id/commercial-permissions",async(request,reply)=>{
+    const admin=await requireAdmin(request,reply,["SUPER_ADMIN","ADMIN"]);if(!admin)return;
+    const params=z.object({id:z.string().min(1)}).safeParse(request.params);
+    const body=z.object({salesBlocked:z.boolean(),storeCap:z.number().int().min(0).max(100).nullable(),reason:z.string().trim().min(5).max(500)}).safeParse(request.body);
+    if(!params.success||!body.success)return reply.code(400).send({error:"invalid_request"});
+    const {reason,...permission}=body.data;
+    const saved=await prisma.$transaction(async tx=>{
+      await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id"=${params.data.id} FOR UPDATE`;
+      const user=await tx.user.findUnique({where:{id:params.data.id},select:{id:true,roles:{select:{role:true}}}});
+      if(!user||user.id===admin.id||user.roles.length)return false;
+      const previous=await tx.$queryRaw`SELECT "salesBlocked","storeCap" FROM "AdminCommercialPermission" WHERE "userId"=${user.id}`;
+      await tx.$executeRaw`INSERT INTO "AdminCommercialPermission" ("userId","salesBlocked","storeCap") VALUES (${user.id},${permission.salesBlocked},${permission.storeCap}) ON CONFLICT ("userId") DO UPDATE SET "salesBlocked"=EXCLUDED."salesBlocked","storeCap"=EXCLUDED."storeCap","updatedAt"=CURRENT_TIMESTAMP`;
+      await tx.$executeRaw`INSERT INTO "AdminAuditEvent" ("id","actorUserId","action","entityType","entityId","metadata") VALUES (${randomUUID()},${admin.id},'USER_COMMERCIAL_PERMISSIONS_UPDATED','USER',${user.id},${JSON.stringify({previous,permission,reason})}::jsonb)`;
+      return true;
+    });
+    if(!saved)return reply.code(403).send({error:"protected_account"});
+    return reply.send({permission});
+  });
 
   app.get("/admin/users/:id/detail", async (request, reply) => {
     const admin=await requireAdmin(request,reply,["SUPER_ADMIN","ADMIN","SUPPORT","COMPLIANCE","MODERATOR"]);if(!admin)return;
@@ -668,12 +691,13 @@ export async function registerOperationsRoutes(app: FastifyInstance) {
     const listingReviewMode=user.manualListingReview?"DISABLED":canManageListingReview?await getIndividualListingReviewMode(user.id):"DEFAULT";
     const reviewEligibility=canManageListingReview?await evaluateAutoApprovalEligibility(user.id).catch(()=>null):null;
     const canManagePermissions=canManageListingReview&&!user.roles.length&&user.id!==admin.id;
-    const [permissions,permissionHistory,listingCounts]=await Promise.all([
+    const [permissions,permissionHistory,listingCounts,commercialPermissions]=await Promise.all([
       getAdminUserPermissions(user.id),
       canManagePermissions?prisma.$queryRaw<Array<{id:string;createdAt:Date;metadata:unknown}>>`SELECT "id","createdAt","metadata" FROM "AdminAuditEvent" WHERE "entityType"='USER' AND "entityId"=${user.id} AND "action"='USER_PERMISSIONS_UPDATED' ORDER BY "createdAt" DESC LIMIT 10`:[],
-      prisma.listing.groupBy({by:["status"],where:{sellerId:user.id},_count:{_all:true}})
+      prisma.listing.groupBy({by:["status"],where:{sellerId:user.id},_count:{_all:true}}),
+      getCommercialPermission(user.id)
     ]);
-    return reply.send({canManagePermissions,permissions,permissionHistory,listingCounts,canManageListingReview,listingReviewMode,listingReviewEligible:reviewEligibility?.eligible??null,listingReviewReason:reviewEligibility?.reason??null,user:{id:user.id,email:user.email,kind:user.kind,status:user.status,emailVerifiedAt:user.emailVerifiedAt,lastLoginAt:user.lastLoginAt,createdAt:user.createdAt,profile:user.profile,business:user.business,roles:user.roles.map(r=>r.role),manualListingReview:user.manualListingReview,reputation:reputationPayload},wallet:walletRows[0]??{balanceMinor:0,currency:"EUR"},stores:user.stores.map(x=>({...x,listingCount:x._count.listings})),subscriptions:user.subscriptions,listings,orders,tickets,reportsReceived,reportsCreated});
+    return reply.send({canManagePermissions,permissions,commercialPermissions,permissionHistory,listingCounts,canManageListingReview,listingReviewMode,listingReviewEligible:reviewEligibility?.eligible??null,listingReviewReason:reviewEligibility?.reason??null,user:{id:user.id,email:user.email,kind:user.kind,status:user.status,emailVerifiedAt:user.emailVerifiedAt,lastLoginAt:user.lastLoginAt,createdAt:user.createdAt,profile:user.profile,business:user.business,roles:user.roles.map(r=>r.role),manualListingReview:user.manualListingReview,reputation:reputationPayload},wallet:walletRows[0]??{balanceMinor:0,currency:"EUR"},stores:user.stores.map(x=>({...x,listingCount:x._count.listings})),subscriptions:user.subscriptions,listings,orders,tickets,reportsReceived,reportsCreated});
   });
 
   app.post("/admin/listings/:id/complimentary-promotion",async(request,reply)=>{
@@ -778,11 +802,12 @@ export async function registerOperationsRoutes(app: FastifyInstance) {
       prisma.$queryRawUnsafe<Array<Record<string,unknown>>>(`SELECT "id","rating","comment","direction"::text AS "direction","createdAt" FROM "MarketplaceReview" WHERE "revieweeId"=$1 ORDER BY "createdAt" DESC LIMIT 50`,user.id),
       prisma.professionalPlan.findMany({where:{isActive:true},orderBy:{monthlyPriceMinor:"asc"}}),
     ]);
-    const [entitlements,counts,permissions,history]=await Promise.all([
+    const [entitlements,counts,permissions,history,commercialPermissions]=await Promise.all([
       prisma.$queryRaw<Array<{id:string;name:string;status:string;maxActiveListings:number|null;maxStores:number;trialEndsAt:Date|null;currentPeriodEnd:Date|null;externalProvider:string|null}>>`SELECT s."id",p."name",s."status"::text AS status,p."maxActiveListings",p."maxStores",s."trialEndsAt",s."currentPeriodEnd",s."externalProvider" FROM "ProfessionalSubscription" s JOIN "ProfessionalPlan" p ON p."id"=s."planId" WHERE s."userId"=${user.id} AND ((s."status"='TRIALING' AND s."trialEndsAt">CURRENT_TIMESTAMP) OR (s."status"='ACTIVE' AND (s."currentPeriodEnd" IS NULL OR s."currentPeriodEnd">CURRENT_TIMESTAMP))) ORDER BY p."maxActiveListings" DESC NULLS FIRST,s."createdAt" DESC`,
       prisma.listing.groupBy({by:["status"],where:{sellerId:user.id},_count:{_all:true}}),
       getAdminUserPermissions(user.id),
-      prisma.$queryRaw<Array<{id:string;action:string;createdAt:Date;metadata:unknown}>>`SELECT "id","action","createdAt","metadata" FROM "AdminAuditEvent" WHERE "entityType"='USER' AND "entityId"=${user.id} AND "action" IN ('PRO_SUBSCRIPTION_OVERRIDE','PROFESSIONAL_PROFILE_UPDATED','PRO_BUSINESS_APPROVED','PRO_BUSINESS_REJECTED','USER_PERMISSIONS_UPDATED','USER_LISTING_REVIEW_PREFERENCE_UPDATED') ORDER BY "createdAt" DESC LIMIT 30`
+      prisma.$queryRaw<Array<{id:string;action:string;createdAt:Date;metadata:unknown}>>`SELECT "id","action","createdAt","metadata" FROM "AdminAuditEvent" WHERE "entityType"='USER' AND "entityId"=${user.id} AND "action" IN ('PRO_SUBSCRIPTION_OVERRIDE','PROFESSIONAL_PROFILE_UPDATED','PRO_BUSINESS_APPROVED','PRO_BUSINESS_REJECTED','USER_PERMISSIONS_UPDATED','USER_LISTING_REVIEW_PREFERENCE_UPDATED') ORDER BY "createdAt" DESC LIMIT 30`,
+      getCommercialPermission(user.id)
     ]);
     const entitlement=entitlements[0]??null;
     const planCap=entitlement?entitlement.maxActiveListings:10;
@@ -791,7 +816,7 @@ export async function registerOperationsRoutes(app: FastifyInstance) {
     const pending=counts.find(x=>x.status==="PENDING")?._count._all??0;
     const canManage=admin.roles.some(r=>["SUPER_ADMIN","ADMIN"].includes(r.role));
     const totalNet=sales.reduce((sum,row)=>sum+Number(row.sellerNetMinor??0),0);
-    return reply.send({canManage,entitlement,capacity:{planCap,effectiveCap,published,pending,remaining:effectiveCap===null?null:Math.max(0,effectiveCap-published-pending),storeLimit:entitlement?.maxStores??1},permissions,history,professional:{id:user.id,email:user.email,status:user.status,createdAt:user.createdAt,profile:user.profile,business:user.business},plans,stores:user.stores.map(x=>({...x,listingCount:x._count.listings})),subscriptions:user.subscriptions,listings,sales,tickets,reviews,summary:{listings:listings.length,stores:user.stores.length,sales:sales.length,totalNetMinor:totalNet}});
+    return reply.send({canManage,entitlement,capacity:{planCap,effectiveCap,published,pending,remaining:effectiveCap===null?null:Math.max(0,effectiveCap-published-pending),storeLimit:Math.min(entitlement?.maxStores??1,commercialPermissions?.storeCap??100)},permissions,commercialPermissions,history,professional:{id:user.id,email:user.email,status:user.status,createdAt:user.createdAt,profile:user.profile,business:user.business},plans,stores:user.stores.map(x=>({...x,listingCount:x._count.listings})),subscriptions:user.subscriptions,listings,sales,tickets,reviews,summary:{listings:listings.length,stores:user.stores.length,sales:sales.length,totalNetMinor:totalNet}});
   });
 
 

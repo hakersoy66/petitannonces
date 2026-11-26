@@ -1,3 +1,4 @@
+import {sellerSalesAllowed} from "./admin-commercial-permissions.js";
 import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { prisma } from "@pa/database";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
@@ -182,6 +183,7 @@ export async function registerPaymentRoutes(app: FastifyInstance) {
     if(!supplierListing&&shippingQuote.provider==="CJ")return reply.code(409).send({error:"invalid_supplier_shipping_quote"});
     if (listing.priceMinor <= 0) return reply.code(409).send({ error: "payment_not_available_for_free_listing" });
     if (listing.sellerId === user.id) return reply.code(400).send({ error: "cannot_buy_own_listing" });
+    if(!await sellerSalesAllowed(listing.sellerId))return reply.code(409).send({error:"admin_sales_blocked",message:"La vente sécurisée est temporairement indisponible pour cette annonce."});
     const sellerReadiness=await getSellerPayoutReadiness(listing.sellerId);
     if(!sellerReadiness.providerOperational)return reply.code(409).send({error:"payment_provider_not_ready"});
     const commerceRows=await prisma.$queryRawUnsafe<Array<{securePaymentEnabled:boolean;commissionPayer:string|null}>>(`SELECT "securePaymentEnabled","commissionPayer" FROM "ListingCommerceSettings" WHERE "listingId"=$1 LIMIT 1`,listing.id);

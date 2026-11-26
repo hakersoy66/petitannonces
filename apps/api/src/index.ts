@@ -137,6 +137,8 @@ app.addHook("preHandler",async(request,reply)=>{
 // Database guards also cover older and bulk publication routes.
 app.setErrorHandler((error,request,reply)=>{
   const message=String(error);
+  if(message.includes("admin_sales_blocked"))return reply.code(409).send({error:"admin_sales_blocked",message:"La vente sécurisée est temporairement indisponible pour cette annonce."});
+  if(message.includes("admin_store_cap_reached")||message.includes("admin_store_creation_blocked"))return reply.code(409).send({error:"store_limit_reached",message:"La création ou réactivation de cette boutique est restreinte."});
   if(message.includes("admin_listing_archived"))return reply.code(409).send({error:"admin_listing_archived",message:"Cette annonce est archivée par l’administration."});
   if(message.includes("professional_plan_listing_limit")||message.includes("professional_free_listing_limit"))return reply.code(409).send({error:"professional_plan_listing_limit",message:"La limite d’annonces de votre formule est atteinte."});
   if(message.includes("admin_listing_cap_reached")||message.includes("admin_publication_blocked"))return reply.code(409).send({error:"admin_user_permission_restricted",message:"La publication est restreinte par l’administration."});

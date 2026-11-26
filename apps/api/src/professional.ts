@@ -224,12 +224,13 @@ export async function registerProfessionalRoutes(app: FastifyInstance) {
     if (!parsed.success) return reply.code(400).send({ error: "invalid_store", details: parsed.error.flatten() });
     const business = await prisma.businessProfile.findUnique({ where: { userId: user.id } });
     if (!business) return reply.code(400).send({ error: "business_required" });
-    const subscription = await prisma.professionalSubscription.findFirst({ where: { userId: user.id, OR:[{status:"ACTIVE"},{status:"TRIALING",trialEndsAt:{gt:new Date()}}] }, include: { plan: true }, orderBy: { createdAt: "desc" } });
+    const subscription = await prisma.professionalSubscription.findFirst({ where: { userId: user.id, OR:[{status:"ACTIVE",OR:[{currentPeriodEnd:null},{currentPeriodEnd:{gt:new Date()}}]},{status:"TRIALING",trialEndsAt:{gt:new Date()}}] }, include: { plan: true }, orderBy: { createdAt: "desc" } });
     const currentCount = await prisma.store.count({ where: { ownerId: user.id, status: { not: "SUSPENDED" } } });
     const allowed = subscription?.plan.maxStores ?? 1;
     if (currentCount >= allowed) return reply.code(403).send({ error: "store_limit_reached", allowed });
     const {sector,...storeData}=parsed.data;const slug=await uniqueStoreSlug(storeData.slug);
-    const store = await prisma.store.create({ data: { ownerId: user.id, businessId: business.id, ...storeData, slug, status: business.verificationStatus === "VERIFIED" ? "ACTIVE" : "DRAFT", isVerified: business.verificationStatus === "VERIFIED", publishedAt: business.verificationStatus === "VERIFIED" ? new Date() : null } });
+    const verified=await canProfessionalPublish(user.id);
+    const store = await prisma.store.create({ data: { ownerId: user.id, businessId: business.id, ...storeData, slug, status: verified ? "ACTIVE" : "DRAFT", isVerified: verified, publishedAt: verified ? new Date() : null } });
     if(sector)await setProfessionalSector(user.id,sector,"STORE");
     notifyStoreIndexNow(store.id).catch(()=>undefined);
     return reply.code(201).send({ store });

@@ -1,3 +1,4 @@
+import {sellerSalesAllowed} from "./admin-commercial-permissions.js";
 import { createHash } from "node:crypto";
 import { prisma } from "@pa/database";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
@@ -19,6 +20,7 @@ async function loadListing(id:string){const listing=await prisma.listing.findFir
 async function sellerAddress(userId:string){return prisma.address.findFirst({where:{userId,type:{in:["SHIPPING","BUSINESS","HOME"]}},orderBy:[{isDefault:"desc"},{createdAt:"asc"}]});}
 
 async function sellerCheckoutState(userId:string){
+  if(!await sellerSalesAllowed(userId))return{allowed:false,deferred:false,reason:"ADMIN_SALES_BLOCKED"};
   const readiness=await getSellerPayoutReadiness(userId);
   if(!readiness.providerOperational)return{allowed:false,deferred:false,reason:"PAYMENT_PROVIDER_NOT_READY"};
   return{allowed:true,deferred:false,reason:null};
@@ -50,7 +52,7 @@ export async function registerCheckoutListingRoutes(app:FastifyInstance){
   const acceptedPromise=query.data.offerId?prisma.offer.findFirst({where:{id:query.data.offerId,listingId:listing.id,status:"ACCEPTED",expiresAt:{gt:new Date()},conversation:{buyerId:user.id,sellerId:listing.sellerId}},select:{amountMinor:true,expiresAt:true}}):Promise.resolve(null);
   const paypalPromise=paypalCheckoutPublicConfig();
   const [paymentState,origin,buyerAddresses,cover,accepted,paypal]=await Promise.all([paymentStatePromise,originPromise,buyerAddressesPromise,coverPromise,acceptedPromise,paypalPromise]);
-  if(!paymentState.allowed)return reply.code(409).send({error:"payment_provider_not_ready",reason:paymentState.reason});
+  if(!paymentState.allowed)return reply.code(409).send({error:paymentState.reason==="ADMIN_SALES_BLOCKED"?"admin_sales_blocked":"payment_provider_not_ready",reason:paymentState.reason});
   if(!supplierFulfilled&&!origin)return reply.code(409).send({error:"seller_shipping_address_missing"});
   if(query.data.offerId&&!accepted)return reply.code(400).send({error:"accepted_offer_not_found"});
   const buyerAddress=buyerAddresses[0]??null;
