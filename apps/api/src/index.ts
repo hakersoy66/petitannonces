@@ -1,3 +1,4 @@
+import {registerAdminDailyReportRoutes} from "./admin-daily-report.js";
 import {registerAdminAlertRoutes} from "./admin-alerts.js";
 import {registerAdminInspectionRoutes} from "./admin-inspection.js";
 import {registerSystemFeatureRoutes,systemFeaturePreHandler} from "./system-feature-controls.js";
@@ -193,6 +194,7 @@ await registerSecurityRoutes(app);
 await registerRiskRoutes(app);
 await registerAdminInspectionRoutes(app);
 await registerAdminAlertRoutes(app);
+await registerAdminDailyReportRoutes(app);
 await registerCommerceRiskRoutes(app);
 await registerLocationRoutes(app);
 await registerListingRoutes(app);

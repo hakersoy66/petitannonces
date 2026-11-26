@@ -1,3 +1,5 @@
+import DashboardDailyReport from "../../components/dashboard-daily-report";
+import DashboardShortcuts from "../../components/dashboard-shortcuts";
 import { adminServerFetch } from "../../lib/server-api";
 import { AdminIcon, type AdminIconName } from "../../components/admin-icon";
 import { visibleAdminGroups } from "../../lib/admin-navigation";
@@ -57,6 +59,10 @@ export default async function AdminHome(){
   ["chart","Analytics","/analytics"],
   ["search","SEO","/seo"],
   ["server","État du système","/system"],
+  ["bell","Notifications","/alerts"],
+  ["search","Contrôle intelligent","/inspection"],
+  ["shield","Sécurité administrative","/security"],
+  ["wallet","Finance","/finance"],
  ];
  const visibleQuick=quick.filter(([, ,href])=>allowedPaths.has(href));
  const visiblePriorities=d?priorities.filter(item=>allowedPaths.has(item.href)&&(item.href!=="/blocked-users"||Boolean(policy))):[];
@@ -77,11 +83,9 @@ export default async function AdminHome(){
     <div className="admin-workspace-heading"><div><h2>À traiter</h2><span>Vos tâches prioritaires</span></div><span className="admin-badge orange">{visiblePriorities.filter(i=>i.value>0).length} rubrique(s)</span></div>
     <div className="admin-task-list">{visiblePriorities.length?visiblePriorities.map(item=><a key={item.href} href={item.href}><i className={`admin-task-icon ${item.value>0?item.tone:"green"}`}><AdminIcon name={item.icon}/></i><div><strong>{item.label}</strong><small>{item.detail}</small></div><b>{n(item.value)}</b><span>›</span></a>):<p className="admin-empty">Aucune donnée disponible.</p>}</div>
    </section>
-   <section className="admin-card admin-workspace-panel">
-    <div className="admin-workspace-heading"><div><h2>Accès rapide</h2><span>Ouvrir une rubrique</span></div></div>
-    <div className="admin-workspace-shortcuts">{visibleQuick.map(([icon,label,href])=><a href={href} key={href}><AdminIcon name={icon}/><span>{label}</span><b>›</b></a>)}</div>
-   </section>
+   <DashboardShortcuts items={visibleQuick}/>
   </div>
+  {viewer?.user?.roles?.some(role=>["SUPER_ADMIN","ADMIN"].includes(role))&&<DashboardDailyReport/>}
   <div className="admin-workspace-columns">
    <section className="admin-card admin-workspace-panel">
     <div className="admin-workspace-heading"><div><h2>Activité récente</h2><span>Comparaison des périodes</span></div></div>
