@@ -22,6 +22,7 @@ export const adminNavGroups:AdminNavGroup[]=[
   {icon:"chart",label:"Analytics",href:"/analytics"},
  ]},
  {label:"Sécurité & conformité",items:[
+  {icon:"shield",label:"Sécurité administrative",href:"/security",roles:top},
   {icon:"shield",label:"Signalements DSA",href:"/dsa",roles:[...top,"MODERATOR","COMPLIANCE"]},
   {icon:"users",label:"Utilisateurs bloqués",href:"/blocked-users",roles:moderation},
   {icon:"shield",label:"Centre de risque",href:"/risk",roles:moderation},

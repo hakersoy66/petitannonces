@@ -275,6 +275,42 @@ export async function registerOperationsRoutes(app: FastifyInstance) {
     return reply.send({ updated: true, status: body.data.status });
   });
 
+  app.get("/admin/security/overview", async(request,reply)=>{
+    const actor=await requireAdmin(request,reply,["SUPER_ADMIN","ADMIN"]);if(!actor)return;
+    const root=actor.roles.some(r=>r.role==="SUPER_ADMIN");
+    const token=bearerToken(request)??request.cookies[SESSION_COOKIE];
+    if(!token)return reply.code(401).send({error:"unauthorized"});
+    const current=await prisma.session.findUnique({where:{tokenHash:sha256(token)},select:{id:true}});
+    if(!current)return reply.code(401).send({error:"unauthorized"});
+    const accounts=await prisma.$queryRaw<Array<{id:string;email:string;name:string;status:string;roles:string[];twoFactorEnabled:boolean;failedLoginAttempts:number;lockedUntil:Date|null;lastLoginAt:Date|null;activeSessions:number}>>`SELECT u."id",u."email",COALESCE(p."displayName",p."firstName",u."email") AS name,u."status"::text AS status,ARRAY(SELECT ar."role"::text FROM "UserAdminRole" ar WHERE ar."userId"=u."id" ORDER BY ar."role"::text) AS roles,COALESCE(t."enabled",FALSE) AS "twoFactorEnabled",u."failedLoginAttempts",u."lockedUntil",u."lastLoginAt",(SELECT count(*)::int FROM "Session" ss WHERE ss."userId"=u."id" AND ss."revokedAt" IS NULL AND ss."expiresAt">CURRENT_TIMESTAMP) AS "activeSessions" FROM "User" u LEFT JOIN "UserProfile" p ON p."userId"=u."id" LEFT JOIN "UserTwoFactor" t ON t."userId"=u."id" WHERE EXISTS(SELECT 1 FROM "UserAdminRole" r WHERE r."userId"=u."id") AND (${root} OR u."id"=${actor.id}) ORDER BY u."email"`;
+    const sessions=await prisma.session.findMany({where:{userId:{in:accounts.map(a=>a.id)},revokedAt:null,expiresAt:{gt:new Date()}},select:{id:true,userId:true,userAgent:true,createdAt:true,lastSeenAt:true,expiresAt:true},orderBy:{lastSeenAt:"desc"},take:200});
+    const history=await prisma.$queryRaw<Array<{id:string;action:string;entityId:string|null;createdAt:Date;actorEmail:string|null;reason:string|null}>>`SELECT a."id",a."action",a."entityId",a."createdAt",u."email" AS "actorEmail",a."metadata"->>'reason' AS reason FROM "AdminAuditEvent" a LEFT JOIN "User" u ON u."id"=a."actorUserId" WHERE a."action" IN ('USER_ROLES_CHANGED','ADMIN_SESSION_REVOKED','ADMIN_SESSIONS_REVOKED') AND (${root} OR a."entityId"=${actor.id}) ORDER BY a."createdAt" DESC LIMIT 50`;
+    return reply.send({root,actorId:actor.id,accounts,sessions:sessions.map(x=>({...x,current:x.id===current.id})),history,sessionListLimit:200});
+  });
+
+  app.post("/admin/security/sessions/revoke",async(request,reply)=>{
+    const actor=await requireAdmin(request,reply,["SUPER_ADMIN","ADMIN"]);if(!actor)return;
+    const body=z.object({userId:z.string().min(1),sessionId:z.string().min(1).optional(),reason:z.string().trim().min(5).max(500)}).safeParse(request.body);
+    if(!body.success)return reply.code(400).send({error:"invalid_request"});
+    const token=bearerToken(request)??request.cookies[SESSION_COOKIE];
+    if(!token)return reply.code(401).send({error:"unauthorized"});
+    const current=await prisma.session.findUnique({where:{tokenHash:sha256(token)},select:{id:true}});
+    if(!current)return reply.code(401).send({error:"unauthorized"});
+    const root=actor.roles.some(r=>r.role==="SUPER_ADMIN");
+    if(body.data.userId!==actor.id&&!root)return reply.code(403).send({error:"forbidden"});
+    const result=await prisma.$transaction(async tx=>{
+      await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id"=${body.data.userId} FOR UPDATE`;
+      const target=await tx.user.findUnique({where:{id:body.data.userId},select:{id:true,roles:{select:{role:true}}}});
+      if(!target||!target.roles.length||(target.id!==actor.id&&target.roles.some(r=>r.role==="SUPER_ADMIN")))return null;
+      if(body.data.sessionId===current.id)return null;
+      const updated=await tx.session.updateMany({where:{userId:target.id,revokedAt:null,expiresAt:{gt:new Date()},id:body.data.sessionId?{equals:body.data.sessionId,not:current.id}:{not:current.id}},data:{revokedAt:new Date()}});
+      if(updated.count)await tx.$executeRaw`INSERT INTO "AdminAuditEvent" ("id","actorUserId","action","entityType","entityId","metadata") VALUES (${randomUUID()},${actor.id},${body.data.sessionId?"ADMIN_SESSION_REVOKED":"ADMIN_SESSIONS_REVOKED"},'USER',${target.id},${JSON.stringify({reason:body.data.reason,sessionId:body.data.sessionId??null,count:updated.count})}::jsonb)`;
+      return updated.count;
+    });
+    if(result===null)return reply.code(403).send({error:"protected_session"});
+    return reply.send({revoked:result});
+  });
+
   app.put("/admin/users/:id/roles", async (request, reply) => {
     const admin = await requireAdmin(request, reply, ["SUPER_ADMIN"]); if (!admin) return;
     const params = z.object({ id: z.string().min(1) }).safeParse(request.params);
@@ -290,13 +326,14 @@ export async function registerOperationsRoutes(app: FastifyInstance) {
     const nextRoles=[...new Set(body.data.roles)].sort();
     if(previousRoles.join(",")===nextRoles.join(","))return reply.send({updated:false,roles:nextRoles});
     await prisma.$transaction(async tx=>{
+      await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id"=${user.id} FOR UPDATE`;
       await tx.userAdminRole.deleteMany({where:{userId:user.id}});
       if(nextRoles.length)await tx.userAdminRole.createMany({data:nextRoles.map(role=>({userId:user.id,role}))});
       // A permission change invalidates the target account's previously issued
       // sessions, avoiding privileged access retained across role changes.
       await tx.session.updateMany({where:{userId:user.id,revokedAt:null},data:{revokedAt:new Date()}});
+      await tx.$executeRaw`INSERT INTO "AdminAuditEvent" ("id","actorUserId","action","entityType","entityId","metadata") VALUES (${randomUUID()},${admin.id},'USER_ROLES_CHANGED','USER',${user.id},${JSON.stringify({previousRoles,roles:nextRoles,revokedSessions:true})}::jsonb)`;
     });
-    await audit(admin.id,"USER_ROLES_CHANGED","USER",user.id,{previousRoles,roles:nextRoles,revokedSessions:true});
     await queueTransactionalEmail({
       userId:admin.id,eventKind:"ADMIN_SECURITY_ROLE_CHANGE",
       title:"Alerte sécurité · Modification des accès administratifs",
