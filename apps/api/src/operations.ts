@@ -417,9 +417,21 @@ export async function registerOperationsRoutes(app: FastifyInstance) {
   });
 
   app.get("/admin/support/tickets", async (request, reply) => {
-    const admin = await requireAdmin(request, reply, ["SUPER_ADMIN","ADMIN","SUPPORT"]); if (!admin) return;
-    const rows = await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(`SELECT * FROM "SupportTicket" WHERE "status"<>'CLOSED' OR COALESCE("resolvedAt","updatedAt")>=CURRENT_TIMESTAMP-INTERVAL '48 hours' ORDER BY CASE WHEN "status"='CLOSED' THEN 2 ELSE 1 END, CASE "priority" WHEN 'URGENT' THEN 1 WHEN 'HIGH' THEN 2 WHEN 'NORMAL' THEN 3 ELSE 4 END, CASE WHEN "status"='CLOSED' THEN "resolvedAt" END DESC NULLS LAST, "lastMessageAt" ASC LIMIT 100`);
-    return reply.send({ tickets: rows });
+    const admin=await requireAdmin(request,reply,["SUPER_ADMIN","ADMIN","SUPPORT"]);if(!admin)return;
+    const q=z.object({q:z.string().trim().max(120).default(""),view:z.enum(["ALL","ACTION","CUSTOMER","ARCHIVE","PRIORITY","OVERDUE"]).default("ALL"),priority:z.enum(["ALL","URGENT","HIGH","NORMAL","LOW"]).default("ALL"),page:z.coerce.number().int().min(1).max(10000).default(1)}).safeParse(request.query);
+    if(!q.success)return reply.code(400).send({error:"invalid_request"});
+    const {q:search,view,priority,page}=q.data;
+    const [rows,summary]=await prisma.$transaction(async tx=>{
+      await tx.$executeRaw`SET LOCAL statement_timeout='5000ms'`;
+      return Promise.all([
+      tx.$queryRaw<Array<Record<string,unknown>>>`SELECT t.id,t.reference,t.category::text,t.subject,t.status::text,t.priority::text,t."lastMessageAt",t."createdAt",t."assignedToUserId",u.email,COUNT(*) OVER()::int AS "totalMatches" FROM "SupportTicket" t LEFT JOIN "User" u ON u.id=t."userId" WHERE
+       ((${view}='ALL' AND (t.status<>'CLOSED' OR COALESCE(t."resolvedAt",t."updatedAt")>=CURRENT_TIMESTAMP-INTERVAL '48 hours')) OR (${view}='ACTION' AND t.status IN ('OPEN','PENDING_INTERNAL')) OR (${view}='PRIORITY' AND t.status IN ('OPEN','PENDING_INTERNAL') AND t.priority IN ('HIGH','URGENT')) OR (${view}='OVERDUE' AND t.status IN ('OPEN','PENDING_INTERNAL') AND t."lastMessageAt"<CURRENT_TIMESTAMP-INTERVAL '24 hours') OR (${view}='CUSTOMER' AND t.status='PENDING_CUSTOMER') OR (${view}='ARCHIVE' AND t.status IN ('RESOLVED','CLOSED')))
+       AND (${priority}='ALL' OR t.priority::text=${priority}) AND (${search}='' OR t.reference ILIKE '%'||${search}||'%' OR t.subject ILIKE '%'||${search}||'%' OR u.email ILIKE '%'||${search}||'%')
+       ORDER BY CASE WHEN t.status IN ('OPEN','PENDING_INTERNAL') THEN 0 WHEN t.status='PENDING_CUSTOMER' THEN 1 ELSE 2 END,CASE t.priority WHEN 'URGENT' THEN 0 WHEN 'HIGH' THEN 1 WHEN 'NORMAL' THEN 2 ELSE 3 END, CASE WHEN t.status IN ('RESOLVED','CLOSED') THEN t."lastMessageAt" END DESC NULLS LAST,t."lastMessageAt" ASC,t.id LIMIT 50 OFFSET ${(page-1)*50}`,
+      tx.$queryRaw<Array<{action:number;customer:number;urgent:number;overdue:number;archive:number}>>`SELECT COUNT(*) FILTER(WHERE status IN ('OPEN','PENDING_INTERNAL'))::int AS action,COUNT(*) FILTER(WHERE status='PENDING_CUSTOMER')::int AS customer,COUNT(*) FILTER(WHERE status IN ('OPEN','PENDING_INTERNAL') AND priority IN ('URGENT','HIGH'))::int AS urgent,COUNT(*) FILTER(WHERE status IN ('OPEN','PENDING_INTERNAL') AND "lastMessageAt"<CURRENT_TIMESTAMP-INTERVAL '24 hours')::int AS overdue,COUNT(*) FILTER(WHERE status IN ('RESOLVED','CLOSED'))::int AS archive FROM "SupportTicket"`
+      ]);
+    },{timeout:10000});
+    return reply.header("Cache-Control","no-store").send({tickets:rows,summary:summary[0],page,totalMatches:rows[0]?.totalMatches??0,pageSize:50});
   });
 
   app.get("/admin/support/tickets/:id", async (request, reply) => {
@@ -428,7 +440,7 @@ export async function registerOperationsRoutes(app: FastifyInstance) {
     if (!params.success) return reply.code(400).send({ error: "invalid_request" });
     const tickets = await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(`SELECT t.*,u."email",u."kind"::text AS "userKind",p."displayName",p."firstName",p."lastName",p."phone" FROM "SupportTicket" t LEFT JOIN "User" u ON u."id"=t."userId" LEFT JOIN "UserProfile" p ON p."userId"=u."id" WHERE t."id"=$1 LIMIT 1`, params.data.id);
     const ticket=tickets[0]; if(!ticket) return reply.code(404).send({error:"ticket_not_found"});
-    const messages=await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(`SELECT "id","authorUserId","authorType"::text,"body","internalNote","createdAt" FROM "SupportTicketMessage" WHERE "ticketId"=$1 ORDER BY "createdAt" ASC`,params.data.id);
+    const messages=await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(`SELECT "id","authorUserId","authorType"::text,"body","internalNote","createdAt" FROM "SupportTicketMessage" WHERE "ticketId"=$1 ORDER BY "createdAt" ASC,"id" ASC`,params.data.id);
     const vacationIncidents=await prisma.$queryRawUnsafe<Array<Record<string,any>>>(`SELECT i.*,r."checkIn",r."checkOut",l."title" AS "listingTitle",l."city" FROM "VacationIncident" i JOIN "VacationReservationRequest" r ON r."id"=i."reservationId" JOIN "Listing" l ON l."id"=r."listingId" WHERE i."supportTicketId"=$1 LIMIT 1`,params.data.id).catch(()=>[]);
     const vacationIncident=vacationIncidents[0]??null;
     let vacationEvidence:Array<Record<string,unknown>>=[];let vacationPayout:Record<string,unknown>|null=null;
@@ -439,7 +451,7 @@ export async function registerOperationsRoutes(app: FastifyInstance) {
   app.post("/admin/support/tickets/:id/reply", async (request, reply) => {
     const admin = await requireAdmin(request, reply, ["SUPER_ADMIN","ADMIN","SUPPORT"]); if (!admin) return;
     const params = z.object({ id: z.string().min(1) }).safeParse(request.params);
-    const body = z.object({ body: z.string().trim().min(2).max(5000), internalNote: z.boolean().default(false), status: z.enum(["OPEN","PENDING_CUSTOMER","PENDING_INTERNAL","RESOLVED","CLOSED"]).optional() }).safeParse(request.body);
+    const body = z.object({ body: z.string().trim().min(2).max(5000), internalNote: z.boolean().default(false), expectedLastPublicMessageId:z.string().nullable().optional(), status: z.enum(["OPEN","PENDING_CUSTOMER","PENDING_INTERNAL","RESOLVED","CLOSED"]).optional() }).safeParse(request.body);
     if (!params.success || !body.success) return reply.code(400).send({ error: "invalid_request" });
     const current=await prisma.$queryRawUnsafe<Array<{id:string;status:string}>>(`SELECT "id","status"::text AS "status" FROM "SupportTicket" WHERE "id"=$1 LIMIT 1`,params.data.id);
     if(!current[0])return reply.code(404).send({error:"ticket_not_found"});
@@ -448,16 +460,29 @@ export async function registerOperationsRoutes(app: FastifyInstance) {
       const activeVacationIncident=await activeVacationSupportIncident(params.data.id);
       if(activeVacationIncident)return reply.code(409).send({error:"vacation_incident_resolution_required",incidentId:activeVacationIncident.id});
     }
-    await prisma.$executeRawUnsafe(`INSERT INTO "SupportTicketMessage" ("id","ticketId","authorUserId","authorType","body","internalNote") VALUES ($1,$2,$3,'AGENT',$4,$5)`, randomUUID(), params.data.id, admin.id, body.data.body, body.data.internalNote);
-    await prisma.$executeRawUnsafe(`UPDATE "SupportTicket" SET "assignedToUserId"=COALESCE("assignedToUserId",$1),"firstResponseAt"=COALESCE("firstResponseAt",CURRENT_TIMESTAMP),"lastMessageAt"=CURRENT_TIMESTAMP,"status"=COALESCE($2::"SupportTicketStatus","status"),"resolvedAt"=CASE WHEN $2 IN ('RESOLVED','CLOSED') THEN CURRENT_TIMESTAMP ELSE "resolvedAt" END,"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$3`, admin.id, body.data.status ?? null, params.data.id);
-    await audit(admin.id, "SUPPORT_REPLY", "SUPPORT_TICKET", params.data.id, { internalNote: body.data.internalNote, status: body.data.status });
+    const messageId=randomUUID();
+    const recorded=await prisma.$transaction(async tx=>{
+      const locked=await tx.$queryRaw<Array<{status:string}>>`SELECT status::text FROM "SupportTicket" WHERE id=${params.data.id} FOR UPDATE`;
+      if(!locked[0])return "ticket_not_found";
+      if(!body.data.internalNote&&locked[0].status==="CLOSED")return "ticket_closed";
+      if(!body.data.internalNote&&body.data.expectedLastPublicMessageId!==undefined){
+        const latest=await tx.$queryRaw<Array<{id:string}>>`SELECT id FROM "SupportTicketMessage" WHERE "ticketId"=${params.data.id} AND "internalNote"=FALSE ORDER BY "createdAt" DESC,id DESC LIMIT 1`;
+        if((latest[0]?.id??null)!==body.data.expectedLastPublicMessageId)return "ticket_changed";
+      }
+      const nextStatus=body.data.internalNote?null:body.data.status??null;
+      await tx.$executeRaw`INSERT INTO "SupportTicketMessage" ("id","ticketId","authorUserId","authorType","body","internalNote") VALUES (${messageId},${params.data.id},${admin.id},'AGENT',${body.data.body},${body.data.internalNote})`;
+      await tx.$executeRaw`UPDATE "SupportTicket" SET "assignedToUserId"=COALESCE("assignedToUserId",${admin.id}),"firstResponseAt"=CASE WHEN ${body.data.internalNote} THEN "firstResponseAt" ELSE COALESCE("firstResponseAt",CURRENT_TIMESTAMP) END,"lastMessageAt"=CASE WHEN ${body.data.internalNote} THEN "lastMessageAt" ELSE CURRENT_TIMESTAMP END,"status"=COALESCE(${nextStatus}::"SupportTicketStatus","status"),"resolvedAt"=CASE WHEN ${nextStatus}::text IN ('RESOLVED','CLOSED') THEN CURRENT_TIMESTAMP WHEN ${nextStatus}::text IS NOT NULL THEN NULL ELSE "resolvedAt" END,"updatedAt"=CURRENT_TIMESTAMP WHERE id=${params.data.id}`;
+      await tx.$executeRaw`INSERT INTO "AdminAuditEvent" ("id","actorUserId","action","entityType","entityId","metadata") VALUES (${randomUUID()},${admin.id},'SUPPORT_REPLY','SUPPORT_TICKET',${params.data.id},${JSON.stringify({internalNote:body.data.internalNote,status:nextStatus,messageId})}::jsonb)`;
+      return null;
+    });
+    if(recorded)return reply.code(recorded==="ticket_not_found"?404:409).send({error:recorded});
     if (!body.data.internalNote && (body.data.status === "RESOLVED" || body.data.status === "CLOSED")) {
       try { await publishFaqFromResolvedTicket(params.data.id); } catch (error) { request.log.warn({error,ticketId:params.data.id},"support_faq_publish_failed"); }
     }
     if (!body.data.internalNote) {
       const tickets = await prisma.$queryRawUnsafe<Array<{userId:string;reference:string;subject:string}>>(`SELECT "userId","reference","subject" FROM "SupportTicket" WHERE "id"=$1 LIMIT 1`, params.data.id);
       const ticket = tickets[0];
-      if (ticket) await deliverUserEvent({userId:ticket.userId,eventKind:"LISTING",notificationKind:"SYSTEM",title:"Réponse du service client",body:`Une nouvelle réponse est disponible pour votre demande ${ticket.reference} : ${ticket.subject}.`,actionUrl:`/assistance?ticket=${encodeURIComponent(params.data.id)}`,metadata:{supportTicketId:params.data.id,reference:ticket.reference}});
+      if (ticket?.userId) await deliverUserEvent({userId:ticket.userId,eventKind:"LISTING",notificationKind:"SYSTEM",title:"Réponse du service client",body:`Une nouvelle réponse est disponible pour votre demande ${ticket.reference} : ${ticket.subject}.`,actionUrl:`/assistance?ticket=${encodeURIComponent(params.data.id)}`,metadata:{supportTicketId:params.data.id,reference:ticket.reference},dedupeKey:`support-reply:${messageId}`}).catch(error=>request.log.warn({error,ticketId:params.data.id},"support_notification_failed"));
     }
     return reply.send({ replied: true });
   });
