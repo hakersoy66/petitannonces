@@ -1,0 +1,16 @@
+CREATE TABLE "AdminCrmTag" (
+ "userId" TEXT NOT NULL REFERENCES "User"(id) ON DELETE CASCADE,
+ tag TEXT NOT NULL CHECK (tag IN ('FOLLOW_UP','ONBOARDING','SUPPORT','PRO_CONTACT')),
+ "createdById" TEXT REFERENCES "User"(id) ON DELETE SET NULL,
+ "createdAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ PRIMARY KEY ("userId",tag)
+);
+CREATE INDEX "AdminCrmTag_tag_idx" ON "AdminCrmTag"(tag,"userId");
+CREATE TABLE "AdminCrmNote" (
+ id TEXT PRIMARY KEY,
+ "userId" TEXT NOT NULL REFERENCES "User"(id) ON DELETE CASCADE,
+ "authorId" TEXT REFERENCES "User"(id) ON DELETE SET NULL,
+ body TEXT NOT NULL CHECK (char_length(body) BETWEEN 3 AND 1000),
+ "createdAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX "AdminCrmNote_user_date_idx" ON "AdminCrmNote"("userId","createdAt" DESC);

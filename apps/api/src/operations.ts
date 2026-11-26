@@ -222,6 +222,84 @@ export async function registerOperationsRoutes(app: FastifyInstance) {
     return reply.send({updated:true});
   });
 
+  const crmTags=z.enum(["FOLLOW_UP","ONBOARDING","SUPPORT","PRO_CONTACT"]);
+  const crmRoles=["SUPER_ADMIN","ADMIN","SUPPORT"];
+  const crmTop=(a:{roles:{role:string}[]})=>a.roles.some(r=>["SUPER_ADMIN","ADMIN"].includes(r.role));
+  async function crmTarget(tx:any,id:string,lock=false){
+    if(lock)await tx.$queryRaw`SELECT id FROM "User" WHERE id=${id} FOR UPDATE`;
+    const rows=await tx.$queryRaw`SELECT u.id FROM "User" u WHERE u.id=${id} AND u.status<>'DELETED' AND NOT EXISTS(SELECT 1 FROM "UserAdminRole" ar WHERE ar."userId"=u.id)`;
+    return rows.length===1;
+  }
+  app.get("/admin/crm",async(request,reply)=>{
+    const actor=await requireAdmin(request,reply,crmRoles);if(!actor)return;
+    const q=z.object({q:z.string().trim().max(120).default(""),segment:z.enum(["ALL","NEW","PRO","NO_LISTING","FOLLOW_UP","ONBOARDING","SUPPORT","PRO_CONTACT"]).default("ALL"),page:z.coerce.number().int().min(1).max(10000).default(1)}).safeParse(request.query);if(!q.success)return reply.code(400).send({error:"invalid_request"});
+    const {q:search,segment,page}=q.data;
+    const [rows,summary]=await prisma.$transaction(async tx=>{
+      await tx.$executeRaw`SET LOCAL statement_timeout='5000ms'`;
+      return Promise.all([
+       tx.$queryRaw<Array<Record<string,unknown>>>`SELECT u.id,u.email,u.kind::text AS kind,u.status::text AS status,u."createdAt",p."displayName",ARRAY(SELECT t.tag FROM "AdminCrmTag" t WHERE t."userId"=u.id ORDER BY tag) AS tags,(SELECT COUNT(*)::int FROM "Listing" l WHERE l."sellerId"=u.id AND l.status='PUBLISHED') AS "publishedCount" FROM "User" u LEFT JOIN "UserProfile" p ON p."userId"=u.id WHERE u.status<>'DELETED' AND NOT EXISTS(SELECT 1 FROM "UserAdminRole" ar WHERE ar."userId"=u.id) AND (${search}='' OR u.email ILIKE '%'||${search}||'%' OR COALESCE(p."displayName",'') ILIKE '%'||${search}||'%' OR u.id=${search}) AND (${segment}='ALL' OR (${segment}='NEW' AND u."createdAt">=NOW()-INTERVAL '7 days') OR (${segment}='PRO' AND u.kind='PROFESSIONNEL') OR (${segment}='NO_LISTING' AND NOT EXISTS(SELECT 1 FROM "Listing" l WHERE l."sellerId"=u.id AND l.status='PUBLISHED')) OR EXISTS(SELECT 1 FROM "AdminCrmTag" t WHERE t."userId"=u.id AND t.tag=${segment})) ORDER BY u."createdAt" DESC,u.id LIMIT 31 OFFSET ${(page-1)*30}`,
+       tx.$queryRaw<Array<Record<string,number>>>`SELECT COUNT(*)::int AS total,COUNT(*) FILTER(WHERE u."createdAt">=NOW()-INTERVAL '7 days')::int AS new,COUNT(*) FILTER(WHERE u.kind='PROFESSIONNEL')::int AS pro,COUNT(*) FILTER(WHERE EXISTS(SELECT 1 FROM "AdminCrmTag" t WHERE t."userId"=u.id AND t.tag='FOLLOW_UP'))::int AS "followUp" FROM "User" u WHERE u.status<>'DELETED' AND NOT EXISTS(SELECT 1 FROM "UserAdminRole" ar WHERE ar."userId"=u.id)`
+      ]);
+    },{timeout:10000});
+    return reply.header("Cache-Control","private, no-store").send({rows:rows.slice(0,30),hasNext:rows.length>30,summary:summary[0]});
+  });
+  app.get("/admin/crm/:id",async(request,reply)=>{
+    const actor=await requireAdmin(request,reply,crmRoles);if(!actor)return;
+    const p=z.object({id:z.string().min(1).max(128)}).safeParse(request.params);if(!p.success)return reply.code(400).send({error:"invalid_request"});const id=p.data.id;
+    const result=await prisma.$transaction(async tx=>{
+      await tx.$executeRaw`SET LOCAL statement_timeout='5000ms'`;
+      if(!await crmTarget(tx,id))return null;
+      const [tags,notes,tickets,delivery]=await Promise.all([
+        tx.$queryRaw<Array<{tag:string}>>`SELECT tag FROM "AdminCrmTag" WHERE "userId"=${id} ORDER BY tag`,
+        tx.$queryRaw<Array<Record<string,unknown>>>`SELECT n.id,n.body,n."createdAt",u.email AS author FROM "AdminCrmNote" n LEFT JOIN "User" u ON u.id=n."authorId" WHERE n."userId"=${id} ORDER BY n."createdAt" DESC,n.id LIMIT 50`,
+        tx.$queryRaw<Array<Record<string,unknown>>>`SELECT id,reference,status::text AS status,"lastMessageAt" FROM "SupportTicket" WHERE "userId"=${id} ORDER BY "lastMessageAt" DESC LIMIT 30`,
+        tx.$queryRaw<Array<Record<string,unknown>>>`SELECT id,"eventKind",channel,status,"createdAt","sentAt" FROM "NotificationDeliveryOutbox" WHERE "userId"=${id} ORDER BY "createdAt" DESC LIMIT 30`
+      ]);
+      return {tags:tags.map(t=>t.tag),notes,tickets,delivery,canDeleteNotes:crmTop(actor)};
+    },{timeout:10000});
+    if(!result)return reply.code(404).send({error:"user_not_found"});
+    return reply.header("Cache-Control","private, no-store").send(result);
+  });
+  app.put("/admin/crm/:id/tag",async(request,reply)=>{
+    const actor=await requireAdmin(request,reply,crmRoles);if(!actor)return;
+    const p=z.object({id:z.string().min(1).max(128)}).safeParse(request.params);
+    const q=z.object({tag:crmTags,enabled:z.boolean()}).safeParse(request.body);if(!p.success||!q.success)return reply.code(400).send({error:"invalid_request"});
+    const id=p.data.id,v=q.data;
+    const ok=await prisma.$transaction(async tx=>{
+      if(!await crmTarget(tx,id,true))return false;
+      const changed=v.enabled?await tx.$executeRaw`INSERT INTO "AdminCrmTag" ("userId",tag,"createdById") VALUES (${id},${v.tag},${actor.id}) ON CONFLICT DO NOTHING`:await tx.$executeRaw`DELETE FROM "AdminCrmTag" WHERE "userId"=${id} AND tag=${v.tag}`;
+      if(changed)await tx.$executeRaw`INSERT INTO "AdminAuditEvent" (id,"actorUserId",action,"entityType","entityId",metadata) VALUES (${randomUUID()},${actor.id},'CRM_TAG_UPDATED','USER',${id},${JSON.stringify(v)}::jsonb)`;
+      return true;
+    });
+    if(!ok)return reply.code(404).send({error:"user_not_found"});return reply.send({updated:true});
+  });
+  app.post("/admin/crm/:id/note",async(request,reply)=>{
+    const actor=await requireAdmin(request,reply,crmRoles);if(!actor)return;
+    const p=z.object({id:z.string().min(1).max(128)}).safeParse(request.params);
+    const q=z.object({body:z.string().trim().min(3).max(1000)}).safeParse(request.body);if(!p.success||!q.success)return reply.code(400).send({error:"invalid_request"});
+    const id=p.data.id,noteId=randomUUID();
+    const ok=await prisma.$transaction(async tx=>{
+      if(!await crmTarget(tx,id,true))return false;
+      await tx.$executeRaw`INSERT INTO "AdminCrmNote" (id,"userId","authorId",body) VALUES (${noteId},${id},${actor.id},${q.data.body})`;
+      await tx.$executeRaw`INSERT INTO "AdminAuditEvent" (id,"actorUserId",action,"entityType","entityId",metadata) VALUES (${randomUUID()},${actor.id},'CRM_NOTE_CREATED','USER',${id},${JSON.stringify({noteId})}::jsonb)`;
+      return true;
+    });
+    if(!ok)return reply.code(404).send({error:"user_not_found"});return reply.code(201).send({id:noteId});
+  });
+  app.delete("/admin/crm/:id/note/:noteId",async(request,reply)=>{
+    const actor=await requireAdmin(request,reply,["SUPER_ADMIN","ADMIN"]);if(!actor)return;
+    const p=z.object({id:z.string().min(1).max(128),noteId:z.string().min(1).max(128)}).safeParse(request.params);
+    if(!p.success)return reply.code(400).send({error:"invalid_request"});
+    const ok=await prisma.$transaction(async tx=>{
+      if(!await crmTarget(tx,p.data.id,true))return false;
+      const changed=await tx.$executeRaw`DELETE FROM "AdminCrmNote" WHERE id=${p.data.noteId} AND "userId"=${p.data.id}`;
+      if(!changed)return false;
+      await tx.$executeRaw`INSERT INTO "AdminAuditEvent" (id,"actorUserId",action,"entityType","entityId",metadata) VALUES (${randomUUID()},${actor.id},'CRM_NOTE_REMOVED','USER',${p.data.id},${JSON.stringify({noteId:p.data.noteId})}::jsonb)`;
+      return true;
+    });
+    if(!ok)return reply.code(404).send({error:"note_not_found"});return reply.send({deleted:true});
+  });
+
   app.get("/admin/dashboard", async (request, reply) => {
     const admin = await requireAdmin(request, reply); if (!admin) return;
     const [users, listings, orders, support, moderation, disputes, audience] = await Promise.all([
