@@ -1,6 +1,7 @@
 "use client";
 
 import {useEffect,useMemo,useState} from "react";
+import {useVisiblePolling} from "../../lib/use-visible-polling";
 import {AdminIcon} from "../../components/admin-icon";
 
 export type UserAttention={
@@ -18,9 +19,9 @@ const ago=(value:string)=>{const ms=Math.max(0,Date.now()-new Date(value).getTim
 
 export function UserAttentionPanel({initialData}:{initialData:UserAttention|null}){
  const[data,setData]=useState(initialData);
- const[busy,setBusy]=useState(false);
- async function reload(){try{const r=await fetch("/api/admin/user-attention",{credentials:"include",cache:"no-store"});if(r.ok)setData(await r.json() as UserAttention)}catch{}}
- useEffect(()=>{const id=window.setInterval(()=>void reload(),30000);return()=>window.clearInterval(id)},[]);
+ const[busy,setBusy]=useState(false),[loadError,setLoadError]=useState(false);
+ async function reload(){try{const r=await fetch("/api/admin/user-attention",{credentials:"include",cache:"no-store"});if(!r.ok)throw Error();setData(await r.json() as UserAttention);setLoadError(false)}catch{setLoadError(true)}}
+ useVisiblePolling<UserAttention>("/api/admin/user-attention",30000,v=>{setData(v);setLoadError(false)},()=>setLoadError(true));
  async function runRecovery(){setBusy(true);try{await fetch("/api/admin/user-attention/run-draft-recovery",{method:"POST",credentials:"include"});await reload()}finally{setBusy(false)}}
  const items=useMemo(()=>{
   if(!data)return[];
@@ -33,6 +34,7 @@ export function UserAttentionPanel({initialData}:{initialData:UserAttention|null
   return out.sort((a,b)=>rank[a.kind]-rank[b.kind]||new Date(b.time).getTime()-new Date(a.time).getTime()).slice(0,10);
  },[data]);
  const total=(data?.summary.technicalAlerts??0)+(data?.summary.abandonedDrafts??0)+(data?.summary.abandonedCheckouts??0)+(data?.summary.lowQualityDrafts??0);
+ if(!data)return <section className="admin-card admin-section"><p role="status">{loadError?"Suivi utilisateur indisponible.":"Chargement du suivi…"}</p>{loadError&&<button className="admin-btn" onClick={()=>void reload()}>Réessayer</button>}</section>;
  return <section className="admin-card admin-section admin-attention-panel">
   <div className="admin-section-head admin-attention-head"><div><span className="admin-attention-eyebrow">Suivi proactif</span><h2>Attention utilisateurs</h2><p>Détecte les erreurs répétées, abandons de brouillon, paiements non terminés et annonces de faible qualité.</p></div><div className="admin-attention-actions"><span className={"admin-badge "+(total>0?"orange":"green")}><AdminIcon name={total>0?"warning":"check"}/>{n(total)} signal(aux)</span><button type="button" className="admin-btn" disabled={busy} onClick={()=>void runRecovery()}><AdminIcon name="bell"/>{busy?"Relance…":"Relancer les brouillons"}</button></div></div>
   <div className="admin-attention-kpis">

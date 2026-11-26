@@ -133,6 +133,22 @@ export async function registerSiteAnalyticsRoutes(app:FastifyInstance){
       note:"Choix enregistrés, pas utilisateurs uniques. Requêtes de robots reconnues par user-agent : classification indicative."};
   });
 
+  // The dashboard detail panel only needs current visitors, not GA4 or historical reports.
+  app.get("/admin/analytics/live-presence",{preHandler:requireAdminRoles([...ADMIN_ROLES])},async(_request,reply)=>{
+    const [summary,onlineSessions]=await Promise.all([
+      prisma.$queryRaw<Array<{onlineVisitors:number;onlineMembers:number}>>`SELECT COUNT(DISTINCT "visitorId")::int AS "onlineVisitors",COUNT(DISTINCT "userId")::int AS "onlineMembers" FROM "SiteAnalyticsSession" WHERE "lastSeenAt">NOW()-INTERVAL '5 minutes'`,
+      prisma.$queryRawUnsafe<Array<any>>(`SELECT DISTINCT ON (s."visitorId") s."visitorId",s."userId",u."email",
+        COALESCE(p."displayName",NULLIF(TRIM(CONCAT_WS(' ',p."firstName",p."lastName")),''),u."email") AS "name",
+        p."avatarUrl",u."kind",s."currentPath",s."landingPath",s."lastSeenAt",s."pwaMode",s."referrer",
+        s."source",s."medium",s."campaign",s."trafficSource",s."trafficMedium",s."trafficCampaign"
+        FROM "SiteAnalyticsSession" s
+        LEFT JOIN "User" u ON u."id"=s."userId"
+        LEFT JOIN "UserProfile" p ON p."userId"=u."id"
+        WHERE s."lastSeenAt">NOW()-INTERVAL '5 minutes'
+        ORDER BY s."visitorId",s."lastSeenAt" DESC LIMIT 100`)
+    ]);
+    return reply.header("Cache-Control","private, no-store").send({summary:summary[0],onlineSessions,onlineUsers:onlineSessions.filter(s=>s.userId),onlineWindowMinutes:5});
+  });
   app.get("/admin/analytics/live",{preHandler:requireAdminRoles([...ADMIN_ROLES])},async(_request,reply)=>{
     const [summary,onlineUsers,onlineSessions,topPages,recentDays,trafficToday,webVitals,recentPwa,ga4]=await Promise.all([
       prisma.$queryRawUnsafe<Array<any>>(`SELECT

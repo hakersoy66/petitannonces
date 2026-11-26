@@ -1,6 +1,7 @@
 "use client";
 
 import {useEffect,useMemo,useState} from "react";
+import {useVisiblePolling} from "../../lib/use-visible-polling";
 import {AdminIcon} from "../../components/admin-icon";
 
 type LivePerson={visitorId:string;userId:string|null;email:string|null;name:string|null;avatarUrl:string|null;kind:string|null;currentPath:string|null;landingPath:string|null;lastSeenAt:string;pwaMode:boolean;referrer:string|null;source:string|null;medium:string|null;campaign:string|null;trafficSource:string|null;trafficMedium:string|null;trafficCampaign:string|null};
@@ -55,15 +56,16 @@ export function AnonymousAudiencePanel({initialData}:{initialData:AnonymousAudie
 
 export function LiveVisitorsPanel({initialData}:{initialData:LiveAnalytics|null}){
  const[data,setData]=useState<LiveAnalytics|null>(initialData);
- const[refreshing,setRefreshing]=useState(false);
+ const[refreshing,setRefreshing]=useState(false),[loadError,setLoadError]=useState(false);
  const sessions=useMemo(()=>data?.onlineSessions??data?.onlineUsers??[],[data]);
  async function refresh(silent=false){
   if(!silent)setRefreshing(true);
-  try{const r=await fetch("/api/admin/analytics/live",{credentials:"include",cache:"no-store"});if(r.ok)setData(await r.json() as LiveAnalytics)}catch{}finally{if(!silent)setRefreshing(false)}
+  try{const r=await fetch("/api/admin/analytics/live-presence",{credentials:"include",cache:"no-store"});if(!r.ok)throw Error();setData(await r.json() as LiveAnalytics);setLoadError(false)}catch{setLoadError(true)}finally{if(!silent)setRefreshing(false)}
  }
- useEffect(()=>{const id=window.setInterval(()=>void refresh(true),30000);return()=>window.clearInterval(id)},[]);
+ useVisiblePolling<LiveAnalytics>("/api/admin/analytics/live-presence",30000,v=>{setData(v);setLoadError(false)},()=>setLoadError(true));
  const members=data?.summary?.onlineMembers??sessions.filter(x=>x.userId).length;
  const anonymous=Math.max(0,sessions.length-members);
+ if(!data)return <section className="admin-card admin-section"><p role="status">{loadError?"Données de présence indisponibles.":"Chargement des visiteurs…"}</p>{loadError&&<button className="admin-btn" disabled={refreshing} onClick={()=>void refresh()}>Réessayer</button>}</section>;
  return <section className="admin-card admin-section admin-live-panel">
   <div className="admin-live-head">
    <div><span className="admin-live-eyebrow"><i/> Temps réel</span><h2>Membres & visiteurs en ligne</h2><p>Activité des {data?.onlineWindowMinutes??5} dernières minutes · actualisation automatique toutes les 30 s.</p></div>

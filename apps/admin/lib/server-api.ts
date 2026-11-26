@@ -1,6 +1,7 @@
+import { cache } from "react";
 import { cookies } from "next/headers";
 
-export async function adminServerFetch<T>(path:string):Promise<T|null>{
+const fetchForRender=cache(async(path:string):Promise<unknown|null>=>{
  try{
   const store=await cookies();
   const token=store.get("pa_session")?.value;
@@ -10,6 +11,7 @@ export async function adminServerFetch<T>(path:string):Promise<T|null>{
   const effectivePath=lightweight?path.replace("/overview","/summary"):path;
   const r=await fetch(`${base.replace(/\/$/,"")}${effectivePath}`,{headers:{cookie:`pa_session=${encodeURIComponent(token)}`},cache:"no-store"});
   if(!r.ok)return null;
-  return await r.json() as T;
+  return await r.json();
  }catch{return null}
-}
+});
+export async function adminServerFetch<T>(path:string):Promise<T|null>{return await fetchForRender(path) as T|null}

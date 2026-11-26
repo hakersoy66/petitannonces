@@ -173,15 +173,14 @@ export async function registerOperationsRoutes(app: FastifyInstance) {
 
   app.get("/admin/dashboard", async (request, reply) => {
     const admin = await requireAdmin(request, reply); if (!admin) return;
-    const [users, listings, orders, support, moderation, disputes, finance, audience] = await Promise.all([
+    const [users, listings, orders, support, moderation, disputes, audience] = await Promise.all([
       prisma.$queryRawUnsafe<Array<any>>(`SELECT COUNT(*)::int AS total, COUNT(*) FILTER (WHERE "createdAt" >= NOW()-INTERVAL '24 hours')::int AS today FROM "User"`),
       prisma.$queryRawUnsafe<Array<any>>(`SELECT COUNT(*)::int AS total, COUNT(*) FILTER (WHERE "status"='PUBLISHED')::int AS published FROM "Listing"`),
-      prisma.$queryRawUnsafe<Array<any>>(`SELECT COUNT(*)::int AS total, COUNT(*) FILTER (WHERE "status" IN ('PAID','PROCESSING','SHIPPED','DELIVERED','COMPLETED'))::int AS active FROM "MarketplaceOrder"`),
+      prisma.$queryRawUnsafe<Array<any>>(`SELECT COUNT(*)::int AS total, COUNT(*) FILTER (WHERE "status" IN ('PAID','PROCESSING','SHIPPED','DELIVERED','COMPLETED'))::int AS active, COALESCE(SUM("totalAmountMinor") FILTER (WHERE "status" IN ('PAID','PROCESSING','SHIPPED','DELIVERED','COMPLETED')),0)::bigint AS gmv, COALESCE(SUM("platformCommissionMinor") FILTER (WHERE "status" IN ('PAID','PROCESSING','SHIPPED','DELIVERED','COMPLETED')),0)::bigint AS commissions FROM "MarketplaceOrder"`),
       prisma.$queryRawUnsafe<Array<any>>(`SELECT COUNT(*) FILTER (WHERE "status" NOT IN ('RESOLVED','CLOSED'))::int AS open FROM "SupportTicket"`),
       prisma.$queryRawUnsafe<Array<any>>(`SELECT COUNT(*)::int AS open FROM "ModerationCase" mc JOIN "Listing" l ON l."id"=mc."targetId" WHERE mc."targetType"='LISTING' AND mc."status" NOT IN ('RESOLVED','CLOSED') AND l."status"='PENDING'`),
       prisma.$queryRawUnsafe<Array<any>>(`SELECT COUNT(*) FILTER (WHERE "status" NOT IN ('RESOLVED_BUYER','RESOLVED_SELLER','CLOSED'))::int AS open FROM "MarketplaceDispute"`),
-      prisma.$queryRawUnsafe<Array<any>>(`SELECT COALESCE(SUM("totalAmountMinor") FILTER (WHERE "status" IN ('PAID','PROCESSING','SHIPPED','DELIVERED','COMPLETED')),0)::bigint AS gmv, COALESCE(SUM("platformCommissionMinor") FILTER (WHERE "status" IN ('PAID','PROCESSING','SHIPPED','DELIVERED','COMPLETED')),0)::bigint AS commissions FROM "MarketplaceOrder"`),
-      prisma.$queryRawUnsafe<Array<any>>(`SELECT COUNT(*) FILTER (WHERE "startedAt">=CURRENT_DATE)::int AS "visitsToday", COUNT(DISTINCT "visitorId") FILTER (WHERE "startedAt">=CURRENT_DATE)::int AS "visitorsToday", COUNT(DISTINCT "visitorId") FILTER (WHERE "lastSeenAt">NOW()-INTERVAL '5 minutes')::int AS "onlineVisitors", COUNT(DISTINCT "userId") FILTER (WHERE "userId" IS NOT NULL AND "lastSeenAt">NOW()-INTERVAL '5 minutes')::int AS "onlineMembers" FROM "SiteAnalyticsSession"`),
+      prisma.$queryRawUnsafe<Array<any>>(`SELECT COUNT(*) FILTER (WHERE "startedAt">=CURRENT_DATE)::int AS "visitsToday", COUNT(DISTINCT "visitorId") FILTER (WHERE "startedAt">=CURRENT_DATE)::int AS "visitorsToday", COUNT(DISTINCT "visitorId") FILTER (WHERE "lastSeenAt">NOW()-INTERVAL '5 minutes')::int AS "onlineVisitors", COUNT(DISTINCT "userId") FILTER (WHERE "userId" IS NOT NULL AND "lastSeenAt">NOW()-INTERVAL '5 minutes')::int AS "onlineMembers" FROM "SiteAnalyticsSession" WHERE "startedAt">=CURRENT_DATE OR "lastSeenAt">NOW()-INTERVAL '5 minutes'`),
     ]);
     return reply.send({
       kpis: {
@@ -189,7 +188,7 @@ export async function registerOperationsRoutes(app: FastifyInstance) {
         listingsTotal: listings[0]?.total ?? 0, listingsPublished: listings[0]?.published ?? 0,
         ordersTotal: orders[0]?.total ?? 0, ordersActive: orders[0]?.active ?? 0,
         supportOpen: support[0]?.open ?? 0, moderationOpen: moderation[0]?.open ?? 0, disputesOpen: disputes[0]?.open ?? 0,
-        gmvMinor: Number(finance[0]?.gmv ?? 0), platformCommissionMinor: Number(finance[0]?.commissions ?? 0),
+        gmvMinor: Number(orders[0]?.gmv ?? 0), platformCommissionMinor: Number(orders[0]?.commissions ?? 0),
         visitsToday: Number(audience[0]?.visitsToday ?? 0), visitorsToday: Number(audience[0]?.visitorsToday ?? 0), onlineVisitors: Number(audience[0]?.onlineVisitors ?? 0), onlineMembers: Number(audience[0]?.onlineMembers ?? 0),
       },
     });

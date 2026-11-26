@@ -3,9 +3,8 @@ import DashboardShortcuts from "../../components/dashboard-shortcuts";
 import { adminServerFetch } from "../../lib/server-api";
 import { AdminIcon, type AdminIconName } from "../../components/admin-icon";
 import { visibleAdminGroups } from "../../lib/admin-navigation";
-import { LiveVisitorsPanel, type AnonymousAudience } from "./live-visitors-panel";
-import { DashboardUserKpi } from "./dashboard-user-kpi";
-import { UserAttentionPanel, type UserAttention } from "./user-attention-panel";
+import type { AnonymousAudience } from "./live-visitors-panel";
+import LazyDashboardDetails from "./lazy-dashboard-details";
 
 type Viewer={user?:{roles?:string[]}};
 type Dashboard={kpis:{usersTotal:number;usersToday:number;listingsTotal:number;listingsPublished:number;ordersTotal:number;ordersActive:number;supportOpen:number;moderationOpen:number;disputesOpen:number;gmvMinor:number;platformCommissionMinor:number;visitsToday:number;visitorsToday:number;onlineVisitors:number;onlineMembers:number}};
@@ -20,22 +19,18 @@ const kindLabel=(kind:string)=>kind==="PROFESSIONNEL"?"Pro":"Particulier";
 const trafficLabel=(user:LivePerson)=>{const raw=(user.trafficSource??user.source??"").trim().toLowerCase();const medium=(user.trafficMedium??user.medium??"").trim().toLowerCase();if(["google","googleads","google_ads"].includes(raw)||raw.includes("google"))return medium&&medium!=="(none)"?`Google · ${medium}`:"Google";if(["meta","facebook","fb","instagram","ig"].includes(raw)||raw.includes("facebook")||raw.includes("instagram"))return medium?`Meta · ${medium}`:"Meta";if(raw.includes("bing")||raw.includes("microsoft"))return medium?`Bing · ${medium}`:"Bing";if(raw.includes("tiktok"))return medium?`TikTok · ${medium}`:"TikTok";if(raw&&raw!=="direct"&&raw!=="(direct)")return medium?`${raw} · ${medium}`:raw;try{if(user.referrer){const host=new URL(user.referrer).hostname.replace(/^www\./,"");if(host&&!host.includes("petitannonces.fr"))return`Referral · ${host}`}}catch{}return"Direct";};
 
 export default async function AdminHome(){
- const[d,a30,a7,live,aggregate,policy,userAttention,viewer]=await Promise.all([
+ const[d,a30,a7,aggregate,policy,viewer]=await Promise.all([
   adminServerFetch<Dashboard>("/admin/dashboard"),
   adminServerFetch<AnalyticsSummary>("/admin/analytics/overview?days=30"),
   adminServerFetch<AnalyticsSummary>("/admin/analytics/overview?days=7"),
-  adminServerFetch<LiveAnalytics>("/admin/analytics/live"),
   adminServerFetch<AnonymousAudience>("/admin/analytics/anonymous-audience?days=1"),
   adminServerFetch<ContentPolicyReply>("/admin/moderation/content-policy"),
-  adminServerFetch<UserAttention>("/admin/user-attention"),
   adminServerFetch<Viewer>("/auth/me"),
  ]);
  const allowedPaths=new Set(visibleAdminGroups(viewer?.user?.roles??[]).flatMap(group=>group.items.map(item=>item.href)));
  const k=d?.kpis??{usersTotal:0,usersToday:0,listingsTotal:0,listingsPublished:0,ordersTotal:0,ordersActive:0,supportOpen:0,moderationOpen:0,disputesOpen:0,gmvMinor:0,platformCommissionMinor:0,visitsToday:0,visitorsToday:0,onlineVisitors:0,onlineMembers:0};
  const s30=a30?.summary??{newUsers:0,newListings:0,publishedListings:0,orders:0,paidOrders:0,gmvMinor:0,revenueMinor:0,disputes:0,supportTickets:0};
  const s7=a7?.summary??{newUsers:0,newListings:0,publishedListings:0,orders:0,paidOrders:0,gmvMinor:0,revenueMinor:0,disputes:0,supportTickets:0};
- const onlineUsers=live?.onlineUsers??[];
- const onlineSessions=live?.onlineSessions??onlineUsers;
  const forbiddenWordUsers=(policy?.holds??[]).filter(h=>h.status==="PENDING"&&(h.signals??[]).some(signal=>signal.code==="FORBIDDEN_TERM")).length;
  const priorities:Array<{href:string;icon:AdminIconName;label:string;value:number;detail:string;tone:string;className?:string}>=[
   {href:"/moderation",icon:"shield" as AdminIconName,label:"Modération",value:k.moderationOpen,detail:"annonce(s) à examiner",tone:k.moderationOpen>0?"orange":"green"},
@@ -98,7 +93,6 @@ export default async function AdminHome(){
     <div className="admin-workspace-mini"><div><span>Visiteurs en ligne</span><strong>{d?n(k.onlineVisitors):"—"}</strong><small>{d?n(k.onlineMembers):"—"} membres connectés</small></div><div><span>Commandes actives</span><strong>{d?n(k.ordersActive):"—"}</strong><small>{d?n(k.ordersTotal):"—"} au total</small></div><div><span>Revenus sur 30 jours</span><strong>{a30?eur(s30.revenueMinor):"—"}</strong></div><div><span>Pages vues aujourd’hui</span><strong>{aggregate?n(aggregate.today.pageViews):"—"}</strong></div></div>
    </section>
   </div>
-  <details className="admin-card admin-home-details"><summary>Suivi des utilisateurs · détails</summary><UserAttentionPanel initialData={userAttention}/></details>
-  <details className="admin-card admin-home-details"><summary>Visiteurs en direct · détails</summary><LiveVisitorsPanel initialData={live}/></details>
+  <LazyDashboardDetails attention={Boolean(viewer?.user?.roles?.some(r=>["SUPER_ADMIN","ADMIN","SUPPORT","MARKETING","MODERATOR"].includes(r)))} presence={Boolean(viewer?.user?.roles?.some(r=>["SUPER_ADMIN","ADMIN","MARKETING"].includes(r)))}/>
  </div>;
 }

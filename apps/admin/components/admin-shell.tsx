@@ -1,7 +1,7 @@
 "use client";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import {AdminAlertBell} from "./admin-alert-center";
+import {AdminAlertBell,AdminAlertProvider} from "./admin-alert-center";
 import { AdminIcon, type AdminIconName } from "./admin-icon";
 import { visibleAdminGroups, adminSearchMatch } from "../lib/admin-navigation";
 
@@ -26,7 +26,7 @@ export function AdminShell({user,children}:{user:User;children:React.ReactNode})
  const currentGroup=displayedGroups.find(g=>g.items.some(([, ,href])=>href===current?.[2]))?.label;
  const searching=Boolean(query.trim());
  const filtered=displayedGroups.map(g=>({...g,items:g.items.filter(([,label])=>!searching||adminSearchMatch(label,query)||adminSearchMatch(g.label,query))})).filter(g=>g.items.length);
- return <div className="admin-app admin-redesign"><a className="admin-skip-link" href="#admin-main-content">Aller au contenu</a>
+ return <AdminAlertProvider><div className="admin-app admin-redesign"><a className="admin-skip-link" href="#admin-main-content">Aller au contenu</a>
   {open&&<button type="button" aria-label="Fermer le menu" className="admin-overlay" onClick={()=>setOpen(false)}/>}
   <aside id="admin-sidebar-navigation" className={`admin-sidebar ${open?"open":""}`} aria-label="Navigation administration">
    <div className="admin-sidebar-mobile-head"><span>Menu</span><button type="button" aria-label="Fermer le menu" onClick={()=>setOpen(false)}>×</button></div>
@@ -37,5 +37,5 @@ export function AdminShell({user,children}:{user:User;children:React.ReactNode})
   </aside>
   <div className="admin-main"><header className="admin-topbar"><div className="admin-topbar-left"><button type="button" className="admin-mobile-menu" aria-expanded={open} aria-controls="admin-sidebar-navigation" aria-label="Ouvrir le menu" onClick={()=>setOpen(true)}><AdminIcon name="menu"/></button><div className="admin-topbar-title"><small>{currentGroup??"Administration"}</small><strong>{current?.[1]??"Administration"}</strong></div></div><div className="admin-topbar-actions"><a href="https://petitannonces.fr" target="_blank" rel="noreferrer"><AdminIcon name="external"/><span>Voir le site</span></a><AdminAlertBell/>{accessible.has("/moderation")&&<a className="primary" href="/moderation"><AdminIcon name="shield"/><span>Modération</span></a>}</div></header><div id="admin-main-content" className="admin-content" tabIndex={-1}>{children}</div></div>
   <nav className="admin-mobile-bottom" style={{gridTemplateColumns:`repeat(${displayedMobileItems.length+1},minmax(0,1fr))`}} aria-label="Navigation rapide">{displayedMobileItems.map(([icon,label,href])=><a key={href} href={href} className={activePath(path,href)?"active":""} aria-current={activePath(path,href)?"page":undefined}><AdminIcon name={icon}/><span>{label}</span></a>)}<button type="button" className={open?"active":""} onClick={()=>setOpen(true)} aria-expanded={open} aria-controls="admin-sidebar-navigation" aria-label="Ouvrir toutes les rubriques"><AdminIcon name="menu"/><span>Plus</span></button></nav>
- </div>
+ </div></AdminAlertProvider>
 }
