@@ -1,3 +1,4 @@
+import {registerAdminInspectionRoutes} from "./admin-inspection.js";
 import {registerSystemFeatureRoutes,systemFeaturePreHandler} from "./system-feature-controls.js";
 import cookie from "@fastify/cookie";
 import Fastify from "fastify";
@@ -189,6 +190,7 @@ await registerPhoneVerificationRoutes(app);
 await registerTwoFactorRoutes(app);
 await registerSecurityRoutes(app);
 await registerRiskRoutes(app);
+await registerAdminInspectionRoutes(app);
 await registerCommerceRiskRoutes(app);
 await registerLocationRoutes(app);
 await registerListingRoutes(app);

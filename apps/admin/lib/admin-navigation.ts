@@ -26,6 +26,7 @@ export const adminNavGroups:AdminNavGroup[]=[
   {icon:"shield",label:"Signalements DSA",href:"/dsa",roles:[...top,"MODERATOR","COMPLIANCE"]},
   {icon:"users",label:"Utilisateurs bloqués",href:"/blocked-users",roles:moderation},
   {icon:"shield",label:"Centre de risque",href:"/risk",roles:moderation},
+  {icon:"search",label:"Contrôle intelligent",href:"/inspection",roles:[...top,"MODERATOR","COMPLIANCE"]},
   {icon:"chart",label:"Santé de la marketplace",href:"/marketplace-health"},
   {icon:"list",label:"Santé des imports",href:"/imports",roles:[...top,"MARKETING","MODERATOR","SUPPORT"]},
  ]},
