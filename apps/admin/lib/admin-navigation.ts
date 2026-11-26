@@ -19,6 +19,7 @@ export const adminNavGroups:AdminNavGroup[]=[
   {icon:"shield",label:"Modération",href:"/moderation",roles:moderation},
   {icon:"list",label:"Annonces",href:"/listings",roles:[...top,"MODERATOR","SUPPORT"]},
   {icon:"users",label:"Utilisateurs",href:"/users",roles:[...top,"SUPPORT","COMPLIANCE"]},
+  {icon:"list",label:"Opérations groupées",href:"/bulk",roles:top},
   {icon:"support",label:"Support",href:"/support",roles:[...top,"SUPPORT"]},
   {icon:"chart",label:"Analytics",href:"/analytics"},
  ]},

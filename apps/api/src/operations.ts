@@ -863,6 +863,69 @@ export async function registerOperationsRoutes(app: FastifyInstance) {
     return reply.send({sent:true});
   });
 
+  // Dedicated bulk workspace: an explicit selection, read-only preview and atomic application.
+  const bulkSpec=z.object({action:z.enum(["EXTEND","BLOCK_PUBLICATION","ALLOW_PUBLICATION","BLOCK_IMPORT","ALLOW_IMPORT"]),ids:z.array(z.string().min(1).max(128)).min(1).max(50).refine(v=>new Set(v).size===v.length),days:z.number().int().min(1).max(365).default(30)});
+  async function bulkRows(tx:any,spec:z.infer<typeof bulkSpec>,lock:boolean){
+    const ids=[...spec.ids].sort();
+    if(spec.action==="EXTEND"){
+      if(lock){await tx.$queryRaw`SELECT id FROM "Listing" WHERE id=ANY(${ids}::text[]) ORDER BY id FOR UPDATE`;await tx.$queryRaw`SELECT "listingId" FROM "ListingLifecycle" WHERE "listingId"=ANY(${ids}::text[]) ORDER BY "listingId" FOR UPDATE`;}
+      const rows=await tx.$queryRaw`SELECT l.id,COALESCE(l.title,'Sans titre') AS label,l.status::text AS status,l."updatedAt",lc."expiresAt",c.domain::text AS domain,c.slug,EXISTS(SELECT 1 FROM "AdminListingArchive" a WHERE a."listingId"=l.id) AS archived FROM "Listing" l JOIN "Category" c ON c.id=l."categoryId" LEFT JOIN "ListingLifecycle" lc ON lc."listingId"=l.id WHERE l.id=ANY(${ids}::text[]) ORDER BY l.id`;
+      return ids.map(id=>{const x=rows.find((v:any)=>v.id===id);return x?{...x,eligible:x.status==="PUBLISHED"&&!x.archived&&!animalCessionRequiresProductionApproval(x),before:x.expiresAt?.toISOString()??null}: {id,label:"Introuvable",eligible:false,before:null}});
+    }
+    if(lock)await tx.$queryRaw`SELECT id FROM "User" WHERE id=ANY(${ids}::text[]) ORDER BY id FOR UPDATE`;
+    const rows=await tx.$queryRaw`SELECT u.id,u.email AS label,u.status::text AS status,u."updatedAt",p."updatedAt" AS "permissionUpdatedAt",COALESCE(p."publicationBlocked",false) AS "publicationBlocked",COALESCE(p."importBlocked",false) AS "importBlocked",EXISTS(SELECT 1 FROM "UserAdminRole" ar WHERE ar."userId"=u.id) AS protected FROM "User" u LEFT JOIN "AdminUserPermission" p ON p."userId"=u.id WHERE u.id=ANY(${ids}::text[]) ORDER BY u.id`;
+    return ids.map(id=>{const x=rows.find((v:any)=>v.id===id);if(!x)return {id,label:"Introuvable",eligible:false,before:null};const before=spec.action.includes("PUBLICATION")?x.publicationBlocked:x.importBlocked;return {...x,label:x.protected?"Compte protégé":x.label,eligible:x.status==="ACTIVE"&&!x.protected&&before!==spec.action.startsWith("BLOCK"),before}});
+  }
+  function bulkFingerprint(spec:z.infer<typeof bulkSpec>,rows:unknown){return createHash("sha256").update(JSON.stringify({action:spec.action,days:spec.days,ids:[...spec.ids].sort(),rows})).digest("hex")}
+  app.get("/admin/bulk/candidates",async(request,reply)=>{
+    const admin=await requireAdmin(request,reply,["SUPER_ADMIN","ADMIN"]);if(!admin)return;
+    const q=z.object({kind:z.enum(["USER","LISTING"]),q:z.string().trim().max(120).default(""),page:z.coerce.number().int().min(1).max(10000).default(1)}).safeParse(request.query);
+    if(!q.success)return reply.code(400).send({error:"invalid_request"});
+    const {kind,q:search,page}=q.data;const offset=(page-1)*30;
+    const rows=kind==="USER"?await prisma.$queryRaw<Array<Record<string,unknown>>>`SELECT u.id,u.email AS label,u.status::text AS status,COALESCE(p."publicationBlocked",false) AS "publicationBlocked",COALESCE(p."importBlocked",false) AS "importBlocked" FROM "User" u LEFT JOIN "AdminUserPermission" p ON p."userId"=u.id WHERE u.status='ACTIVE' AND NOT EXISTS(SELECT 1 FROM "UserAdminRole" a WHERE a."userId"=u.id) AND (u.email ILIKE '%'||${search}||'%' OR u.id=${search}) ORDER BY u."createdAt" DESC,u.id LIMIT 31 OFFSET ${offset}`:await prisma.$queryRaw<Array<Record<string,unknown>>>`SELECT l.id,COALESCE(l.title,'Sans titre') AS label,l.status::text AS status,lc."expiresAt" FROM "Listing" l JOIN "Category" c ON c.id=l."categoryId" LEFT JOIN "ListingLifecycle" lc ON lc."listingId"=l.id WHERE l.status='PUBLISHED' AND (c.domain<>'ANIMAL' OR c.slug='animaux-perdus') AND NOT EXISTS(SELECT 1 FROM "AdminListingArchive" a WHERE a."listingId"=l.id) AND (l.title ILIKE '%'||${search}||'%' OR l.id=${search}) ORDER BY l."createdAt" DESC,l.id LIMIT 31 OFFSET ${offset}`;
+    return reply.header("Cache-Control","private, no-store").send({rows:rows.slice(0,30),hasNext:rows.length>30});
+  });
+  app.post("/admin/bulk/preview",async(request,reply)=>{
+    const admin=await requireAdmin(request,reply,["SUPER_ADMIN","ADMIN"]);if(!admin)return;
+    const q=bulkSpec.safeParse(request.body);if(!q.success)return reply.code(400).send({error:"invalid_request"});
+    const rows=await bulkRows(prisma,q.data,false);
+    return reply.header("Cache-Control","private, no-store").send({rows:rows.map(({id,label,eligible,before}:any)=>({id,label,eligible,before})),fingerprint:bulkFingerprint(q.data,rows),eligible:rows.filter(x=>x.eligible).length});
+  });
+  app.post("/admin/bulk/apply",async(request,reply)=>{
+    const admin=await requireAdmin(request,reply,["SUPER_ADMIN","ADMIN"]);if(!admin)return;
+    const q=bulkSpec.extend({reason:z.string().trim().min(5).max(500),confirmation:z.literal("CONFIRMER"),fingerprint:z.string().regex(/^[0-9a-f]{64}$/)}).safeParse(request.body);
+    if(!q.success)return reply.code(400).send({error:"invalid_request"});
+    const spec=q.data;
+    const result=await prisma.$transaction(async tx=>{
+      const rows=await bulkRows(tx,spec,true);
+      if(rows.some(x=>!x.eligible)||bulkFingerprint(spec,rows)!==spec.fingerprint)return null;
+      const batchId=randomUUID();const changes:Array<{id:string;before:unknown;after:unknown}>=[];
+      for(const x of rows){
+        let after:unknown;
+        if(spec.action==="EXTEND"){
+          const v=await tx.$queryRaw<Array<{expiresAt:Date}>>`INSERT INTO "ListingLifecycle" ("listingId","expiresAt") VALUES (${x.id},CURRENT_TIMESTAMP+${spec.days}::int*INTERVAL '1 day') ON CONFLICT ("listingId") DO UPDATE SET "expiresAt"=GREATEST("ListingLifecycle"."expiresAt",CURRENT_TIMESTAMP)+${spec.days}::int*INTERVAL '1 day',"updatedAt"=CURRENT_TIMESTAMP RETURNING "expiresAt"`;
+          after=v[0]?.expiresAt;
+        }else{
+          const blocked=spec.action.startsWith("BLOCK");
+          if(spec.action.includes("PUBLICATION"))await tx.$executeRaw`INSERT INTO "AdminUserPermission" ("userId","publicationBlocked") VALUES (${x.id},${blocked}) ON CONFLICT ("userId") DO UPDATE SET "publicationBlocked"=${blocked},"updatedAt"=CURRENT_TIMESTAMP`;
+          else await tx.$executeRaw`INSERT INTO "AdminUserPermission" ("userId","importBlocked") VALUES (${x.id},${blocked}) ON CONFLICT ("userId") DO UPDATE SET "importBlocked"=${blocked},"updatedAt"=CURRENT_TIMESTAMP`;
+          after=blocked;
+        }
+        changes.push({id:x.id,before:x.before,after});
+        await tx.$executeRaw`INSERT INTO "AdminAuditEvent" ("id","actorUserId","action","entityType","entityId","metadata") VALUES (${randomUUID()},${admin.id},${spec.action==="EXTEND"?"LISTING_LIFETIME_EXTENDED":"USER_BULK_PERMISSION_UPDATED"},${spec.action==="EXTEND"?"LISTING":"USER"},${x.id},${JSON.stringify({batchId,action:spec.action,before:x.before,after,reason:spec.reason,days:spec.action==="EXTEND"?spec.days:undefined})}::jsonb)`;
+      }
+      await tx.$executeRaw`INSERT INTO "AdminAuditEvent" ("id","actorUserId","action","entityType","entityId","metadata") VALUES (${randomUUID()},${admin.id},'BULK_OPERATION_COMPLETED','BULK',${batchId},${JSON.stringify({action:spec.action,count:changes.length,reason:spec.reason})}::jsonb)`;
+      return {batchId,updated:changes.length,changes};
+    },{timeout:30000});
+    if(!result)return reply.code(409).send({error:"preview_changed",message:"Sélection modifiée ou inéligible. Aucune opération appliquée."});
+    return reply.send(result);
+  });
+  app.get("/admin/bulk/history",async(request,reply)=>{
+    const admin=await requireAdmin(request,reply,["SUPER_ADMIN","ADMIN"]);if(!admin)return;
+    const rows=await prisma.$queryRaw<Array<Record<string,unknown>>>`SELECT a."entityId" AS "batchId",a."createdAt",a.metadata->>'action' AS action,a.metadata->>'count' AS count,u.email AS actor FROM "AdminAuditEvent" a LEFT JOIN "User" u ON u.id=a."actorUserId" WHERE a.action='BULK_OPERATION_COMPLETED' AND a."entityType"='BULK' ORDER BY a."createdAt" DESC LIMIT 50`;
+    return reply.header("Cache-Control","private, no-store").send({rows});
+  });
+
   app.post("/admin/listings/bulk-lifetime",async(request,reply)=>{
     const admin=await requireAdmin(request,reply,["SUPER_ADMIN","ADMIN"]);if(!admin)return;
     const body=z.object({ids:z.array(z.string().min(1)).min(1).max(100),days:z.number().int().min(1).max(365),reason:z.string().trim().min(5).max(500)}).safeParse(request.body);
@@ -885,7 +948,7 @@ export async function registerOperationsRoutes(app: FastifyInstance) {
     const admin=await requireAdmin(request,reply,["SUPER_ADMIN","ADMIN","MODERATOR"]);if(!admin)return;
     const body=z.object({ids:z.array(z.string().min(1)).min(1).max(100),status:z.enum(["PUBLISHED","SUSPENDED","EXPIRED"]),reason:z.string().trim().min(5).max(1000)}).safeParse(request.body);
     if(!body.success)return reply.code(400).send({error:"invalid_request"});
-    const unique=[...new Set(body.data.ids)];const rows=await prisma.listing.findMany({where:{id:{in:unique}},select:{id:true,status:true,publishedAt:true,category:{select:{domain:true,slug:true}}}});if(!rows.length)return reply.code(404).send({error:"listings_not_found"});
+    const unique=[...new Set(body.data.ids)];const rows=await prisma.listing.findMany({where:{id:{in:unique}},select:{id:true,status:true,publishedAt:true,category:{select:{domain:true,slug:true}}}});if(rows.length!==unique.length)return reply.code(409).send({error:"bulk_selection_incomplete"});
     if(body.data.status==="PUBLISHED"&&rows.some(row=>animalCessionRequiresProductionApproval(row.category)))return reply.code(423).send({error:"animal_cession_requires_cda_production_validation"});
     const now=new Date();await prisma.$transaction(async tx=>{for(const row of rows){await tx.listing.update({where:{id:row.id},data:{status:body.data.status,...(body.data.status==="PUBLISHED"?{publishedAt:now}:{})}})}});
     if(body.data.status==="PUBLISHED")for(const row of rows){await activateListingLifetime(row.id,now,true);if(row.publishedAt==null)await notifyInstantSavedSearchesForListing(row.id).catch(error=>request.log.warn({error,listingId:row.id},"instant saved-search notification failed after bulk admin publication"));}
