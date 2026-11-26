@@ -134,6 +134,13 @@ app.addHook("preHandler",async(request,reply)=>{
     : new Set(["https://admin.petitannonces.fr","http://localhost:3001","http://127.0.0.1:3001"]);
   if(!source||!allowed.has(source))return reply.code(403).send({error:"invalid_request_origin"});
 });
+// Database guards also cover older and bulk publication routes.
+app.setErrorHandler((error,request,reply)=>{
+  const message=String(error);
+  if(message.includes("professional_plan_listing_limit")||message.includes("professional_free_listing_limit"))return reply.code(409).send({error:"professional_plan_listing_limit",message:"La limite d’annonces de votre formule est atteinte."});
+  if(message.includes("admin_listing_cap_reached")||message.includes("admin_publication_blocked"))return reply.code(409).send({error:"admin_user_permission_restricted",message:"La publication est restreinte par l’administration."});
+  return reply.send(error);
+});
 app.addHook("preHandler",spamHoldPreHandler);
 app.addHook("preHandler",systemFeaturePreHandler);
 await registerSystemFeatureRoutes(app);
