@@ -157,3 +157,22 @@ export async function getGscSummary(days=28):Promise<GscSummary>{
   cache.set(d,{expiresAt:Date.now()+5*60_000,value});return value
  }catch(error){const c=classify(error);const value={...base,errorCode:c.code,errorMessage:c.message};cache.set(d,{expiresAt:Date.now()+60_000,value});return value}
 }
+
+type ComparisonDay={date:string;clicks:number;impressions:number;ctr:number;position:number};
+type ComparisonPeriod={startDate:string;endDate:string;clicks:number;impressions:number;ctr:number;position:number};
+type Comparison={connected:boolean;siteUrl:string;errorCode:string|null;errorMessage:string|null;current:ComparisonPeriod|null;previous:ComparisonPeriod|null;daily:ComparisonDay[];generatedAt:string};
+const comparisonCache=new Map<number,{expiresAt:number;value:Comparison}>();
+export async function getGscComparison(days:number):Promise<Comparison>{
+ const cached=comparisonCache.get(days);if(cached&&cached.expiresAt>Date.now())return cached.value;
+ const end=new Date();end.setUTCDate(end.getUTCDate()-3);
+ const start=new Date(end);start.setUTCDate(start.getUTCDate()-days+1);
+ const prevEnd=new Date(start);prevEnd.setUTCDate(prevEnd.getUTCDate()-1);
+ const prevStart=new Date(prevEnd);prevStart.setUTCDate(prevStart.getUTCDate()-days+1);
+ const base={connected:false,siteUrl:siteUrl(),errorCode:null,errorMessage:null,current:null,previous:null,daily:[],generatedAt:new Date().toISOString()};
+ try{
+  const args=(a:Date,b:Date)=>({startDate:iso(a),endDate:iso(b),dataState:"final",type:"web"});
+  const [now,before,series]=await Promise.all([query({...args(start,end),rowLimit:1}),query({...args(prevStart,prevEnd),rowLimit:1}),query({...args(start,end),dimensions:["date"],rowLimit:days})]);
+  const value:Comparison={...base,connected:true,current:{startDate:iso(start),endDate:iso(end),...metric(now.rows?.[0])},previous:{startDate:iso(prevStart),endDate:iso(prevEnd),...metric(before.rows?.[0])},daily:((series.rows??[]) as GscRow[]).map(row=>({date:String(row.keys?.[0]??""),...metric(row)})).filter(row=>row.date).sort((a,b)=>a.date.localeCompare(b.date))};
+  comparisonCache.set(days,{expiresAt:Date.now()+300000,value});return value;
+ }catch(error){const c=classify(error);const value={...base,errorCode:c.code,errorMessage:c.message};comparisonCache.set(days,{expiresAt:Date.now()+60000,value});return value;}
+}

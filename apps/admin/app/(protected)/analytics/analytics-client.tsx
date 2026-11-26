@@ -155,6 +155,7 @@ export default function AnalyticsClient() {
     let active = true;
     setLoading(true);
     setError(null);
+    setData(null);setAggregate(null);setTrafficQuality(null);setGrowthDiagnostics(null);setRecovery(null);
     fetch(`/api/admin/analytics/anonymous-audience?days=${days}`,{credentials:"include",cache:"no-store"})
       .then(async r=>r.ok?(await r.json()) as AnonymousAudience:null)
       .then(v=>{if(active)setAggregate(v)})
@@ -237,7 +238,7 @@ export default function AnalyticsClient() {
     <div className="admin-page-head">
       <div>
         <p>Pilotage</p>
-        <h1>Analytics</h1>
+        <h1>Analytics & audience</h1>
         <span className="subtitle">Audience consentie, acquisition et activité marketplace, avec une séparation claire entre les mesures Petit Annonces et Google Analytics 4.</span>
       </div>
       <div className="admin-analytics-head-actions">
@@ -251,6 +252,8 @@ export default function AnalyticsClient() {
     </div>
     {error && <div className="admin-flash err admin-analytics-error"><strong>Données Analytics indisponibles.</strong><span>{error}</span><button type="button" className="admin-btn" onClick={() => setReloadKey((v) => v + 1)}>Réessayer</button></div>}
 
+    <div className="admin-analytics-source-grid"><article className="admin-card"><strong>Audience agrégée</strong><small>Entrées estimées, sans identifiant individuel</small><span>{aggregate?n(aggregate.period.estimatedEntries):"—"}</span></article><article className="admin-card"><strong>Mesure consentie</strong><small>Visiteurs distincts mesurés sur le site</small><span>{data?n(data.audience.visitors):"—"}</span></article><article className="admin-card"><strong>Google Analytics 4</strong><small>Sessions mesurées par GA4</small><span>{data?.ga4.connected?n(data.ga4.sessions):"—"}</span></article><article className="admin-card"><strong>Search Console</strong><small>Clics Google · période propre à GSC</small><span>{data?.organic.gsc.connected?n(data.organic.gsc.clicks):"—"}</span><a href="/seo#seo-comparison">Comparaison SEO</a></article></div>
+    <p className="admin-feature-note">Sources distinctes : ne pas additionner ces compteurs. Une source indisponible est indiquée par un tiret.</p>
     <nav className="admin-section-nav" aria-label="Rubriques Analytics"><a href="#traffic">Audience</a><a href="#growth">Croissance</a><a href="#daily-traffic">Trafic quotidien</a><a href="#ga4">GA4</a><a href="#organic">Google SEO</a><a href="#marketplace">Marketplace</a></nav>
     <section className="admin-card admin-section">
       <div className="admin-section-head"><div><h2 id="traffic" className="admin-section-anchor">Fréquentation globale agrégée</h2><p>Sans identifiant ni cookie de suivi. Inclus les visiteurs refusant la mesure facultative, sauf opposition spécifique. Ce ne sont pas des personnes uniques.</p></div><span className="admin-badge green">Source interne</span></div>
@@ -424,8 +427,8 @@ export default function AnalyticsClient() {
           <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Requête</th><th>Landing page</th><th>Impr.</th><th>Clics</th><th>Pos.</th><th>Sessions</th><th>Inscr.</th><th>Annonces</th><th>Checkouts</th><th>Achats</th></tr></thead><tbody>{queryConversionRows.map((row,index)=><tr key={`${row.query}-${row.page}-chain-${index}`}><td><strong>{row.query}</strong></td><td><small>{row.page}</small></td><td>{n(row.impressions)}</td><td><strong>{n(row.clicks)}</strong></td><td>{row.position.toLocaleString("fr-FR",{maximumFractionDigits:1})}</td><td>{n(row.landingMetrics?.sessions??0)}</td><td>{n(row.landingMetrics?.signUps??0)}</td><td>{n(row.landingMetrics?.listingsSubmitted??0)}</td><td>{n(row.landingMetrics?.checkoutStarts??0)}</td><td>{n(row.landingMetrics?.purchases??0)}</td></tr>)}{!queryConversionRows.length&&<tr><td colSpan={10}><div className="admin-empty">Aucune requête Search Console sur cette période.</div></td></tr>}</tbody></table></div>
         </div>
         <div className="admin-grid admin-kpis" style={{marginTop:14}}>
-          <article className="admin-card admin-kpi"><small>Impressions Google</small><strong>{n(data.organic.funnel.impressions)}</strong><p>position moyenne {data.organic.gsc.position?data.organic.gsc.position.toLocaleString("fr-FR",{maximumFractionDigits:1}):"—"}</p></article>
-          <article className="admin-card admin-kpi"><small>Clics Google</small><strong>{n(data.organic.funnel.clicks)}</strong><p>CTR {(data.organic.gsc.ctr*100).toLocaleString("fr-FR",{maximumFractionDigits:1})}%</p></article>
+          <article className="admin-card admin-kpi"><small>Impressions Google</small><strong>{data.organic.gsc.connected?n(data.organic.funnel.impressions):"—"}</strong><p>position moyenne {data.organic.gsc.position?data.organic.gsc.position.toLocaleString("fr-FR",{maximumFractionDigits:1}):"—"}</p></article>
+          <article className="admin-card admin-kpi"><small>Clics Google</small><strong>{data.organic.gsc.connected?n(data.organic.funnel.clicks):"—"}</strong><p>CTR {data.organic.gsc.connected?(data.organic.gsc.ctr*100).toLocaleString("fr-FR",{maximumFractionDigits:1})+"%":"—"}</p></article>
           <article className="admin-card admin-kpi"><small>Sessions organiques</small><strong>{n(data.organic.funnel.sessions)}</strong><p>sessions Google organiques attribuées par Petit Annonces</p></article>
           <article className="admin-card admin-kpi"><small>Inscriptions</small><strong>{n(data.organic.funnel.signUps)}</strong><p>comptes reliés à une landing organique Google</p></article>
           <article className="admin-card admin-kpi"><small>Annonces soumises</small><strong>{n(data.organic.funnel.listingsSubmitted)}</strong><p>annonces créées après acquisition organique attribuée</p></article>

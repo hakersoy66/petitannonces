@@ -1,3 +1,4 @@
+import SeoMonitor from "./seo-monitor";
 import { adminServerFetch } from "../../../lib/server-api";
 import { AdminIcon } from "../../../components/admin-icon";
 
@@ -97,16 +98,17 @@ export default async function SeoPage(){
  const live=d.gscLive;
  const perf=live?.connected?live.performance:g?.performance;
  const issueRows=[['Titres manquants',d.issues.missingTitle],['Descriptions manquantes',d.issues.missingDescription],['Slugs manquants',d.issues.missingSlug],['Annonces sans photo',d.issues.missingMedia]] as const;
- return <>
+ return <div className="admin-seo-workspace">
   <div className="admin-page-head"><div><p>Visibilité organique</p><h1>SEO & Google</h1><span className="subtitle">Santé technique, indexation et opportunités de croissance calculées sur le catalogue réel.</span></div><div style={{display:'flex',gap:8,flexWrap:'wrap'}}><a className="admin-btn" href={d.endpoints.sitemap} target="_blank" rel="noreferrer"><AdminIcon name="external"/>Sitemap</a><a className="admin-btn" href={d.endpoints.robots} target="_blank" rel="noreferrer"><AdminIcon name="external"/>Robots.txt</a></div></div>
 
   <div className="admin-grid admin-kpis">
    <article className="admin-card admin-kpi"><div className="admin-kpi-top"><small>Pages locales indexables</small><span className="admin-kpi-icon"><AdminIcon name="growth"/></span></div><strong>{fmt(d.inventory.indexableLocalPages)}</strong><p>Seuil automatique : au moins 3 annonces</p></article>
-   <article className="admin-card admin-kpi"><div className="admin-kpi-top"><small>Impressions Google</small><span className="admin-kpi-icon"><AdminIcon name="search"/></span></div><strong>{fmt(perf?.impressions??0)}</strong><p>{live?.connected?`API live · données stabilisées au ${live.settledThrough}`:g?`Snapshot · ${g.settledThrough}`:'Search Console API à connecter'}</p></article>
-   <article className="admin-card admin-kpi"><div className="admin-kpi-top"><small>Clics Google</small><span className="admin-kpi-icon"><AdminIcon name="growth"/></span></div><strong>{fmt(perf?.clicks??0)}</strong><p>CTR {pct(perf?.ctr??0)} · position {Number(perf?.position??0).toLocaleString("fr-FR",{maximumFractionDigits:1})}</p></article>
+   <article className="admin-card admin-kpi"><div className="admin-kpi-top"><small>Impressions Google</small><span className="admin-kpi-icon"><AdminIcon name="search"/></span></div><strong>{perf?fmt(perf.impressions):"—"}</strong><p>{live?.connected?`API live · données stabilisées au ${live.settledThrough}`:g?`Snapshot · ${g.settledThrough}`:'Search Console API à connecter'}</p></article>
+   <article className="admin-card admin-kpi"><div className="admin-kpi-top"><small>Clics Google</small><span className="admin-kpi-icon"><AdminIcon name="growth"/></span></div><strong>{perf?fmt(perf.clicks):"—"}</strong><p>{perf?"CTR "+pct(perf.ctr)+" · position "+(perf.impressions?Number(perf.position).toLocaleString("fr-FR",{maximumFractionDigits:1}):"—"):"Données indisponibles"}</p></article>
    <article className="admin-card admin-kpi"><div className="admin-kpi-top"><small>Annonces publiées</small><span className="admin-kpi-icon"><AdminIcon name="list"/></span></div><strong>{fmt(d.inventory.publishedListings)}</strong><p>{fmt(d.inventory.activeCategories)} catégories actives</p></article>
   </div>
 
+  <SeoMonitor/>
   <div className="admin-grid admin-two-col" style={{marginTop:16}}>
    <section className="admin-card admin-section"><div className="admin-section-head"><div><h2>Actions prioritaires</h2><p>Recommandations déterministes basées sur l’inventaire actuel.</p></div></div>
     {d.opportunities.recommendedActions.length?<div className="admin-seo-list">{d.opportunities.recommendedActions.map(action=><div key={action.code} style={{alignItems:'flex-start'}}><span><strong style={{display:'block',color:'#242534',marginBottom:4}}>{action.title}</strong><small style={{lineHeight:1.5}}>{action.detail}</small></span><strong className={priorityClass(action.priority)}>{action.priority==='HIGH'?'Prioritaire':'À optimiser'}</strong></div>)}</div>:<p>Aucune action prioritaire détectée sur le catalogue actuel.</p>}
@@ -163,5 +165,5 @@ export default async function SeoPage(){
    </section>
    <aside className="admin-card admin-section"><div className="admin-section-head"><div><h2>Inventaire indexable</h2><p>Contenu exposé aux moteurs et base de croissance disponible.</p></div></div><div className="admin-seo-list"><div><span>Annonces publiées</span><strong>{fmt(d.inventory.publishedListings)}</strong></div><div><span>Catégories actives</span><strong>{fmt(d.inventory.activeCategories)}</strong></div><div><span>Vitrines actives</span><strong>{fmt(d.inventory.activeStores)}</strong></div><div><span>Combinaisons leaf catégorie × ville</span><strong>{fmt(d.inventory.localLandingPairs)}</strong></div><div><span>Landing pages locales indexables</span><strong>{fmt(d.inventory.indexableLocalPages)}</strong></div></div></aside>
   </div>
- </>;
+ </div>;;
 }
