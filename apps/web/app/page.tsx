@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import { AppIcon, type AppIconName } from "../components/app-icon";
 import { HomeMobileCategories } from "../components/home-mobile-categories";
+import { CampaignLink } from "../components/campaign-link";
 import { HomeSeoExplore } from "../components/home-seo-explore";
 import { HomeFranceHero } from "../components/home-france-hero";
 import { BlackFridayBanner } from "../components/black-friday-banner";
@@ -366,7 +367,7 @@ export default async function HomePage() {
             <p>Explorez les petites annonces gratuites en France : voitures d’occasion, immobilier, high-tech, mobilier, services et emploi. Consultez les annonces de particuliers et de professionnels par catégorie ou par ville, ou publiez votre annonce sans frais de dépôt.</p>
            </div>
            <div className="home-seo-hub-actions">
-            <a className="home-seo-hub-primary" href="/deposer-annonce-gratuite">Déposer une annonce <span aria-hidden="true">↗</span></a>
+            <CampaignLink className="home-seo-hub-primary" href="/deposer-annonce-gratuite" cta="home_seo_publish" landing="/" campaign="internal_navigation">Déposer une annonce <span aria-hidden="true">↗</span></CampaignLink>
             <a className="home-seo-hub-secondary" href="/recherche">Voir les annonces <span aria-hidden="true">→</span></a>
            </div>
           </div>

@@ -17,7 +17,7 @@ const links=[
  {href:"/categorie/aspirateurs",label:"Aspirateurs"},
  {href:"/vacances",label:"Locations de vacances"},
  {href:"/professionnels",label:"Annonces professionnelles et boutiques Pro"},
- {href:"/emploi/offres/lyon/chauffeur",label:"Emploi chauffeur-livreur à Lyon"},
+ {href:"/emploi/offres/lyon/chauffeur",label:"Emploi chauffeur, livreur et coursier à Lyon"},
  {href:"/emploi/offres/paris/developpeur",label:"Emploi développeur à Paris"},
  {href:"/emploi/offres/marseille/vendeur",label:"Emploi vendeur à Marseille"}
 ] as const;

@@ -27,8 +27,8 @@ export async function generateMetadata({params}:Props):Promise<Metadata>{
  const {city,sector}=await params;const {config,offers,preserveIndex}=await jobs(city,sector);
  if(!config)return{title:"Emploi en France",robots:{index:false,follow:false}};
  // Preserve SEO visibility of local job guides during temporary upstream outages.
- const title="Offres d'emploi "+(config.sector==="chauffeur"?"Chauffeur-livreur et coursier":config.role)+" à "+config.cityName+" ("+config.department+")";
- return{title,description:"Consultez les offres "+(config.sector==="chauffeur"?"de chauffeur-livreur et coursier":"de "+config.role.toLowerCase())+" dans le département "+config.department+" autour de "+config.cityName+". Contrats selon les annonces France Travail disponibles.",robots:{index:offers.length>0||preserveIndex,follow:true},alternates:{canonical:emploiLocalHref(config)},openGraph:{title}};
+ const title=config.sector==="chauffeur"?"Emploi chauffeur, livreur et coursier à "+config.cityName+" ("+config.department+")":"Offres d’emploi "+config.role+" à "+config.cityName+" ("+config.department+")";
+ return{title,description:config.sector==="chauffeur"?"Recherchez un emploi de chauffeur, livreur ou coursier à "+config.cityName+" et dans le Rhône. Consultez les offres France Travail et créez une alerte emploi.":"Consultez les offres de "+config.role.toLowerCase()+" dans le département "+config.department+" autour de "+config.cityName+". Contrats selon les annonces France Travail disponibles.",robots:{index:offers.length>0||preserveIndex,follow:true},alternates:{canonical:emploiLocalHref(config)},openGraph:{title}};
 }
 export default async function Page({params}:Props){
  const {city,sector}=await params;
@@ -40,7 +40,7 @@ export default async function Page({params}:Props){
  return <main className={styles.shell}>
   <nav className={styles.crumb} aria-label="Fil d'Ariane"><Link href="/">Accueil</Link><span>›</span><Link href="/categorie/emploi">Emploi</Link><span>›</span><span>{config.area}</span></nav>
   <section className={styles.hero}><div className={styles.badge}>EMPLOI LOCAL · FRANCE TRAVAIL</div>
-   <h1>Offres d'emploi <em>{config.role.toLowerCase()}</em><br/>à {config.cityName}</h1>
+   <h1>Offres d’emploi <em>{config.sector==="chauffeur"?"chauffeur, livreur et coursier":config.role.toLowerCase()}</em><br/>à {config.cityName}</h1>
    <p>Explorez les opportunités en {config.area}. Toutes les annonces ci-dessous proviennent de la recherche France Travail pour le département {config.department}; certaines peuvent se trouver ailleurs dans ce département.</p>
    <div className={styles.actions}><Link href={"/categorie/emploi?"+q.toString()+"#offres-officielles"}>Affiner ma recherche ↗</Link><Link href="/categorie/emploi">Tous les métiers</Link></div>
   </section>
@@ -58,6 +58,7 @@ export default async function Page({params}:Props){
   <section className={styles.guide}><h2>Comment rechercher un emploi {config.role.toLowerCase()} autour de {config.cityName} ?</h2>
    <p>Consultez les offres disponibles dans le département {config.department}, vérifiez le lieu de travail exact, la durée du contrat et les compétences attendues. Pour élargir les résultats, retirez le filtre de département ou essayez des intitulés de métier voisins.</p>
     {config.sector==="chauffeur"&&<p>À Lyon, les recherches d’emploi de chauffeur-livreur recoupent parfois celles de coursier, livreur et conducteur de livraison. Vérifiez pour chaque offre le véhicule demandé, la zone de tournée et les horaires : les résultats proviennent de France Travail pour le Rhône, pas uniquement de Lyon.</p>}
+   {config.sector==="chauffeur"&&<div><h3>Recherches complémentaires dans le Rhône</h3><div className={styles.related}>{["livreur","coursier","chauffeur"].map(term=><Link key={term} href={"/categorie/emploi?"+new URLSearchParams({ft_q:term,ft_dept:config.department}).toString()+"#offres-officielles"}>Emploi {term} · {config.cityName} <span>↗</span></Link>)}</div></div>}
    <p>Une alerte emploi enregistrée permet de recevoir les nouvelles offres correspondant à votre métier et à votre département selon vos préférences de notification. Elle peut être désactivée depuis votre espace personnel.</p>
    <h3>Découvrez également</h3><div className={styles.related}>{others.map(x=><Link href={emploiLocalHref(x)} key={x.city+"-"+x.sector}>{x.role} · {x.cityName} <span>↗</span></Link>)}</div>
   </section>
