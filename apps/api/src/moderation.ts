@@ -1,3 +1,4 @@
+import {ensureAutoApprovalSchema, getAutoApprovalSettings} from "./auto-approval.js";
 import { adminCdaStatuses } from "./cda-production.js";
 import { createHash, randomUUID } from "node:crypto";
 import { prisma } from "@pa/database";
@@ -137,6 +138,45 @@ export async function registerModerationRoutes(app: FastifyInstance) {
     return reply.send({reports,blocks,summary:{reports:reports.length,blocks:blocks.length}});
   });
 
+  app.get("/admin/moderation/overview",async(request,reply)=>{
+    const moderator=await requireModerator(request,reply);if(!moderator)return;
+    await ensureAutoApprovalSchema();
+    const [summary,queue,reports,settings]=await Promise.all([
+      prisma.$queryRaw<Array<{pending:number;highRisk:number;oldPending:number;openReports:number;highRiskUsers:number;scheduled:number;autoApproved7d:number;manualApproved7d:number}>>`SELECT
+       (SELECT COUNT(*)::int FROM "Listing" WHERE "status"='PENDING') AS pending,
+       (SELECT COUNT(DISTINCT c."targetId")::int FROM "ModerationCase" c JOIN "Listing" l ON l."id"=c."targetId" WHERE c."targetType"='LISTING' AND c."status" NOT IN ('RESOLVED','CLOSED') AND l."status"='PENDING' AND c."riskScore">=55) AS "highRisk",
+       (SELECT COUNT(DISTINCT c."targetId")::int FROM "ModerationCase" c JOIN "Listing" l ON l."id"=c."targetId" WHERE c."targetType"='LISTING' AND c."status" NOT IN ('RESOLVED','CLOSED') AND l."status"='PENDING' AND c."createdAt"<CURRENT_TIMESTAMP-INTERVAL '24 hours') AS "oldPending",
+       (SELECT COUNT(*)::int FROM "TrustReport" WHERE "status" NOT IN ('DISMISSED','CLOSED')) AS "openReports",
+       (SELECT COUNT(*)::int FROM "UserRiskProfile" WHERE "level" IN ('HIGH','CRITICAL')) AS "highRiskUsers",
+       (SELECT COUNT(*)::int FROM "ListingAutoApprovalQueue" WHERE "status" IN ('SCHEDULED','PROCESSING')) AS scheduled,
+       (SELECT COUNT(DISTINCT "targetId")::int FROM "ModerationCase" WHERE "targetType"='LISTING' AND "status"='RESOLVED' AND "automatedDecision"=TRUE AND "decisionAction"='NONE' AND "decidedAt">=CURRENT_TIMESTAMP-INTERVAL '7 days') AS "autoApproved7d",
+       (SELECT COUNT(DISTINCT "targetId")::int FROM "ModerationCase" WHERE "targetType"='LISTING' AND "status"='RESOLVED' AND "decisionReasonCode"='MANUAL_APPROVAL' AND "decidedAt">=CURRENT_TIMESTAMP-INTERVAL '7 days') AS "manualApproved7d"`,
+      prisma.$queryRaw<Array<Record<string,unknown>>>`SELECT q."listingId",q."sellerId",q."status",q."reason",q."eligibleAt",q."riskScore",q."trustScore",l."title" FROM "ListingAutoApprovalQueue" q JOIN "Listing" l ON l."id"=q."listingId" WHERE q."status" IN ('SCHEDULED','PROCESSING') ORDER BY q."eligibleAt" ASC LIMIT 100`,
+      prisma.$queryRaw<Array<Record<string,unknown>>>`SELECT c."id",c."targetId",c."targetType"::text AS "targetType",c."priority",c."riskScore",c."createdAt",l."title",l."status"::text AS "listingStatus",COALESCE(p."displayName",u."email") AS "userName",COUNT(r."id")::int AS "reportCount" FROM "ModerationCase" c JOIN "ModerationCaseReport" cr ON cr."caseId"=c."id" JOIN "TrustReport" r ON r."id"=cr."reportId" AND r."status" NOT IN ('DISMISSED','CLOSED') LEFT JOIN "Listing" l ON c."targetType"='LISTING' AND l."id"=c."targetId" LEFT JOIN "User" u ON c."targetType"='USER' AND u."id"=c."targetId" LEFT JOIN "UserProfile" p ON p."userId"=u."id" WHERE c."status" NOT IN ('RESOLVED','CLOSED') GROUP BY c."id",l."title",l."status",p."displayName",u."email" ORDER BY c."priority" DESC,c."createdAt" ASC LIMIT 100`,
+      getAutoApprovalSettings()
+    ]);
+    return reply.send({summary:summary[0],queue,reports,autoEnabled:settings.enabled,canHold:moderator.roles.some(r=>["SUPER_ADMIN","ADMIN","MODERATOR"].includes(r.role))});
+  });
+
+  app.post("/admin/moderation/auto-queue/:id/hold",async(request,reply)=>{
+    const moderator=await requireModerator(request,reply);if(!moderator)return;
+    if(!moderator.roles.some(r=>["SUPER_ADMIN","ADMIN","MODERATOR"].includes(r.role)))return reply.code(403).send({error:"forbidden"});
+    const params=z.object({id:z.string().min(1)}).safeParse(request.params);
+    const body=z.object({reason:z.string().trim().min(5).max(500)}).safeParse(request.body);
+    if(!params.success||!body.success)return reply.code(400).send({error:"invalid_request"});
+    const changed=await prisma.$transaction(async tx=>{
+      const rows=await tx.$queryRaw<Array<{sellerId:string}>>`SELECT "sellerId" FROM "ListingAutoApprovalQueue" WHERE "listingId"=${params.data.id}`;
+      if(!rows[0])return false;
+      await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id"=${rows[0].sellerId} FOR UPDATE`;
+      const count=await tx.$executeRaw`UPDATE "ListingAutoApprovalQueue" SET "status"='CANCELLED',"reason"='manual_review_by_admin',"processedAt"=CURRENT_TIMESTAMP,"updatedAt"=CURRENT_TIMESTAMP WHERE "listingId"=${params.data.id} AND "status" IN ('SCHEDULED','PROCESSING')`;
+      if(!count)return false;
+      await tx.$executeRaw`INSERT INTO "AdminAuditEvent" ("id","actorUserId","action","entityType","entityId","metadata") VALUES (${randomUUID()},${moderator.id},'LISTING_AUTO_APPROVAL_HELD','LISTING',${params.data.id},${JSON.stringify({reason:body.data.reason})}::jsonb)`;
+      return true;
+    });
+    if(!changed)return reply.code(409).send({error:"queue_already_processed"});
+    return reply.send({held:true});
+  });
+
   app.get("/admin/moderation/cases", async (request, reply) => {
     const moderator = await requireModerator(request, reply); if (!moderator) return;
     const rows = await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
@@ -151,8 +191,7 @@ export async function registerModerationRoutes(app: FastifyInstance) {
       id:string; targetId:string; status:string; priority:number; riskScore:number; createdAt:Date; updatedAt:Date;
     }>>(
       `SELECT "id","targetId","status","priority","riskScore","createdAt","updatedAt"
-       FROM "ModerationCase"
-       WHERE "targetType"='LISTING' AND "status" NOT IN ('RESOLVED','CLOSED')
+       FROM (SELECT DISTINCT ON (c."targetId") c.* FROM "ModerationCase" c JOIN "Listing" l ON l."id"=c."targetId" AND l."status"='PENDING' WHERE c."targetType"='LISTING' AND c."status" NOT IN ('RESOLVED','CLOSED') ORDER BY c."targetId",c."priority" DESC,c."createdAt" ASC) pending_cases
        ORDER BY "priority" DESC, "createdAt" ASC LIMIT 100`,
     );
     const targetIds = cases.map(item => item.targetId);

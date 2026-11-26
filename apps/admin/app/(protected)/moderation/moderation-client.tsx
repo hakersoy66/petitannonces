@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import ModerationOverview from "./moderation-overview";
 import styles from "./moderation.module.css";
 import { AdminIcon } from "../../../components/admin-icon";
 
@@ -112,6 +113,7 @@ export default function ModerationClient(){
  return <main className={styles.page}>
   <section className={styles.shell}>
    <div className={styles.hero}><div><span className={styles.eyebrow}>Trust & Safety</span><h1>Validation des annonces</h1><p>Contrôlez les annonces avant publication, vérifiez les informations importantes et prenez une décision traçable.</p></div><button type="button" className={styles.refresh} onClick={()=>void loadQueue()} disabled={loading}><AdminIcon name="clock"/>Actualiser</button></div>
+   <ModerationOverview/>
    <section className={styles.stats}>
     <article><span>En attente</span><strong>{summary.pending}</strong><small>Annonces à examiner</small></article>
     <article><span>Risque élevé</span><strong>{summary.highRisk}</strong><small>Score ≥ 55/100</small></article>

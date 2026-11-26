@@ -169,7 +169,7 @@ async function approveOne(listingId:string){
   const fraudScore=listingFraud[0]?.score??0;
   if(scan.blocked||!eligibility.eligible||Number(reports[0]?.count??0n)>0||!c||c.status!=="OPEN"||c.riskScore>cfg.maxRiskScore||fraudScore>cfg.maxRiskScore||invalidMedia||requiresHumanReview){
     const reason=scan.blocked?"content_policy_blocked":!eligibility.eligible?eligibility.reason:Number(reports[0]?.count??0n)>0?"active_report":invalidMedia?"media_requires_review":requiresHumanReview?"sensitive_category_review":"listing_risk_too_high";
-    await prisma.$executeRawUnsafe(`UPDATE "ListingAutoApprovalQueue" SET "status"='CANCELLED',"reason"=$2,"processedAt"=CURRENT_TIMESTAMP,"updatedAt"=CURRENT_TIMESTAMP WHERE "listingId"=$1`,listing.id,reason);
+    await prisma.$executeRawUnsafe(`UPDATE "ListingAutoApprovalQueue" SET "status"='CANCELLED',"reason"=$2,"processedAt"=CURRENT_TIMESTAMP,"updatedAt"=CURRENT_TIMESTAMP WHERE "listingId"=$1 AND "status"='PROCESSING'`,listing.id,reason);
     await notifyManualReview(listing.id,reason);
     return false;
   }
@@ -177,6 +177,8 @@ async function approveOne(listingId:string){
   const publishedAt=listing.publishedAt??new Date();
   const changed=await prisma.$transaction(async tx=>{
     await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id"=${listing.sellerId} FOR UPDATE`;
+    const queue=await tx.$queryRaw<Array<{status:string}>>`SELECT "status" FROM "ListingAutoApprovalQueue" WHERE "listingId"=${listing.id} FOR UPDATE`;
+    if(queue[0]?.status!=="PROCESSING")return false;
     const preference=await tx.$queryRaw<Array<{mode:string|null;manual:string|null}>>`SELECT "metadata"->>'mode' AS mode,"metadata"->>'manualListingReview' AS manual FROM "AdminAuditEvent" WHERE "entityType"='USER' AND "entityId"=${listing.sellerId} AND "action"='USER_LISTING_REVIEW_PREFERENCE_UPDATED' ORDER BY "createdAt" DESC,"id" DESC LIMIT 1`;
     if(!(preference[0]?.mode==="ENABLED"||(!preference[0]?.mode&&preference[0]?.manual==="false")))return false;
     const u=await tx.listing.updateMany({where:{id:listing.id,status:"PENDING",seller:{manualListingReview:false}},data:{status:"PUBLISHED",publishedAt}});
