@@ -34,6 +34,7 @@ export const adminNavGroups:AdminNavGroup[]=[
  {label:"Ventes & opérations",items:[
   {icon:"store",label:"Professionnels & vitrines",href:"/professionals",roles:[...top,"SUPPORT","COMPLIANCE"]},
   {icon:"wallet",label:"Finance",href:"/finance",roles:[...finance,"SUPPORT"]},
+  {icon:"wallet",label:"Crédits des utilisateurs",href:"/finance/wallets",roles:finance},
   {icon:"briefcase",label:"Réservations HBX",href:"/hbx-bookings",roles:[...top,"SUPPORT","FINANCE"]},
   {icon:"store",label:"Fournisseurs & produits neufs",href:"/suppliers",roles:fulfillment},
   {icon:"bell",label:"Boîte e-mail",href:"/inbox",roles:[...top,"SUPPORT"]},
