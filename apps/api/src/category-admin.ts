@@ -29,7 +29,10 @@ async function audit(request: FastifyRequest, action:string, entityId:string, me
 async function wouldCreateCycle(id:string,parentId:string|null){
   if(!parentId)return false;if(parentId===id)return true;
   let cursor:string|null=parentId;
-  for(let i=0;i<20&&cursor;i++){
+  const visited=new Set<string>();
+  while(cursor){
+    if(visited.has(cursor))return true;
+    visited.add(cursor);
     if(cursor===id)return true;
     const row:{parentId:string|null}|null=await prisma.category.findUnique({where:{id:cursor},select:{parentId:true}});
     cursor=row?.parentId??null;
@@ -46,8 +49,19 @@ export async function registerCategoryAdminRoutes(app:FastifyInstance){
     return reply.send({categories:rows.map(c=>({id:c.id,name:c.name,slug:c.slug,domain:c.domain,parentId:c.parentId,parent:c.parent,isActive:c.isActive,sortOrder:c.sortOrder,iconKey:c.iconKey,counts:{children:c._count.children,listings:c._count.listings,attributes:c._count.attributes},createdAt:c.createdAt,updatedAt:c.updatedAt}))});
   });
 
+  app.get("/admin/categories/overview",{preHandler:requireAdminRoles([...ADMIN_ROLES])},async(_request,reply)=>{
+    const [stats,fields]=await prisma.$transaction(async tx=>{
+      await tx.$executeRaw`SET LOCAL statement_timeout='8000ms'`;
+      return Promise.all([
+        tx.$queryRaw<Array<{id:string;published:number;pending:number;drafts:number;archived:number}>>`SELECT l."categoryId" AS id,COUNT(*) FILTER(WHERE l.status='PUBLISHED')::int AS published,COUNT(*) FILTER(WHERE l.status='PENDING')::int AS pending,COUNT(*) FILTER(WHERE l.status='DRAFT')::int AS drafts,COUNT(*) FILTER(WHERE a."listingId" IS NOT NULL)::int AS archived FROM "Listing" l LEFT JOIN "AdminListingArchive" a ON a."listingId"=l.id GROUP BY l."categoryId"`,
+        tx.$queryRaw<Array<{id:string;required:number;used:number}>>`SELECT a."categoryId" AS id,COUNT(*) FILTER(WHERE a.required)::int AS required,COUNT(*) FILTER(WHERE EXISTS(SELECT 1 FROM "ListingAttributeValue" v WHERE v."attributeId"=a.id))::int AS used FROM "CategoryAttribute" a GROUP BY a."categoryId"`
+      ]);
+    },{timeout:12000});
+    return reply.header("Cache-Control","no-store").send({stats,fields,generatedAt:new Date().toISOString()});
+  });
   app.post("/admin/categories",{preHandler:requireAdminRoles([...ADMIN_ROLES])},async(request,reply)=>{
     const body=categoryBody.safeParse(request.body);if(!body.success)return reply.code(400).send({error:"invalid_category",details:body.error.flatten()});
+    if(body.data.slug==="animaux-perdus")return reply.code(409).send({error:"category_slug_protected"});
     if(body.data.parentId){const parent=await prisma.category.findUnique({where:{id:body.data.parentId}});if(!parent)return reply.code(400).send({error:"parent_not_found"});}
     try{
       const created=await prisma.category.create({data:body.data});
@@ -60,6 +74,12 @@ export async function registerCategoryAdminRoutes(app:FastifyInstance){
     const params=z.object({id:z.string().min(1)}).safeParse(request.params);const body=categoryBody.safeParse(request.body);
     if(!params.success||!body.success)return reply.code(400).send({error:"invalid_category"});
     const existing=await prisma.category.findUnique({where:{id:params.data.id}});if(!existing)return reply.code(404).send({error:"category_not_found"});
+    // Existing domain identifiers drive publication and compliance rules.
+    if(existing.domain!==body.data.domain)return reply.code(409).send({error:"category_domain_protected"});
+    if(existing.slug!==body.data.slug){
+      const counts=await prisma.category.findUnique({where:{id:existing.id},select:{_count:{select:{listings:true,children:true,attributes:true}}}});
+      if(existing.domain!=="GENERAL"||counts&&Object.values(counts._count).some(n=>n>0)||body.data.slug==="animaux-perdus")return reply.code(409).send({error:"category_slug_protected"});
+    }
     if(await wouldCreateCycle(existing.id,body.data.parentId))return reply.code(400).send({error:"category_cycle"});
     if(body.data.parentId){const parent=await prisma.category.findUnique({where:{id:body.data.parentId}});if(!parent)return reply.code(400).send({error:"parent_not_found"});}
     try{
@@ -99,6 +119,7 @@ export async function registerCategoryAdminRoutes(app:FastifyInstance){
   app.put("/admin/category-attributes/:id",{preHandler:requireAdminRoles([...ADMIN_ROLES])},async(request,reply)=>{
     const params=z.object({id:z.string().min(1)}).safeParse(request.params);const body=attributeBody.safeParse(request.body);if(!params.success||!body.success)return reply.code(400).send({error:"invalid_attribute",details:body.success?undefined:body.error.flatten()});
     const current=await prisma.categoryAttribute.findUnique({where:{id:params.data.id},include:{_count:{select:{values:true}}}});if(!current)return reply.code(404).send({error:"attribute_not_found"});
+    if(current._count.values>0&&(current.key!==body.data.key||current.unit!==body.data.unit))return reply.code(409).send({error:"attribute_identity_in_use",count:current._count.values});
     if(current._count.values>0&&current.type!==body.data.type)return reply.code(409).send({error:"attribute_type_in_use",count:current._count.values});
     if(current._count.values>0&&["SELECT","MULTISELECT"].includes(current.type)){
       const values=await prisma.listingAttributeValue.findMany({where:{attributeId:current.id},select:{valueText:true,valueJson:true}});const used=new Set<string>();for(const value of values){if(value.valueText)used.add(value.valueText);if(Array.isArray(value.valueJson))for(const item of value.valueJson)if(typeof item==="string")used.add(item)}const allowed=new Set(body.data.options.map(o=>o.value));const missing=[...used].filter(v=>!allowed.has(v));if(missing.length)return reply.code(409).send({error:"attribute_option_in_use",values:missing.slice(0,20)});
