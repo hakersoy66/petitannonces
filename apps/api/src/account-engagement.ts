@@ -42,7 +42,8 @@ export async function registerAccountEngagementRoutes(app: FastifyInstance) {
       (SELECT lm."publicUrl" FROM "ListingMedia" lm WHERE lm."listingId"=l."id" AND lm."status"='READY' ORDER BY lm."isCover" DESC,lm."sortOrder" ASC LIMIT 1) AS "imageUrl"
       FROM "FavoriteListing" f JOIN "Listing" l ON l."id"=f."listingId" JOIN "Category" c ON c."id"=l."categoryId" LEFT JOIN "PropertyDetails" pd ON pd."listingId"=l."id"
       WHERE f."userId"=$1 AND l."status"='PUBLISHED' ORDER BY f."createdAt" DESC`, user.id);
-    return reply.send({ favorites: rows });
+    const unavailable=await prisma.$queryRaw<Array<{listingId:string;status:string;title:string|null;createdAt:Date}>>`SELECT f."listingId",l.status::text AS status,CASE WHEN l.status IN ('SOLD','EXPIRED') THEN l.title ELSE NULL END AS title,f."createdAt" FROM "FavoriteListing" f JOIN "Listing" l ON l.id=f."listingId" WHERE f."userId"=${user.id} AND l.status<>'PUBLISHED' ORDER BY f."createdAt" DESC`;
+    return reply.header("Cache-Control","private, no-store").send({ favorites: rows,unavailable });
   });
 
   app.post("/account/favorites/:listingId", async (request, reply) => {
@@ -107,17 +108,17 @@ export async function registerAccountEngagementRoutes(app: FastifyInstance) {
     if (!process.env.INTERNAL_CRON_SECRET || secret !== process.env.INTERNAL_CRON_SECRET) return reply.code(401).send({ error: "unauthorized" });
     const favoriteRows = await prisma.$queryRawUnsafe<Array<{favoriteId:string;userId:string;listingId:string;title:string|null;slug:string|null;currency:string;priceMinor:number|null;lastPriceMinor:number|null;lastPriceNotifiedMinor:number|null}>>(`
       SELECT f."id" AS "favoriteId",f."userId",f."listingId",f."lastPriceMinor",f."lastPriceNotifiedMinor",l."title",l."slug",l."currency",l."priceMinor"
-      FROM "FavoriteListing" f JOIN "Listing" l ON l."id"=f."listingId" WHERE l."status"='PUBLISHED' LIMIT 500`);
+      FROM "FavoriteListing" f JOIN "Listing" l ON l."id"=f."listingId" JOIN "User" u ON u.id=f."userId" AND u.status='ACTIVE' WHERE l."status"='PUBLISHED' AND l."priceMinor" IS DISTINCT FROM f."lastPriceMinor" ORDER BY f."createdAt",f.id LIMIT 500`);
     let priceAlerts = 0;
     for (const row of favoriteRows) {
       if (row.priceMinor != null && row.lastPriceMinor != null && row.priceMinor < row.lastPriceMinor && row.lastPriceNotifiedMinor !== row.priceMinor) {
         const oldPrice = new Intl.NumberFormat("fr-FR",{style:"currency",currency:row.currency}).format(row.lastPriceMinor/100);
         const newPrice = new Intl.NumberFormat("fr-FR",{style:"currency",currency:row.currency}).format(row.priceMinor/100);
-        await deliverUserEvent({userId:row.userId,eventKind:"LISTING",notificationKind:"LISTING",title:"Baisse de prix sur un favori",body:`${row.title ?? "Une annonce favorite"} passe de ${oldPrice} à ${newPrice}.`,actionUrl:row.slug?`/annonce/${row.slug}`:"/mon-compte/favoris",metadata:{listingId:row.listingId,oldPriceMinor:row.lastPriceMinor,newPriceMinor:row.priceMinor,source:"FAVORITE_PRICE_DROP"}});
+        await deliverUserEvent({userId:row.userId,eventKind:"LISTING",notificationKind:"LISTING",title:"Baisse de prix sur un favori",body:`${row.title ?? "Une annonce favorite"} passe de ${oldPrice} à ${newPrice}.`,actionUrl:row.slug?`/annonce/${row.slug}`:"/mon-compte/favoris",metadata:{listingId:row.listingId,oldPriceMinor:row.lastPriceMinor,newPriceMinor:row.priceMinor,source:"FAVORITE_PRICE_DROP"},dedupeKey:`favorite-price:${row.favoriteId}:${row.priceMinor}`});
         priceAlerts++;
-        await prisma.$executeRawUnsafe(`UPDATE "FavoriteListing" SET "lastPriceMinor"=$1,"lastPriceNotifiedMinor"=$1 WHERE "id"=$2`,row.priceMinor,row.favoriteId);
+        await prisma.$executeRawUnsafe(`UPDATE "FavoriteListing" SET "lastPriceMinor"=$1,"lastPriceNotifiedMinor"=$1 WHERE "id"=$2 AND "lastPriceMinor" IS NOT DISTINCT FROM $3::int`,row.priceMinor,row.favoriteId,row.lastPriceMinor);
       } else if (row.priceMinor !== row.lastPriceMinor) {
-        await prisma.$executeRawUnsafe(`UPDATE "FavoriteListing" SET "lastPriceMinor"=$1 WHERE "id"=$2`,row.priceMinor,row.favoriteId);
+        await prisma.$executeRawUnsafe(`UPDATE "FavoriteListing" SET "lastPriceMinor"=$1 WHERE "id"=$2 AND "lastPriceMinor" IS NOT DISTINCT FROM $3::int`,row.priceMinor,row.favoriteId,row.lastPriceMinor);
       }
     }
     const searches = await prisma.$queryRawUnsafe<Array<{id:string;userId:string;name:string;query:string|null;categorySlug:string|null;city:string|null;postalCode:string|null;minPriceMinor:number|null;maxPriceMinor:number|null;filters:unknown;frequency:string;lastRunAt:Date|null}>>(`
