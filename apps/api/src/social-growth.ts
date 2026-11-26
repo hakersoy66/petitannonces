@@ -43,5 +43,5 @@ export async function prepareListingSocialPost(listingId:string){
 
 export async function listPreparedSocialPosts(limit=30){
  await ensureSocialGrowthSchema();
- return prisma.$queryRawUnsafe<Array<{id:string;listingId:string;channel:string;status:string;message:string;linkUrl:string;imageUrl:string|null;createdAt:Date}>>(`SELECT "id","listingId","channel","status","message","linkUrl","imageUrl","createdAt" FROM "SocialGrowthPost" WHERE "status"='PREPARED' ORDER BY "createdAt" ASC LIMIT $1`,Math.max(1,Math.min(100,limit)));
+ return prisma.$queryRawUnsafe<Array<{id:string;listingId:string;channel:string;status:string;message:string;linkUrl:string;imageUrl:string|null;createdAt:Date}>>(`SELECT p."id",p."listingId",p."channel",p."status",p."message",p."linkUrl",p."imageUrl",p."createdAt" FROM "SocialGrowthPost" p JOIN "Listing" l ON l.id=p."listingId" WHERE p."status"='PREPARED' AND l.status='PUBLISHED' AND l.slug IS NOT NULL ORDER BY p."createdAt" DESC LIMIT $1`,Math.max(1,Math.min(100,limit)));
 }
