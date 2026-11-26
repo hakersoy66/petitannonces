@@ -70,6 +70,7 @@ const labels: Record<string, string> = {
   ready_photo_required: "Ajoutez au moins une photo avant de publier l’annonce.",
   no_delivery_method: "Aucun mode de remise n’est sélectionné.",
   rental_dpe_g_requires_eligibility_review: "Ce logement classé G nécessite une vérification d’éligibilité avant location.",
+  admin_user_permission_restricted: "La publication est restreinte par l’administration. Contactez l’assistance.",
   professional_free_listing_limit: "Votre compte professionnel sans abonnement est limité à 10 annonces actives ou en attente de validation.",
   consumer_return_policy_required: "Renseignez la politique de retour applicable à cette annonce professionnelle.",
 };
@@ -166,6 +167,7 @@ export function ListingPublicationReview({ listingId, promotionCode="", promotio
             navigateApp(router,payload.redirect??"/compte-suspendu",{replace:true});return;
           }
           if(payload.error==="duplicate_listing_exists")setMessage(payload.message??"Cette annonce existe déjà dans votre compte.");
+          else if(payload.error==="admin_user_permission_restricted")setMessage(payload.message??"La publication est restreinte par l’administration.");
           else if(payload.error==="professional_free_listing_limit")setMessage(payload.message??"Votre compte professionnel sans abonnement est limité à 10 annonces. Choisissez un abonnement ou libérez une place.");
           else if(payload.error==="consumer_return_policy_required")setMessage("Renseignez la politique de retour applicable à cette annonce professionnelle.");
           else if(payload.error==="promotion_product_not_found")setMessage("L’option de visibilité sélectionnée n’est plus disponible. Revenez à l’étape Visibilité.");
@@ -201,7 +203,8 @@ export function ListingPublicationReview({ listingId, promotionCode="", promotio
         }
         if(payload.error==="duplicate_listing_exists")setMessage(payload.message??"Cette annonce existe déjà dans votre compte. Ouvrez l’annonce existante au lieu d’en publier une seconde.");
         else if(payload.error==="listing_renewal_required")setMessage(payload.freeRenewalAvailable!==false?"Cette annonce a expiré. Activez votre prolongation gratuite depuis Mes annonces avant de la remettre en ligne.":`Cette annonce a expiré. Une prolongation de ${((payload.amountMinor??99)/100).toFixed(2).replace(".",",")} € est requise depuis Mes annonces.`);
-        else if(payload.error==="professional_free_listing_limit")setMessage(payload.message??"Votre compte professionnel sans abonnement est limité à 10 annonces. Choisissez un abonnement ou libérez une place.");
+        else if(payload.error==="admin_user_permission_restricted")setMessage(payload.message??"La publication est restreinte par l’administration.");
+          else if(payload.error==="professional_free_listing_limit")setMessage(payload.message??"Votre compte professionnel sans abonnement est limité à 10 annonces. Choisissez un abonnement ou libérez une place.");
           else if(payload.error==="consumer_return_policy_required")setMessage(payload.message??"Renseignez la politique de retour applicable à cette annonce professionnelle.");
         else if (payload.errors?.length) setMessage(payload.errors.map(readable).join(" "));
         else setMessage("La publication a été refusée. Vérifiez l’annonce puis réessayez.");

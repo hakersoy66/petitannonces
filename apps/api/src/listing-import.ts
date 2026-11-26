@@ -1,3 +1,4 @@
+import {enforceAdminUserPermission} from "./admin-user-permissions.js";
 import { lookup } from "node:dns/promises";
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -807,6 +808,7 @@ export async function registerListingImportRoutes(app:FastifyInstance){
   app.get("/listing-import/history",async(request,reply)=>{const user=await requireListingUser(request,reply);if(!user)return;return reply.send({imports:await importHistory(user.id)});});
   app.post("/listing-import/preview",async(request,reply)=>{
     const user=await requireListingUser(request,reply);if(!user)return;
+    if(!await enforceAdminUserPermission(user.id,"importBlocked",reply))return;
     const body=z.object({url:z.string().trim().min(1).max(5000)}).safeParse(request.body);
     if(!body.success)return reply.code(400).send({error:"invalid_request"});
     const extractedUrl=extractPublicUrl(body.data.url);
@@ -857,6 +859,7 @@ export async function registerListingImportRoutes(app:FastifyInstance){
   });
   app.post("/listing-import/create-draft",async(request,reply)=>{
     const user=await requireListingUser(request,reply);if(!user)return;
+    if(!await enforceAdminUserPermission(user.id,"importBlocked",reply))return;
     const body=z.object({categoryId:z.string().min(1),sourceUrl:z.string().url(),title:z.string().trim().min(5).max(120).nullable().optional(),description:z.string().trim().max(12000).nullable().optional(),priceMinor:z.number().int().nonnegative().nullable().optional(),city:z.string().trim().max(120).nullable().optional(),postalCode:z.string().trim().max(12).nullable().optional(),histovecUrl:z.string().url().nullable().optional(),imageUrls:z.array(z.string().url()).max(20).optional(),detectedFields:z.record(z.string(),z.union([z.string(),z.number(),z.boolean()])).optional(),warrantyHint:z.object({commercialMonths:z.number().int().min(1).max(60),commercialCoverage:z.string().trim().max(1000).nullable(),commercialProvider:z.string().trim().max(120).nullable(),evidence:z.string().trim().min(8).max(350)}).nullable().optional(),rightsConfirmed:z.literal(true),allowSimilarDuplicate:z.boolean().optional().default(false)}).safeParse(request.body);
     if(!body.success)return reply.code(400).send({error:"invalid_request"});
     const category=await prisma.category.findUnique({where:{id:body.data.categoryId}});if(!category||!category.isActive)return reply.code(404).send({error:"category_not_found"});

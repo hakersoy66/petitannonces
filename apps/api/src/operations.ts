@@ -1,3 +1,4 @@
+import {getAdminUserPermissions} from "./admin-user-permissions.js";
 import { evaluateAutoApprovalEligibility, getIndividualListingReviewMode } from "./auto-approval.js";
 import { adminCdaStatuses } from "./cda-production.js";
 import { createHash, randomUUID } from "node:crypto";
@@ -432,6 +433,23 @@ export async function registerOperationsRoutes(app: FastifyInstance) {
   });
 
 
+  app.put("/admin/users/:id/permissions",async(request,reply)=>{
+    const actor=await requireAdmin(request,reply,["SUPER_ADMIN","ADMIN"]);if(!actor)return;
+    const params=z.object({id:z.string().min(1)}).safeParse(request.params);
+    const body=z.object({publicationBlocked:z.boolean(),messagingBlocked:z.boolean(),importBlocked:z.boolean(),storeCreationBlocked:z.boolean(),listingCap:z.number().int().min(1).max(1000000).nullable(),reason:z.string().trim().min(5).max(500)}).safeParse(request.body);
+    if(!params.success||!body.success)return reply.code(400).send({error:"invalid_request"});
+    const target=await prisma.user.findUnique({where:{id:params.data.id},include:{roles:true}});
+    if(!target||target.roles.length||target.id===actor.id)return reply.code(403).send({error:"protected_account"});
+    const {reason,...permissions}=body.data;
+    await prisma.$transaction(async tx=>{
+      await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id"=${target.id} FOR UPDATE`;
+      const previous=await tx.$queryRaw`SELECT "publicationBlocked","messagingBlocked","importBlocked","storeCreationBlocked","listingCap" FROM "AdminUserPermission" WHERE "userId"=${target.id}`;
+      await tx.$executeRaw`INSERT INTO "AdminUserPermission" ("userId","publicationBlocked","messagingBlocked","importBlocked","storeCreationBlocked","listingCap") VALUES (${target.id},${permissions.publicationBlocked},${permissions.messagingBlocked},${permissions.importBlocked},${permissions.storeCreationBlocked},${permissions.listingCap}) ON CONFLICT ("userId") DO UPDATE SET "publicationBlocked"=EXCLUDED."publicationBlocked","messagingBlocked"=EXCLUDED."messagingBlocked","importBlocked"=EXCLUDED."importBlocked","storeCreationBlocked"=EXCLUDED."storeCreationBlocked","listingCap"=EXCLUDED."listingCap","updatedAt"=CURRENT_TIMESTAMP`;
+      await tx.$executeRaw`INSERT INTO "AdminAuditEvent" ("id","actorUserId","action","entityType","entityId","metadata") VALUES (${randomUUID()},${actor.id},'USER_PERMISSIONS_UPDATED','USER',${target.id},${JSON.stringify({previous,permissions,reason})}::jsonb)`;
+    });
+    return reply.send({permissions});
+  });
+
   app.put("/admin/users/:id/listing-review-preference", async(request,reply)=>{
     const admin=await requireAdmin(request,reply,["SUPER_ADMIN","ADMIN"]);if(!admin)return;
     const params=z.object({id:z.string().min(1)}).safeParse(request.params);
@@ -570,7 +588,13 @@ export async function registerOperationsRoutes(app: FastifyInstance) {
     const canManageListingReview=admin.roles.some((r:{role:string})=>["SUPER_ADMIN","ADMIN"].includes(r.role));
     const listingReviewMode=user.manualListingReview?"DISABLED":canManageListingReview?await getIndividualListingReviewMode(user.id):"DEFAULT";
     const reviewEligibility=canManageListingReview?await evaluateAutoApprovalEligibility(user.id).catch(()=>null):null;
-    return reply.send({canManageListingReview,listingReviewMode,listingReviewEligible:reviewEligibility?.eligible??null,listingReviewReason:reviewEligibility?.reason??null,user:{id:user.id,email:user.email,kind:user.kind,status:user.status,emailVerifiedAt:user.emailVerifiedAt,lastLoginAt:user.lastLoginAt,createdAt:user.createdAt,profile:user.profile,business:user.business,roles:user.roles.map(r=>r.role),manualListingReview:user.manualListingReview,reputation:reputationPayload},wallet:walletRows[0]??{balanceMinor:0,currency:"EUR"},stores:user.stores.map(x=>({...x,listingCount:x._count.listings})),subscriptions:user.subscriptions,listings,orders,tickets,reportsReceived,reportsCreated});
+    const canManagePermissions=canManageListingReview&&!user.roles.length&&user.id!==admin.id;
+    const [permissions,permissionHistory,listingCounts]=await Promise.all([
+      getAdminUserPermissions(user.id),
+      canManagePermissions?prisma.$queryRaw<Array<{id:string;createdAt:Date;metadata:unknown}>>`SELECT "id","createdAt","metadata" FROM "AdminAuditEvent" WHERE "entityType"='USER' AND "entityId"=${user.id} AND "action"='USER_PERMISSIONS_UPDATED' ORDER BY "createdAt" DESC LIMIT 10`:[],
+      prisma.listing.groupBy({by:["status"],where:{sellerId:user.id},_count:{_all:true}})
+    ]);
+    return reply.send({canManagePermissions,permissions,permissionHistory,listingCounts,canManageListingReview,listingReviewMode,listingReviewEligible:reviewEligibility?.eligible??null,listingReviewReason:reviewEligibility?.reason??null,user:{id:user.id,email:user.email,kind:user.kind,status:user.status,emailVerifiedAt:user.emailVerifiedAt,lastLoginAt:user.lastLoginAt,createdAt:user.createdAt,profile:user.profile,business:user.business,roles:user.roles.map(r=>r.role),manualListingReview:user.manualListingReview,reputation:reputationPayload},wallet:walletRows[0]??{balanceMinor:0,currency:"EUR"},stores:user.stores.map(x=>({...x,listingCount:x._count.listings})),subscriptions:user.subscriptions,listings,orders,tickets,reportsReceived,reportsCreated});
   });
 
   app.get("/admin/listings/:id/detail", async (request, reply) => {

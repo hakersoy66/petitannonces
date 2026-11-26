@@ -1,3 +1,4 @@
+import {enforceAdminUserPermission} from "./admin-user-permissions.js";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { prisma } from "@pa/database";
 import type { FastifyInstance, FastifyRequest } from "fastify";
@@ -252,6 +253,7 @@ export async function registerPublicationRoutes(app: FastifyInstance) {
 
   app.post("/listings/:id/publish", async (request, reply) => {
     const user = await requireListingUser(request, reply); if (!user) return;
+    if(!await enforceAdminUserPermission(user.id,"publicationBlocked",reply))return;
     const params = idParams.safeParse(request.params);
     const body = consentSchema.safeParse(request.body);
     if (!params.success || !body.success) return reply.code(400).send({ error: "publication_consents_required" });
@@ -322,8 +324,10 @@ export async function registerPublicationRoutes(app: FastifyInstance) {
       return pending;
     }).catch(error=>{
       if(String(error).includes("professional_free_listing_limit"))return null;
+      if(String(error).includes("admin_listing_cap_reached")||String(error).includes("admin_publication_blocked"))return "ADMIN_RESTRICTED" as const;
       throw error;
     });
+    if(listing==="ADMIN_RESTRICTED")return reply.code(409).send({error:"admin_user_permission_restricted",message:"La publication est restreinte par votre limite individuelle ou par une décision administrative. Contactez l’assistance."});
     if(!listing)return reply.code(409).send({error:"professional_free_listing_limit",limit:10,message:"Votre compte professionnel sans abonnement est limité à 10 annonces actives ou en attente de validation."});
     if(editSession)await finalizeEditSessionCleanup(editSession.workingListingId,user.id,oldMediaKeys);
 

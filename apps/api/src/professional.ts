@@ -1,3 +1,4 @@
+import {enforceAdminUserPermission} from "./admin-user-permissions.js";
 import { createHash, randomUUID } from "node:crypto";
 import { prisma } from "@pa/database";
 import { canProfessionalPublish } from "./pro-reverification.js";
@@ -218,6 +219,7 @@ export async function registerProfessionalRoutes(app: FastifyInstance) {
   app.post("/pro/stores", async (request, reply) => {
     const user = await requireUser(request, reply);
     if (!user) return;
+    if(!await enforceAdminUserPermission(user.id,"storeCreationBlocked",reply))return;
     const parsed = storeSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: "invalid_store", details: parsed.error.flatten() });
     const business = await prisma.businessProfile.findUnique({ where: { userId: user.id } });
