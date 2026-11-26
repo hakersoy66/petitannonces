@@ -1,3 +1,4 @@
+import {createHash} from "node:crypto";
 import { prisma } from "@pa/database";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
@@ -108,11 +109,17 @@ function mergeOrganic(gsc:SearchConsoleOrganicReport,ga4:Ga4OrganicFunnel,firstP
  };
 }
 
+async function canViewAmounts(token:string|undefined){
+ if(!token)return false;
+ const session=await prisma.session.findUnique({where:{tokenHash:createHash("sha256").update(token).digest("hex")},select:{revokedAt:true,expiresAt:true,user:{select:{status:true,roles:{select:{role:true}}}}}});
+ return Boolean(session&&!session.revokedAt&&session.expiresAt>new Date()&&session.user.status==="ACTIVE"&&session.user.roles.some(r=>["SUPER_ADMIN","ADMIN","FINANCE","SUPPORT"].includes(r.role)));
+}
 export async function registerAdminAnalyticsRoutes(app:FastifyInstance){
  app.get("/admin/analytics/summary",{preHandler:requireAdminRoles([...ROLES])},async(request,reply)=>{
   const parsed=z.object({days:z.coerce.number().int().min(7).max(365).default(30)}).safeParse(request.query);
   if(!parsed.success)return reply.code(400).send({error:"invalid_period"});
   const days=parsed.data.days;
+  const amountsAllowed=await canViewAmounts(request.cookies.pa_session);
   const rows=await prisma.$queryRawUnsafe<Array<any>>(`SELECT
     (SELECT COUNT(*) FROM "User" WHERE "createdAt">=CURRENT_DATE-($1::int-1))::int AS "newUsers",
     (SELECT COUNT(*) FROM "Listing" WHERE "createdAt">=CURRENT_DATE-($1::int-1))::int AS "newListings",
@@ -124,10 +131,11 @@ export async function registerAdminAnalyticsRoutes(app:FastifyInstance){
     (SELECT COUNT(*) FROM "MarketplaceDispute" WHERE "createdAt">=CURRENT_DATE-($1::int-1))::int AS "disputes",
     (SELECT COUNT(*) FROM "SupportTicket" WHERE "createdAt">=CURRENT_DATE-($1::int-1))::int AS "supportTickets"`,days);
   const s=rows[0]??{};
-  return reply.send({days,summary:{...s,gmvMinor:Number(s.gmvMinor??0),revenueMinor:Number(s.revenueMinor??0)}});
+  return reply.send({days,summary:{...s,gmvMinor:amountsAllowed?Number(s.gmvMinor??0):null,revenueMinor:amountsAllowed?Number(s.revenueMinor??0):null}});
  });
  app.get("/admin/analytics/overview",{preHandler:requireAdminRoles([...ROLES])},async(request,reply)=>{
   const parsed=z.object({days:z.coerce.number().int().min(7).max(365).default(30)}).safeParse(request.query);if(!parsed.success)return reply.code(400).send({error:"invalid_period"});const days=parsed.data.days;
+  const amountsAllowed=await canViewAmounts(request.cookies.pa_session);
   const [series,summary,listingStatuses,userKinds,audience,dailyAudience,trafficSources,signupSourcesToday,recentSignupSourcesToday,ga4,ga4Organic,gsc,firstPartyOrganic,keyEvents,metaStatus]=await Promise.all([
    prisma.$queryRawUnsafe<Array<any>>(`WITH days AS (SELECT generate_series(CURRENT_DATE-($1::int-1),CURRENT_DATE,'1 day'::interval)::date AS d) SELECT d, (SELECT COUNT(*)::int FROM "User" u WHERE u."createdAt"::date=d) AS "newUsers", (SELECT COUNT(*)::int FROM "Listing" l WHERE l."createdAt"::date=d) AS "newListings", (SELECT COUNT(*)::int FROM "Listing" l WHERE l."publishedAt"::date=d) AS "publishedListings", (SELECT COUNT(*)::int FROM "MarketplaceOrder" o WHERE o."createdAt"::date=d) AS "orders", (SELECT COUNT(*)::int FROM "MarketplaceOrder" o WHERE o."paidAt"::date=d) AS "paidOrders", COALESCE((SELECT SUM(o."totalAmountMinor") FROM "MarketplaceOrder" o WHERE o."paidAt"::date=d),0)::bigint AS "gmvMinor", COALESCE((SELECT SUM(o."platformCommissionMinor") FROM "MarketplaceOrder" o WHERE o."paidAt"::date=d),0)::bigint AS "revenueMinor" FROM days ORDER BY d ASC`,days),
    prisma.$queryRawUnsafe<Array<any>>(`SELECT (SELECT COUNT(*) FROM "User" WHERE "createdAt">=CURRENT_DATE-($1::int-1))::int AS "newUsers", (SELECT COUNT(*) FROM "Listing" WHERE "createdAt">=CURRENT_DATE-($1::int-1))::int AS "newListings", (SELECT COUNT(*) FROM "Listing" WHERE "publishedAt">=CURRENT_DATE-($1::int-1))::int AS "publishedListings", (SELECT COUNT(*) FROM "MarketplaceOrder" WHERE "createdAt">=CURRENT_DATE-($1::int-1))::int AS "orders", (SELECT COUNT(*) FROM "MarketplaceOrder" WHERE "paidAt">=CURRENT_DATE-($1::int-1))::int AS "paidOrders", COALESCE((SELECT SUM("totalAmountMinor") FROM "MarketplaceOrder" WHERE "paidAt">=CURRENT_DATE-($1::int-1)),0)::bigint AS "gmvMinor", COALESCE((SELECT SUM("platformCommissionMinor") FROM "MarketplaceOrder" WHERE "paidAt">=CURRENT_DATE-($1::int-1)),0)::bigint AS "revenueMinor", (SELECT COUNT(*) FROM "MarketplaceDispute" WHERE "createdAt">=CURRENT_DATE-($1::int-1))::int AS "disputes", (SELECT COUNT(*) FROM "SupportTicket" WHERE "createdAt">=CURRENT_DATE-($1::int-1))::int AS "supportTickets"`,days),
@@ -145,7 +153,7 @@ export async function registerAdminAnalyticsRoutes(app:FastifyInstance){
    listGa4KeyEvents(),
    getMetaConversionStatus(),
   ]);
-  const s=summary[0]??{},aud=audience[0]??{};return reply.send({days,summary:{...s,gmvMinor:Number(s.gmvMinor??0),revenueMinor:Number(s.revenueMinor??0)},audience:{visitors:Number(aud.visitors??0),sessions:Number(aud.sessions??0),pageViews:Number(aud.pageViews??0),pwaSessions:Number(aud.pwaSessions??0),source:"PETIT_ANNONCES_FIRST_PARTY"},dailyAudience:dailyAudience.map(r=>({d:r.d instanceof Date?r.d.toISOString().slice(0,10):String(r.d).slice(0,10),visitors:Number(r.visitors??0),sessions:Number(r.sessions??0),pageViews:Number(r.pageViews??0),metaVisitors:Number(r.metaVisitors??0),metaSessions:Number(r.metaSessions??0)})),trafficSources:trafficSources.map(r=>({source:String(r.source||"other"),visitors:Number(r.visitors??0),sessions:Number(r.sessions??0),pageViews:Number(r.pageViews??0)})),signupSourcesToday:signupSourcesToday.map(r=>({source:String(r.source||"unknown"),count:Number(r.count??0)})),recentSignupSourcesToday:recentSignupSourcesToday.map(r=>({createdAt:r.createdAt instanceof Date?r.createdAt.toISOString():String(r.createdAt),kind:String(r.kind||"PARTICULIER"),status:String(r.status||""),source:String(r.source||"unknown"),medium:String(r.medium||"none"),campaign:r.campaign?String(r.campaign):null,landingPath:r.landingPath?String(r.landingPath):null})),meta:metaStatus,ga4:{...ga4,tagConfigured:true,reportingConnected:ga4.connected,consentRequired:true,keyEventAdmin:keyEvents},organic:mergeOrganic(gsc,ga4Organic,firstPartyOrganic),series:series.map(r=>({...r,d:r.d instanceof Date?r.d.toISOString().slice(0,10):String(r.d).slice(0,10),gmvMinor:Number(r.gmvMinor??0),revenueMinor:Number(r.revenueMinor??0)})),listingStatuses,userKinds});
+  const s=summary[0]??{},aud=audience[0]??{};return reply.send({days,summary:{...s,gmvMinor:amountsAllowed?Number(s.gmvMinor??0):null,revenueMinor:amountsAllowed?Number(s.revenueMinor??0):null},audience:{visitors:Number(aud.visitors??0),sessions:Number(aud.sessions??0),pageViews:Number(aud.pageViews??0),pwaSessions:Number(aud.pwaSessions??0),source:"PETIT_ANNONCES_FIRST_PARTY"},dailyAudience:dailyAudience.map(r=>({d:r.d instanceof Date?r.d.toISOString().slice(0,10):String(r.d).slice(0,10),visitors:Number(r.visitors??0),sessions:Number(r.sessions??0),pageViews:Number(r.pageViews??0),metaVisitors:Number(r.metaVisitors??0),metaSessions:Number(r.metaSessions??0)})),trafficSources:trafficSources.map(r=>({source:String(r.source||"other"),visitors:Number(r.visitors??0),sessions:Number(r.sessions??0),pageViews:Number(r.pageViews??0)})),signupSourcesToday:signupSourcesToday.map(r=>({source:String(r.source||"unknown"),count:Number(r.count??0)})),recentSignupSourcesToday:recentSignupSourcesToday.map(r=>({createdAt:r.createdAt instanceof Date?r.createdAt.toISOString():String(r.createdAt),kind:String(r.kind||"PARTICULIER"),status:String(r.status||""),source:String(r.source||"unknown"),medium:String(r.medium||"none"),campaign:r.campaign?String(r.campaign):null,landingPath:r.landingPath?String(r.landingPath):null})),meta:metaStatus,ga4:{...ga4,tagConfigured:true,reportingConnected:ga4.connected,consentRequired:true,keyEventAdmin:keyEvents},organic:mergeOrganic(gsc,ga4Organic,firstPartyOrganic),series:series.map(r=>({...r,d:r.d instanceof Date?r.d.toISOString().slice(0,10):String(r.d).slice(0,10),gmvMinor:amountsAllowed?Number(r.gmvMinor??0):null,revenueMinor:amountsAllowed?Number(r.revenueMinor??0):null})),listingStatuses,userKinds});
  });
 
  app.get("/admin/analytics/growth-diagnostics",{preHandler:requireAdminRoles([...ROLES])},async(_request,reply)=>{

@@ -7,7 +7,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { prisma } from "@pa/database";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
-import { activateListingLifetime } from "./listing-lifecycle.js";
+import { listingExpiryFrom } from "./listing-lifecycle.js";
 import { animalCessionRequiresProductionApproval } from "./animal-cession-gate.js";
 import { ensurePayoutReconciliationSchema } from "./marketplace-stripe.js";
 import { getPayoutProviderRuntime } from "./marketplace-payout-provider.js";
@@ -369,6 +369,7 @@ export async function registerOperationsRoutes(app: FastifyInstance) {
 
   app.get("/admin/dashboard", async (request, reply) => {
     const admin = await requireAdmin(request, reply); if (!admin) return;
+    const financeAllowed=admin.roles.some(r=>["SUPER_ADMIN","ADMIN","FINANCE","SUPPORT"].includes(r.role));
     const [users, listings, orders, support, moderation, disputes, audience] = await Promise.all([
       prisma.$queryRawUnsafe<Array<any>>(`SELECT COUNT(*)::int AS total, COUNT(*) FILTER (WHERE "createdAt" >= NOW()-INTERVAL '24 hours')::int AS today FROM "User"`),
       prisma.$queryRawUnsafe<Array<any>>(`SELECT COUNT(*)::int AS total, COUNT(*) FILTER (WHERE "status"='PUBLISHED')::int AS published FROM "Listing"`),
@@ -378,13 +379,13 @@ export async function registerOperationsRoutes(app: FastifyInstance) {
       prisma.$queryRawUnsafe<Array<any>>(`SELECT COUNT(*) FILTER (WHERE "status" NOT IN ('RESOLVED_BUYER','RESOLVED_SELLER','CLOSED'))::int AS open FROM "MarketplaceDispute"`),
       prisma.$queryRawUnsafe<Array<any>>(`SELECT COUNT(*) FILTER (WHERE "startedAt">=CURRENT_DATE)::int AS "visitsToday", COUNT(DISTINCT "visitorId") FILTER (WHERE "startedAt">=CURRENT_DATE)::int AS "visitorsToday", COUNT(DISTINCT "visitorId") FILTER (WHERE "lastSeenAt">NOW()-INTERVAL '5 minutes')::int AS "onlineVisitors", COUNT(DISTINCT "userId") FILTER (WHERE "userId" IS NOT NULL AND "lastSeenAt">NOW()-INTERVAL '5 minutes')::int AS "onlineMembers" FROM "SiteAnalyticsSession" WHERE "startedAt">=CURRENT_DATE OR "lastSeenAt">NOW()-INTERVAL '5 minutes'`),
     ]);
-    return reply.send({
+    return reply.header("Cache-Control","private, no-store").send({
       kpis: {
         usersTotal: users[0]?.total ?? 0, usersToday: users[0]?.today ?? 0,
         listingsTotal: listings[0]?.total ?? 0, listingsPublished: listings[0]?.published ?? 0,
         ordersTotal: orders[0]?.total ?? 0, ordersActive: orders[0]?.active ?? 0,
         supportOpen: support[0]?.open ?? 0, moderationOpen: moderation[0]?.open ?? 0, disputesOpen: disputes[0]?.open ?? 0,
-        gmvMinor: Number(orders[0]?.gmv ?? 0), platformCommissionMinor: Number(orders[0]?.commissions ?? 0),
+        gmvMinor: financeAllowed?Number(orders[0]?.gmv ?? 0):null, platformCommissionMinor: financeAllowed?Number(orders[0]?.commissions ?? 0):null,
         visitsToday: Number(audience[0]?.visitsToday ?? 0), visitorsToday: Number(audience[0]?.visitorsToday ?? 0), onlineVisitors: Number(audience[0]?.onlineVisitors ?? 0), onlineMembers: Number(audience[0]?.onlineMembers ?? 0),
       },
     });
@@ -456,22 +457,47 @@ export async function registerOperationsRoutes(app: FastifyInstance) {
     })) });
   });
 
+  // Keep listing state, lifetime and audit records in a single transaction.
+  async function changeAdminListingStatuses(ids:string[],status:"PUBLISHED"|"SUSPENDED"|"EXPIRED",reason:string,actorId:string){
+    const unique=[...new Set(ids)].sort();
+    return prisma.$transaction(async tx=>{
+      await tx.$queryRaw`SELECT id FROM "Listing" WHERE id=ANY(${unique}::text[]) ORDER BY id FOR UPDATE`;
+      const rows=await tx.listing.findMany({where:{id:{in:unique}},select:{id:true,status:true,publishedAt:true,sellerId:true,category:{select:{domain:true,slug:true}}},orderBy:{id:"asc"}});
+      if(rows.length!==unique.length)return {error:"bulk_selection_incomplete"} as const;
+      const archives=await tx.$queryRaw<Array<{id:string}>>`SELECT "listingId" AS id FROM "AdminListingArchive" WHERE "listingId"=ANY(${unique}::text[])`;
+      if(archives.length)return {error:"listing_archived"} as const;
+      const changes=rows.filter(l=>l.status!==status);
+      if(status==="PUBLISHED"){
+        if(rows.some(l=>animalCessionRequiresProductionApproval(l.category)))return {error:"animal_cession_requires_cda_production_validation"} as const;
+        const owners=[...new Set(changes.map(l=>l.sellerId))].sort();
+        if(owners.length){
+          await tx.$queryRaw`SELECT id FROM "User" WHERE id=ANY(${owners}::text[]) ORDER BY id FOR UPDATE`;
+          const inactive=await tx.user.count({where:{id:{in:owners},status:{not:"ACTIVE"}}});
+          if(inactive)return {error:"seller_inactive"} as const;
+        }
+      }
+      const now=new Date(),firstPublications:string[]=[];
+      for(const l of changes){
+        await tx.listing.update({where:{id:l.id},data:{status,...(status==="PUBLISHED"?{publishedAt:now}:{})}});
+        if(status==="PUBLISHED"){
+          const expiry=listingExpiryFrom(now);
+          await tx.$executeRaw`INSERT INTO "ListingLifecycle" ("listingId","expiresAt") VALUES (${l.id},${expiry}) ON CONFLICT ("listingId") DO UPDATE SET "expiresAt"=GREATEST("ListingLifecycle"."expiresAt",EXCLUDED."expiresAt"),"updatedAt"=CURRENT_TIMESTAMP`;
+          if(l.publishedAt===null)firstPublications.push(l.id);
+        }
+        await tx.$executeRaw`INSERT INTO "AdminAuditEvent" (id,"actorUserId",action,"entityType","entityId",metadata) VALUES (${randomUUID()},${actorId},'LISTING_STATUS_CHANGED','LISTING',${l.id},${JSON.stringify({from:l.status,to:status,reason})}::jsonb)`;
+      }
+      return {updated:changes.length,firstPublications,changedIds:changes.map(l=>l.id)};
+    },{timeout:30000});
+  }
   app.post("/admin/listings/:id/status", async (request, reply) => {
-    const admin = await requireAdmin(request, reply, ["SUPER_ADMIN","ADMIN","MODERATOR"]); if (!admin) return;
-    const params = z.object({ id: z.string().min(1) }).safeParse(request.params);
-    const body = z.object({ status: z.enum(["PUBLISHED","SUSPENDED","EXPIRED"]), reason: z.string().trim().min(5).max(1000) }).safeParse(request.body);
-    if (!params.success || !body.success) return reply.code(400).send({ error: "invalid_request" });
-    const listing = await prisma.listing.findUnique({ where: { id: params.data.id }, select: { id: true, status: true, publishedAt:true, category:{select:{domain:true,slug:true}} } });
-    if (!listing) return reply.code(404).send({ error: "listing_not_found" });
-    if(body.data.status==="PUBLISHED"&&animalCessionRequiresProductionApproval(listing.category))return reply.code(423).send({error:"animal_cession_requires_cda_production_validation"});
-    const publishedAt = body.data.status === "PUBLISHED" ? new Date() : null;
-    await prisma.listing.update({ where: { id: listing.id }, data: { status: body.data.status, ...(publishedAt ? { publishedAt } : {}) } });
-    if (publishedAt) {
-      await activateListingLifetime(listing.id, publishedAt, true);
-      if(listing.publishedAt==null)await notifyInstantSavedSearchesForListing(listing.id).catch(error=>request.log.warn({error,listingId:listing.id},"instant saved-search notification failed after admin publication"));
-    }
-    await audit(admin.id, "LISTING_STATUS_CHANGED", "LISTING", listing.id, { from: listing.status, to: body.data.status, reason: body.data.reason });
-    return reply.send({ updated: true, status: body.data.status });
+    const admin=await requireAdmin(request,reply,["SUPER_ADMIN","ADMIN","MODERATOR"]);if(!admin)return;
+    const params=z.object({id:z.string().min(1).max(128)}).safeParse(request.params);
+    const body=z.object({status:z.enum(["PUBLISHED","SUSPENDED","EXPIRED"]),reason:z.string().trim().min(5).max(1000)}).safeParse(request.body);
+    if(!params.success||!body.success)return reply.code(400).send({error:"invalid_request"});
+    const result=await changeAdminListingStatuses([params.data.id],body.data.status,body.data.reason,admin.id);
+    if("error" in result)return reply.code(result.error==="animal_cession_requires_cda_production_validation"?423:409).send(result);
+    for(const id of result.firstPublications)await notifyInstantSavedSearchesForListing(id).catch(error=>request.log.warn({error,listingId:id},"saved-search notification failed"));
+    return reply.send({updated:result.updated>0,status:body.data.status});
   });
 
   app.get("/admin/security/overview", async(request,reply)=>{
@@ -1140,16 +1166,14 @@ export async function registerOperationsRoutes(app: FastifyInstance) {
     return reply.send({updated:result});
   });
 
-  app.post("/admin/listings/bulk-status", async (request, reply) => {
+  app.post("/admin/listings/bulk-status",async(request,reply)=>{
     const admin=await requireAdmin(request,reply,["SUPER_ADMIN","ADMIN","MODERATOR"]);if(!admin)return;
-    const body=z.object({ids:z.array(z.string().min(1)).min(1).max(100),status:z.enum(["PUBLISHED","SUSPENDED","EXPIRED"]),reason:z.string().trim().min(5).max(1000)}).safeParse(request.body);
+    const body=z.object({ids:z.array(z.string().min(1).max(128)).min(1).max(100),status:z.enum(["PUBLISHED","SUSPENDED","EXPIRED"]),reason:z.string().trim().min(5).max(1000)}).safeParse(request.body);
     if(!body.success)return reply.code(400).send({error:"invalid_request"});
-    const unique=[...new Set(body.data.ids)];const rows=await prisma.listing.findMany({where:{id:{in:unique}},select:{id:true,status:true,publishedAt:true,category:{select:{domain:true,slug:true}}}});if(rows.length!==unique.length)return reply.code(409).send({error:"bulk_selection_incomplete"});
-    if(body.data.status==="PUBLISHED"&&rows.some(row=>animalCessionRequiresProductionApproval(row.category)))return reply.code(423).send({error:"animal_cession_requires_cda_production_validation"});
-    const now=new Date();await prisma.$transaction(async tx=>{for(const row of rows){await tx.listing.update({where:{id:row.id},data:{status:body.data.status,...(body.data.status==="PUBLISHED"?{publishedAt:now}:{})}})}});
-    if(body.data.status==="PUBLISHED")for(const row of rows){await activateListingLifetime(row.id,now,true);if(row.publishedAt==null)await notifyInstantSavedSearchesForListing(row.id).catch(error=>request.log.warn({error,listingId:row.id},"instant saved-search notification failed after bulk admin publication"));}
-    await audit(admin.id,"LISTING_BULK_STATUS_CHANGED","LISTING",undefined,{ids:rows.map(r=>r.id),status:body.data.status,reason:body.data.reason,count:rows.length});
-    return reply.send({updated:rows.length,status:body.data.status});
+    const result=await changeAdminListingStatuses(body.data.ids,body.data.status,body.data.reason,admin.id);
+    if("error" in result)return reply.code(result.error==="animal_cession_requires_cda_production_validation"?423:409).send(result);
+    for(const id of result.firstPublications)await notifyInstantSavedSearchesForListing(id).catch(error=>request.log.warn({error,listingId:id},"saved-search notification failed"));
+    return reply.send({updated:result.updated,status:body.data.status});
   });
 
   app.post("/admin/professionals/:id/subscription", async (request, reply) => {

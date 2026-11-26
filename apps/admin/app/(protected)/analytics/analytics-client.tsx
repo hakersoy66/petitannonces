@@ -9,8 +9,8 @@ type Row = {
   publishedListings: number;
   orders: number;
   paidOrders: number;
-  gmvMinor: number;
-  revenueMinor: number;
+  gmvMinor: number|null;
+  revenueMinor: number|null;
 };
 
 type TrafficQuality={periodDays:number;consentChoices:{accepted:number;rejected:number};botDaily:Array<{day:string;requests:number;knownBotRequests:number;searchRequests:number;http4xx:number;http5xx:number}>;logUpdatedAt:string|null};
@@ -105,8 +105,8 @@ type Data = {
     publishedListings: number;
     orders: number;
     paidOrders: number;
-    gmvMinor: number;
-    revenueMinor: number;
+    gmvMinor: number|null;
+    revenueMinor: number|null;
     disputes: number;
     supportTickets: number;
   };
@@ -123,7 +123,7 @@ type Data = {
   userKinds: { kind: string; count: number }[];
 };
 
-const euro = (n: number) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(n / 100);
+const euro = (n: number|null) => n===null?"—":new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(n / 100);
 const money = (n:number,currency="EUR") => new Intl.NumberFormat("fr-FR",{style:"currency",currency}).format((n||0)/100);
 const n = (v: number) => Number(v || 0).toLocaleString("fr-FR");
 const pct = (part:number,total:number) => total>0 ? `${(part/total*100).toLocaleString("fr-FR",{maximumFractionDigits:1})}%` : "—";

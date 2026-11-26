@@ -7,12 +7,12 @@ import type { AnonymousAudience } from "./live-visitors-panel";
 import LazyDashboardDetails from "./lazy-dashboard-details";
 
 type Viewer={user?:{roles?:string[]}};
-type Dashboard={kpis:{usersTotal:number;usersToday:number;listingsTotal:number;listingsPublished:number;ordersTotal:number;ordersActive:number;supportOpen:number;moderationOpen:number;disputesOpen:number;gmvMinor:number;platformCommissionMinor:number;visitsToday:number;visitorsToday:number;onlineVisitors:number;onlineMembers:number}};
-type AnalyticsSummary={days:number;summary:{newUsers:number;newListings:number;publishedListings:number;orders:number;paidOrders:number;gmvMinor:number;revenueMinor:number;disputes:number;supportTickets:number}};
+type Dashboard={kpis:{usersTotal:number;usersToday:number;listingsTotal:number;listingsPublished:number;ordersTotal:number;ordersActive:number;supportOpen:number;moderationOpen:number;disputesOpen:number;gmvMinor:number|null;platformCommissionMinor:number|null;visitsToday:number;visitorsToday:number;onlineVisitors:number;onlineMembers:number}};
+type AnalyticsSummary={days:number;summary:{newUsers:number;newListings:number;publishedListings:number;orders:number;paidOrders:number;gmvMinor:number|null;revenueMinor:number|null;disputes:number;supportTickets:number}};
 type LivePerson={visitorId:string;userId:string|null;email:string|null;name:string|null;avatarUrl:string|null;kind:string|null;currentPath:string|null;landingPath:string|null;lastSeenAt:string;pwaMode:boolean;referrer:string|null;source:string|null;medium:string|null;campaign:string|null;trafficSource:string|null;trafficMedium:string|null;trafficCampaign:string|null};
 type LiveAnalytics={onlineUsers:Array<LivePerson>;onlineSessions:Array<LivePerson>;onlineWindowMinutes:number;summary?:{onlineMembers?:number;onlineVisitors?:number}};
 type ContentPolicyReply={holds:Array<{userId:string;status:string;signals?:Array<{code:string}>}>;summary:{activeTerms:number;pending:number;blocked:number}};
-const eur=(minor:number)=>new Intl.NumberFormat("fr-FR",{style:"currency",currency:"EUR",maximumFractionDigits:0}).format((minor??0)/100);
+const eur=(minor:number|null|undefined)=>minor==null?"—":new Intl.NumberFormat("fr-FR",{style:"currency",currency:"EUR",maximumFractionDigits:0}).format((minor??0)/100);
 const n=(value:number)=>Number(value??0).toLocaleString("fr-FR");
 const relative=(value:string)=>{const diff=Math.max(0,Date.now()-new Date(value).getTime());const m=Math.floor(diff/60000);if(m<=0)return"à l’instant";if(m===1)return"il y a 1 min";return`il y a ${m} min`};
 const kindLabel=(kind:string)=>kind==="PROFESSIONNEL"?"Pro":"Particulier";
@@ -27,6 +27,7 @@ export default async function AdminHome(){
   adminServerFetch<ContentPolicyReply>("/admin/moderation/content-policy"),
   adminServerFetch<Viewer>("/auth/me"),
  ]);
+ const financeAllowed=Boolean(viewer?.user?.roles?.some(r=>["SUPER_ADMIN","ADMIN","FINANCE","SUPPORT"].includes(r)));
  const allowedPaths=new Set(visibleAdminGroups(viewer?.user?.roles??[]).flatMap(group=>group.items.map(item=>item.href)));
  const k=d?.kpis??{usersTotal:0,usersToday:0,listingsTotal:0,listingsPublished:0,ordersTotal:0,ordersActive:0,supportOpen:0,moderationOpen:0,disputesOpen:0,gmvMinor:0,platformCommissionMinor:0,visitsToday:0,visitorsToday:0,onlineVisitors:0,onlineMembers:0};
  const s30=a30?.summary??{newUsers:0,newListings:0,publishedListings:0,orders:0,paidOrders:0,gmvMinor:0,revenueMinor:0,disputes:0,supportTickets:0};
@@ -70,7 +71,7 @@ export default async function AdminHome(){
   <section className="admin-workspace-section">
    <div className="admin-workspace-heading"><h2>Vue d’ensemble</h2><span>Activité de la marketplace</span></div>
    <div className="admin-workspace-metrics">
-    {([["users","Utilisateurs",d?n(k.usersTotal):"—",d?`+${n(k.usersToday)} aujourd’hui`:"Données indisponibles","/users"],["list","Annonces publiées",d?n(k.listingsPublished):"—",d?`${n(k.listingsTotal)} annonces au total`:"Données indisponibles","/listings"],["chart","Visites aujourd’hui",aggregate?n(aggregate.today.estimatedEntries??0):"—","Entrées estimées","/analytics"],["wallet","Volume des ventes",d?eur(k.gmvMinor):"—",d?`${eur(k.platformCommissionMinor)} de commissions`:"Données indisponibles","/finance"]] as Array<[AdminIconName,string,string,string,string]>).map(([icon,label,value,hint,href])=><article className="admin-card admin-workspace-metric" key={label}><div><span>{label}</span><i><AdminIcon name={icon}/></i></div><strong>{value}</strong><small>{hint}</small>{allowedPaths.has(href)&&<a href={href}>Consulter <span>›</span></a>}</article>)}
+    {([["users","Utilisateurs",d?n(k.usersTotal):"—",d?`+${n(k.usersToday)} aujourd’hui`:"Données indisponibles","/users"],["list","Annonces publiées",d?n(k.listingsPublished):"—",d?`${n(k.listingsTotal)} annonces au total`:"Données indisponibles","/listings"],["chart","Visites aujourd’hui",aggregate?n(aggregate.today.estimatedEntries??0):"—","Entrées estimées","/analytics"],["wallet","Volume des ventes",d&&financeAllowed?eur(k.gmvMinor):"—",d&&financeAllowed?`${eur(k.platformCommissionMinor)} de commissions`:"Données indisponibles ou accès restreint","/finance"]] as Array<[AdminIconName,string,string,string,string]>).map(([icon,label,value,hint,href])=><article className="admin-card admin-workspace-metric" key={label}><div><span>{label}</span><i><AdminIcon name={icon}/></i></div><strong>{value}</strong><small>{hint}</small>{allowedPaths.has(href)&&<a href={href}>Consulter <span>›</span></a>}</article>)}
    </div>
   </section>
   <div className="admin-workspace-columns">
@@ -85,12 +86,12 @@ export default async function AdminHome(){
    <section className="admin-card admin-workspace-panel">
     <div className="admin-workspace-heading"><div><h2>Activité récente</h2><span>Comparaison des périodes</span></div></div>
     <div className="admin-workspace-period"><div className="admin-workspace-period-head"><span>Indicateur</span><span>7 jours</span><span>30 jours</span></div>
-    {([["Nouveaux utilisateurs",a7?n(s7.newUsers):"—",a30?n(s30.newUsers):"—"],["Annonces publiées",a7?n(s7.publishedListings):"—",a30?n(s30.publishedListings):"—"],["Commandes payées",a7?n(s7.paidOrders):"—",a30?n(s30.paidOrders):"—"],["Volume des ventes",a7?eur(s7.gmvMinor):"—",a30?eur(s30.gmvMinor):"—"]]).map(([label,v7,v30])=><div key={label}><span>{label}</span><b>{v7}</b><b>{v30}</b></div>)}</div>
+    {([["Nouveaux utilisateurs",a7?n(s7.newUsers):"—",a30?n(s30.newUsers):"—"],["Annonces publiées",a7?n(s7.publishedListings):"—",a30?n(s30.publishedListings):"—"],["Commandes payées",a7?n(s7.paidOrders):"—",a30?n(s30.paidOrders):"—"],["Volume des ventes",a7&&financeAllowed?eur(s7.gmvMinor):"—",a30&&financeAllowed?eur(s30.gmvMinor):"—"]]).map(([label,v7,v30])=><div key={label}><span>{label}</span><b>{v7}</b><b>{v30}</b></div>)}</div>
     {allowedPaths.has("/analytics")&&<a className="admin-workspace-link" href="/analytics">Voir toutes les statistiques ›</a>}
    </section>
    <section className="admin-card admin-workspace-panel">
     <div className="admin-workspace-heading"><div><h2>En ce moment</h2><span>Activité et commandes</span></div></div>
-    <div className="admin-workspace-mini"><div><span>Visiteurs en ligne</span><strong>{d?n(k.onlineVisitors):"—"}</strong><small>{d?n(k.onlineMembers):"—"} membres connectés</small></div><div><span>Commandes actives</span><strong>{d?n(k.ordersActive):"—"}</strong><small>{d?n(k.ordersTotal):"—"} au total</small></div><div><span>Revenus sur 30 jours</span><strong>{a30?eur(s30.revenueMinor):"—"}</strong></div><div><span>Pages vues aujourd’hui</span><strong>{aggregate?n(aggregate.today.pageViews):"—"}</strong></div></div>
+    <div className="admin-workspace-mini"><div><span>Visiteurs en ligne</span><strong>{d?n(k.onlineVisitors):"—"}</strong><small>{d?n(k.onlineMembers):"—"} membres connectés</small></div><div><span>Commandes actives</span><strong>{d?n(k.ordersActive):"—"}</strong><small>{d?n(k.ordersTotal):"—"} au total</small></div><div><span>Revenus sur 30 jours</span><strong>{a30&&financeAllowed?eur(s30.revenueMinor):"—"}</strong></div><div><span>Pages vues aujourd’hui</span><strong>{aggregate?n(aggregate.today.pageViews):"—"}</strong></div></div>
    </section>
   </div>
   <LazyDashboardDetails attention={Boolean(viewer?.user?.roles?.some(r=>["SUPER_ADMIN","ADMIN","SUPPORT","MARKETING","MODERATOR"].includes(r)))} presence={Boolean(viewer?.user?.roles?.some(r=>["SUPER_ADMIN","ADMIN","MARKETING"].includes(r)))}/>
