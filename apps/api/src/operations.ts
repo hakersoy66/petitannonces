@@ -431,6 +431,18 @@ export async function registerOperationsRoutes(app: FastifyInstance) {
   });
 
 
+  app.put("/admin/users/:id/listing-review-preference", async(request,reply)=>{
+    const admin=await requireAdmin(request,reply,["SUPER_ADMIN","ADMIN"]);if(!admin)return;
+    const params=z.object({id:z.string().min(1)}).safeParse(request.params);
+    const body=z.object({manualListingReview:z.boolean()}).safeParse(request.body);
+    if(!params.success||!body.success)return reply.code(400).send({error:"invalid_request"});
+    const target=await prisma.user.findUnique({where:{id:params.data.id},include:{roles:true}});
+    if(!target||target.roles.some(r=>r.role==="SUPER_ADMIN"))return reply.code(404).send({error:"user_not_found"});
+    const updated=await prisma.user.update({where:{id:target.id},data:{manualListingReview:body.data.manualListingReview},select:{manualListingReview:true}});
+    await audit(admin.id,"USER_LISTING_REVIEW_PREFERENCE_UPDATED","USER",target.id,{previous:target.manualListingReview,manualListingReview:updated.manualListingReview});
+    return reply.send(updated);
+  });
+
   app.patch("/admin/users/:id", async (request, reply) => {
     const admin = await requireAdmin(request, reply, ["SUPER_ADMIN","ADMIN"]); if (!admin) return;
     const params=z.object({id:z.string().min(1)}).safeParse(request.params);
@@ -549,7 +561,7 @@ export async function registerOperationsRoutes(app: FastifyInstance) {
     ]);
     const [reputation,reputationHistory]=await Promise.all([getUserReputation(user.id),getReputationBadgeHistory(user.id,30)]);
     const reputationPayload=reputation?{...reputation,history:reputationHistory}:null;
-    return reply.send({user:{id:user.id,email:user.email,kind:user.kind,status:user.status,emailVerifiedAt:user.emailVerifiedAt,lastLoginAt:user.lastLoginAt,createdAt:user.createdAt,profile:user.profile,business:user.business,roles:user.roles.map(r=>r.role),reputation:reputationPayload},wallet:walletRows[0]??{balanceMinor:0,currency:"EUR"},stores:user.stores.map(x=>({...x,listingCount:x._count.listings})),subscriptions:user.subscriptions,listings,orders,tickets,reportsReceived,reportsCreated});
+    return reply.send({canManageListingReview:admin.roles.some((r:{role:string})=>["SUPER_ADMIN","ADMIN"].includes(r.role)),user:{id:user.id,email:user.email,kind:user.kind,status:user.status,emailVerifiedAt:user.emailVerifiedAt,lastLoginAt:user.lastLoginAt,createdAt:user.createdAt,profile:user.profile,business:user.business,roles:user.roles.map(r=>r.role),manualListingReview:user.manualListingReview,reputation:reputationPayload},wallet:walletRows[0]??{balanceMinor:0,currency:"EUR"},stores:user.stores.map(x=>({...x,listingCount:x._count.listings})),subscriptions:user.subscriptions,listings,orders,tickets,reportsReceived,reportsCreated});
   });
 
   app.get("/admin/listings/:id/detail", async (request, reply) => {

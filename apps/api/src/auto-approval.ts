@@ -71,7 +71,7 @@ export async function evaluateAutoApprovalEligibility(sellerId:string,settings?:
   const [rep,risk,user,openCase,history,activeHold,activeReports,professionalDocumentsVerified]=await Promise.all([
     getUserReputation(sellerId),
     getUserRiskPolicy(sellerId),
-    prisma.user.findUnique({where:{id:sellerId},select:{status:true,emailVerifiedAt:true,createdAt:true}}),
+    prisma.user.findUnique({where:{id:sellerId},select:{status:true,emailVerifiedAt:true,createdAt:true,manualListingReview:true}}),
     prisma.$queryRawUnsafe<Array<{id:string}>>(`SELECT "id" FROM "ModerationCase" WHERE "targetType"='USER' AND "targetId"=$1 AND "status" NOT IN ('RESOLVED','CLOSED') LIMIT 1`,sellerId),
     prisma.$queryRawUnsafe<Array<{approved:number;violations:number}>>(`
       SELECT
@@ -95,6 +95,7 @@ export async function evaluateAutoApprovalEligibility(sellerId:string,settings?:
       ) AS eligible`,sellerId),
   ]);
   if(!user||user.status!=="ACTIVE")return{eligible:false as const,reason:"account_not_active"};
+  if(user.manualListingReview)return{eligible:false as const,reason:"manual_review_required_by_admin"};
   if(!rep)return{eligible:false as const,reason:"reputation_unavailable"};
   const ageDays=(Date.now()-user.createdAt.getTime())/86400000;
   const manualApprovals=history[0]?.approved??0;
@@ -167,7 +168,7 @@ async function approveOne(listingId:string){
   const firstPublication=listing.publishedAt==null;
   const publishedAt=listing.publishedAt??new Date();
   const changed=await prisma.$transaction(async tx=>{
-    const u=await tx.listing.updateMany({where:{id:listing.id,status:"PENDING"},data:{status:"PUBLISHED",publishedAt}});
+    const u=await tx.listing.updateMany({where:{id:listing.id,status:"PENDING",seller:{manualListingReview:false}},data:{status:"PUBLISHED",publishedAt}});
     if(!u.count)return false;
     const professionalDocumentPath=eligibility.reason==="professional_documents_verified";
     const approvalReason=professionalDocumentPath?"AUTO_APPROVED_VERIFIED_PRO":"AUTO_APPROVED_TRUSTED";
@@ -179,7 +180,7 @@ async function approveOne(listingId:string){
     await tx.$executeRawUnsafe(`UPDATE "ListingAutoApprovalQueue" SET "status"='APPROVED',"reason"=$2,"processedAt"=CURRENT_TIMESTAMP,"updatedAt"=CURRENT_TIMESTAMP WHERE "listingId"=$1`,listing.id,"auto_approved_trusted");
     return true;
   });
-  if(!changed)return false;
+  if(!changed){await prisma.$executeRawUnsafe(`UPDATE "ListingAutoApprovalQueue" SET "status"='CANCELLED',"reason"='publication_conditions_changed',"processedAt"=CURRENT_TIMESTAMP,"updatedAt"=CURRENT_TIMESTAMP WHERE "listingId"=$1 AND "status"='PROCESSING'`,listing.id);await notifyManualReview(listing.id,"publication_conditions_changed");return false}
   await activateListingLifetime(listing.id,publishedAt);
   await rewardReferralAfterFirstPublishedListing(listing.sellerId).catch(()=>undefined);
   await notifyListingIndexNow(listing.id).catch(()=>undefined);

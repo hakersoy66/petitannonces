@@ -131,6 +131,7 @@ model User {
   passwordHash String
   kind UserKind @default(PARTICULIER)
   status UserStatus @default(PENDING_VERIFICATION)
+  manualListingReview Boolean @default(false)
   failedLoginAttempts Int @default(0)
   lockedUntil DateTime?
   lastLoginAt DateTime?
