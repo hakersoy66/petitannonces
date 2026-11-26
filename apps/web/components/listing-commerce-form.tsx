@@ -70,6 +70,8 @@ function priceInsightLabel(position:PriceInsight extends infer _T ? "unknown"|"v
 }
 
 export const ListingCommerceForm = forwardRef<ListingCommerceFormHandle, ListingCommerceFormProps>(function ListingCommerceForm({ listingId, onSaved, onDirty }, ref) {
+  const [commissionRateBps,setCommissionRateBps]=useState(1000);
+  const commissionRateLabel=new Intl.NumberFormat("fr-FR",{maximumFractionDigits:2}).format(commissionRateBps/100)+" %";
   const [form, setForm] = useState<CommerceState>(initialState);
   const [domain, setDomain] = useState<Domain>("GENERAL");
   const [categorySlug, setCategorySlug] = useState("");
@@ -98,7 +100,7 @@ export const ListingCommerceForm = forwardRef<ListingCommerceFormHandle, Listing
     return Number.isFinite(amount) && amount >= 0 ? Math.round(amount * 100) : null;
   }, [form.priceEuros, form.freeListing]);
   const noPriceService = priceOptional && priceMinor == null;
-  const commissionMinor = priceMinor != null && priceMinor > 0 ? Math.round(priceMinor * 0.10) : 0;
+  const commissionMinor = priceMinor != null && priceMinor > 0 ? Math.round(priceMinor * commissionRateBps / 10000) : 0;
   const sellerNetMinor = priceMinor == null ? null : Math.max(0, form.commissionPayer === "SELLER" ? priceMinor - commissionMinor : priceMinor);
   const buyerServiceFeeMinor = form.commissionPayer === "BUYER" ? commissionMinor : 0;
   const money = (minor:number) => new Intl.NumberFormat("fr-FR", { style:"currency", currency:"EUR" }).format(minor / 100);
@@ -114,6 +116,7 @@ export const ListingCommerceForm = forwardRef<ListingCommerceFormHandle, Listing
           importInfo?: { sourceType: string; sourceUrl: string | null; createdAt: string } | null;
           configured?: boolean;
           sellerPaymentReady?: boolean;
+          commission?: {rateBps:number};
           settings: Omit<CommerceState, "priceEuros" | "packageWeightG" | "packageLengthCm" | "packageWidthCm" | "packageHeightCm"> & {
             packageWeightG: number | null;
             packageLengthCm: number | null;
@@ -124,6 +127,7 @@ export const ListingCommerceForm = forwardRef<ListingCommerceFormHandle, Listing
       })
       .then((payload) => {
         if (cancelled) return;
+        setCommissionRateBps(payload.commission?.rateBps??1000);
         setDomain(payload.listing.domain);
         setCategorySlug(payload.listing.categorySlug??"");
         setTransactionType(payload.listing.transactionType ?? null);
@@ -270,13 +274,13 @@ export const ListingCommerceForm = forwardRef<ListingCommerceFormHandle, Listing
         </label>}
         {securePaymentAllowed&&!sellerPaymentReady&&<div className={styles.paymentHint}><AppIcon name="info"/><span>Votre annonce peut être vendue avec le paiement sécurisé. Ajoutez votre IBAN avant le versement vendeur depuis <a href="/mon-compte/paiements">Mon compte → Paiements</a>.</span></div>}
         {securePaymentAllowed&&form.securePaymentEnabled&&!form.freeListing&&priceMinor!=null&&priceMinor>0&&<section className={styles.commissionPanel}>
-          <div className={styles.commissionHead}><div><span>Frais de service Petit Annonces</span><h3>Qui prend en charge les 10 % ?</h3></div><b>10 %</b></div>
+          <div className={styles.commissionHead}><div><span>Frais de service Petit Annonces</span><h3>Qui prend en charge les {commissionRateLabel} ?</h3></div><b>{commissionRateLabel}</b></div>
           <div className={styles.commissionChoices}>
             <button type="button" className={form.commissionPayer==="SELLER"?styles.commissionSelected:""} onClick={()=>updateForm(current=>({...current,commissionPayer:"SELLER"}))}><span><strong>Je prends les frais en charge</strong><small>La commission est retenue sur le prix de vente.</small></span><em>{form.commissionPayer==="SELLER"?"✓ Sélectionné":"Choisir"}</em></button>
-            <button type="button" className={form.commissionPayer==="BUYER"?styles.commissionSelected:""} onClick={()=>updateForm(current=>({...current,commissionPayer:"BUYER"}))}><span><strong>L’acheteur prend les frais en charge</strong><small>Les 10 % apparaissent dans son récapitulatif comme frais de service TTC.</small></span><em>{form.commissionPayer==="BUYER"?"✓ Sélectionné":"Choisir"}</em></button>
+            <button type="button" className={form.commissionPayer==="BUYER"?styles.commissionSelected:""} onClick={()=>updateForm(current=>({...current,commissionPayer:"BUYER"}))}><span><strong>L’acheteur prend les frais en charge</strong><small>Les frais de {commissionRateLabel} apparaissent dans son récapitulatif comme frais de service TTC.</small></span><em>{form.commissionPayer==="BUYER"?"✓ Sélectionné":"Choisir"}</em></button>
           </div>
-          <div className={styles.netPreview}><div><span>Prix de vente</span><b>{money(priceMinor)}</b></div><div><span>Frais Petit Annonces (10 %)</span><b>{money(commissionMinor)}</b></div>{form.commissionPayer==="BUYER"&&<div><span>Frais de service facturés à l’acheteur</span><b>{money(buyerServiceFeeMinor)}</b></div>}<div className={styles.netTotal}><span>Vous recevrez net</span><strong>{sellerNetMinor!=null?money(sellerNetMinor):"—"}</strong></div></div>
-          <p className={styles.commissionNote}><AppIcon name="shield"/><span>Les frais de traitement du paiement, notamment Stripe, sont absorbés par Petit Annonces dans ces 10 %. Aucun frais de paiement supplémentaire n’est ajouté au vendeur ou à l’acheteur. Le versement vendeur reste prévu à partir du 21e jour après livraison, sous réserve d’absence de litige, retour ou blocage de sécurité.</span></p>
+          <div className={styles.netPreview}><div><span>Prix de vente</span><b>{money(priceMinor)}</b></div><div><span>Frais Petit Annonces ({commissionRateLabel})</span><b>{money(commissionMinor)}</b></div>{form.commissionPayer==="BUYER"&&<div><span>Frais de service facturés à l’acheteur</span><b>{money(buyerServiceFeeMinor)}</b></div>}<div className={styles.netTotal}><span>Vous recevrez net</span><strong>{sellerNetMinor!=null?money(sellerNetMinor):"—"}</strong></div></div>
+          <p className={styles.commissionNote}><AppIcon name="shield"/><span>Les frais de traitement du paiement, notamment Stripe, sont absorbés par Petit Annonces dans ces {commissionRateLabel}. Aucun frais de paiement supplémentaire n’est ajouté au vendeur ou à l’acheteur. Le versement vendeur reste prévu à partir du 21e jour après livraison, sous réserve d’absence de litige, retour ou blocage de sécurité.</span></p>
         </section>}
       </div>
 

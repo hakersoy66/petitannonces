@@ -9,7 +9,7 @@ import { cancelMarketplaceCheckout, createMarketplaceCheckout, ensurePayoutRecon
 import { executeSellerPayout, getPayoutProviderRuntime, getSellerPayoutReadiness } from "./marketplace-payout-provider.js";
 import { runObservedJob } from "./job-observability.js";
 import { commercePaymentGate, commercePayoutGate, snapshotOrderCommerceRisk } from "./commerce-risk.js";
-import { MARKETPLACE_COMMISSION_RATE_BPS, marketplaceQuote, type CommissionPayer } from "./marketplace-fees.js";
+import { sellerCommissionPolicy, marketplaceQuote, type CommissionPayer } from "./marketplace-fees.js";
 import { capturePayPalOrder, createPayPalCheckout, getPayPalOrder, paypalCaptureFromOrder, refundPayPalCapture } from "./paypal-checkout.js";
 import { deliverUserEvent } from "./notification-delivery.js";
 import { expireAcceptedOfferPaymentWindows } from "./offer-lifecycle.js";
@@ -171,7 +171,7 @@ export async function registerPaymentRoutes(app: FastifyInstance) {
 
   app.post("/checkout/orders", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
-    const parsed = z.object({ listingId: z.string().min(1), offerId: z.string().min(1).optional(), shippingQuoteToken: z.string().min(20), idempotencyKey: z.string().min(12).max(120) }).safeParse(request.body);
+    const parsed = z.object({ listingId: z.string().min(1), offerId: z.string().min(1).optional(), shippingQuoteToken: z.string().min(20), idempotencyKey: z.string().min(12).max(120),expectedCommissionRateBps:z.number().int().min(0).max(1000).optional(),expectedCommissionPayer:z.enum(["SELLER","BUYER"]).optional(),expectedItemAmountMinor:z.number().int().positive().optional() }).safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: "invalid_request", details: parsed.error.flatten() });
     const shippingQuote = verifyShippingQuote(parsed.data.shippingQuoteToken);
     if (!shippingQuote) return reply.code(400).send({ error: "invalid_or_expired_shipping_quote" });
@@ -197,13 +197,22 @@ export async function registerPaymentRoutes(app: FastifyInstance) {
       if (!offer) return reply.code(400).send({ error: "accepted_offer_not_found" });
       itemAmountMinor = offer.amountMinor;
     }
-    const totals = quote(itemAmountMinor, shippingQuote.amountMinor, commissionPayer);
+    let totals=marketplaceQuote(itemAmountMinor,shippingQuote.amountMinor,commissionPayer);
     const orderId = randomUUID();
     const orderNumber = `PA-${Date.now().toString(36).toUpperCase()}-${orderId.slice(0, 6).toUpperCase()}`;
     try {
       await prisma.$transaction(async tx=>{
         const locked=await tx.$queryRawUnsafe<Array<{id:string;status:string}>>(`SELECT "id","status"::text AS "status" FROM "Listing" WHERE "id"=$1 FOR UPDATE`,listing.id);
         if(!locked[0]||locked[0].status!=="PUBLISHED")throw new Error("listing_not_available");
+        await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id"=${listing.sellerId} FOR UPDATE`;
+        const policy=await sellerCommissionPolicy(listing.sellerId,tx);
+        const currentCommerce=await tx.$queryRaw<Array<{commissionPayer:string;securePaymentEnabled:boolean}>>`SELECT "commissionPayer","securePaymentEnabled" FROM "ListingCommerceSettings" WHERE "listingId"=${listing.id} FOR UPDATE`;
+        const actualListing=await tx.listing.findUnique({where:{id:listing.id},select:{priceMinor:true,sellerId:true}});
+        if(!actualListing||actualListing.sellerId!==listing.sellerId||(!parsed.data.offerId&&actualListing.priceMinor!==itemAmountMinor)||!currentCommerce[0]?.securePaymentEnabled||(currentCommerce[0].commissionPayer==="BUYER"?"BUYER":"SELLER")!==commissionPayer)throw new Error("checkout_pricing_changed");
+        if(policy.customized&&(parsed.data.expectedCommissionRateBps===undefined||parsed.data.expectedCommissionPayer===undefined||parsed.data.expectedItemAmountMinor===undefined))throw new Error("checkout_refresh_required");
+        if((parsed.data.expectedCommissionRateBps!==undefined&&parsed.data.expectedCommissionRateBps!==policy.rate)||(parsed.data.expectedCommissionPayer!==undefined&&parsed.data.expectedCommissionPayer!==commissionPayer)||(parsed.data.expectedItemAmountMinor!==undefined&&parsed.data.expectedItemAmountMinor!==itemAmountMinor))throw new Error("checkout_pricing_changed");
+        totals=marketplaceQuote(itemAmountMinor,shippingQuote.amountMinor,commissionPayer,policy.rate);
+
         if(parsed.data.offerId){const offerLocked=await tx.$queryRawUnsafe<Array<{id:string}>>(`SELECT o."id" FROM "Offer" o JOIN "Conversation" c ON c."id"=o."conversationId" WHERE o."id"=$1 AND o."listingId"=$2 AND o."status"='ACCEPTED' AND o."expiresAt">CURRENT_TIMESTAMP AND c."buyerId"=$3 AND c."sellerId"=$4 FOR UPDATE`,parsed.data.offerId,listing.id,user.id,listing.sellerId);if(!offerLocked[0])throw new Error("accepted_offer_expired");}
         if(supplierListing){
           const ownPending=await tx.$queryRawUnsafe<Array<{id:string}>>(`SELECT "id" FROM "MarketplaceOrder" WHERE "listingId"=$1 AND "buyerId"=$2 AND "status"='PENDING_PAYMENT' FOR UPDATE`,listing.id,user.id);
@@ -223,6 +232,7 @@ export async function registerPaymentRoutes(app: FastifyInstance) {
       return reply.code(201).send({ order: { id: orderId, orderNumber, ...totals, currency: listing.currency, status: "PENDING_PAYMENT" }, commerceRisk: commerceRisk?{paymentGate:commerceRisk.paymentGate,payoutGate:commerceRisk.payoutGate,reviewRequired:commerceRisk.paymentGate==="REVIEW"}:null });
     } catch (error) {
       const message=String(error);
+      if(message.includes("checkout_pricing_changed")||message.includes("checkout_refresh_required"))return reply.code(409).send({error:message.includes("checkout_refresh_required")?"checkout_refresh_required":"checkout_pricing_changed",message:"Les conditions tarifaires ont changé. Actualisez le récapitulatif ou utilisez la dernière version de l’application."});
       if(message.includes("listing_temporarily_reserved"))return reply.code(409).send({error:"listing_temporarily_reserved"});
       if(message.includes("listing_order_in_progress:")){const orderId=message.split("listing_order_in_progress:")[1]?.split(/\s/)[0]??null;return reply.code(409).send({error:"listing_order_in_progress",orderId});}
       if(message.includes("listing_not_available"))return reply.code(409).send({error:"listing_not_available"});

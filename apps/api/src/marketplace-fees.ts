@@ -22,8 +22,13 @@ export function ensureMarketplaceFeeSchema() {
   return schemaPromise;
 }
 
-export function marketplaceQuote(itemAmountMinor: number, shippingAmountMinor: number, commissionPayer: CommissionPayer) {
-  const platformCommissionMinor = Math.max(0, Math.round(itemAmountMinor * MARKETPLACE_COMMISSION_RATE_BPS / 10_000));
+export async function sellerCommissionPolicy(userId:string,db:Pick<typeof prisma,"$queryRaw">=prisma){
+ const rows=await db.$queryRaw<Array<{rate:number;customized:boolean}>>`SELECT CASE WHEN "commissionRateBps" IS NOT NULL AND ("commissionUntil" IS NULL OR "commissionUntil">CURRENT_TIMESTAMP) THEN "commissionRateBps" ELSE 1000 END AS rate,"commissionCustomized" AS customized FROM "AdminCommercialPermission" WHERE "userId"=${userId}`;
+ return rows[0]??{rate:MARKETPLACE_COMMISSION_RATE_BPS,customized:false};
+}
+export function marketplaceQuote(itemAmountMinor: number, shippingAmountMinor: number, commissionPayer: CommissionPayer, rateBps=MARKETPLACE_COMMISSION_RATE_BPS) {
+  if(!Number.isInteger(rateBps)||rateBps<0||rateBps>1000)throw new Error("invalid_commission_rate");
+  const platformCommissionMinor = Math.max(0, Math.round(itemAmountMinor * rateBps / 10_000));
   const buyerServiceFeeMinor = commissionPayer === "BUYER" ? platformCommissionMinor : 0;
   const sellerNetMinor = Math.max(0, commissionPayer === "SELLER" ? itemAmountMinor - platformCommissionMinor : itemAmountMinor);
   const totalAmountMinor = itemAmountMinor + shippingAmountMinor + buyerServiceFeeMinor;
@@ -36,6 +41,6 @@ export function marketplaceQuote(itemAmountMinor: number, shippingAmountMinor: n
     sellerNetMinor,
     totalAmountMinor,
     commissionPayer,
-    commissionRateBps: MARKETPLACE_COMMISSION_RATE_BPS,
+    commissionRateBps: rateBps,
   };
 }

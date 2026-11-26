@@ -656,20 +656,23 @@ export async function registerOperationsRoutes(app: FastifyInstance) {
   app.put("/admin/users/:id/commercial-permissions",async(request,reply)=>{
     const admin=await requireAdmin(request,reply,["SUPER_ADMIN","ADMIN"]);if(!admin)return;
     const params=z.object({id:z.string().min(1)}).safeParse(request.params);
-    const body=z.object({salesBlocked:z.boolean(),storeCap:z.number().int().min(0).max(100).nullable(),reason:z.string().trim().min(5).max(500)}).safeParse(request.body);
+    const body=z.object({salesBlocked:z.boolean(),storeCap:z.number().int().min(0).max(100).nullable(),commissionRateBps:z.number().int().min(0).max(1000).nullable().optional(),commissionUntil:z.string().datetime().nullable().optional(),reason:z.string().trim().min(5).max(500)}).safeParse(request.body);
     if(!params.success||!body.success)return reply.code(400).send({error:"invalid_request"});
     const {reason,...permission}=body.data;
     const saved=await prisma.$transaction(async tx=>{
       await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id"=${params.data.id} FOR UPDATE`;
       const user=await tx.user.findUnique({where:{id:params.data.id},select:{id:true,roles:{select:{role:true}}}});
       if(!user||user.id===admin.id||user.roles.length)return false;
-      const previous=await tx.$queryRaw`SELECT "salesBlocked","storeCap" FROM "AdminCommercialPermission" WHERE "userId"=${user.id}`;
-      await tx.$executeRaw`INSERT INTO "AdminCommercialPermission" ("userId","salesBlocked","storeCap") VALUES (${user.id},${permission.salesBlocked},${permission.storeCap}) ON CONFLICT ("userId") DO UPDATE SET "salesBlocked"=EXCLUDED."salesBlocked","storeCap"=EXCLUDED."storeCap","updatedAt"=CURRENT_TIMESTAMP`;
-      await tx.$executeRaw`INSERT INTO "AdminAuditEvent" ("id","actorUserId","action","entityType","entityId","metadata") VALUES (${randomUUID()},${admin.id},'USER_COMMERCIAL_PERMISSIONS_UPDATED','USER',${user.id},${JSON.stringify({previous,permission,reason})}::jsonb)`;
-      return true;
+      const previous=await tx.$queryRaw<Array<{salesBlocked:boolean;storeCap:number|null;commissionRateBps:number|null;commissionUntil:Date|null}>>`SELECT "salesBlocked","storeCap","commissionRateBps","commissionUntil" FROM "AdminCommercialPermission" WHERE "userId"=${user.id}`;
+      const rate=permission.commissionRateBps===undefined?previous[0]?.commissionRateBps??null:permission.commissionRateBps;
+      const until=rate===null?null:permission.commissionUntil===undefined?previous[0]?.commissionUntil??null:permission.commissionUntil===null?null:new Date(permission.commissionUntil);
+      const next={salesBlocked:permission.salesBlocked,storeCap:permission.storeCap,commissionRateBps:rate,commissionUntil:until};
+      await tx.$executeRaw`INSERT INTO "AdminCommercialPermission" ("userId","salesBlocked","storeCap","commissionRateBps","commissionUntil","commissionCustomized") VALUES (${user.id},${next.salesBlocked},${next.storeCap},${rate},${until},${rate!==null}) ON CONFLICT ("userId") DO UPDATE SET "salesBlocked"=EXCLUDED."salesBlocked","storeCap"=EXCLUDED."storeCap","commissionRateBps"=EXCLUDED."commissionRateBps","commissionUntil"=EXCLUDED."commissionUntil","commissionCustomized"="AdminCommercialPermission"."commissionCustomized" OR EXCLUDED."commissionCustomized","updatedAt"=CURRENT_TIMESTAMP`;
+      await tx.$executeRaw`INSERT INTO "AdminAuditEvent" ("id","actorUserId","action","entityType","entityId","metadata") VALUES (${randomUUID()},${admin.id},'USER_COMMERCIAL_PERMISSIONS_UPDATED','USER',${user.id},${JSON.stringify({previous,permission:next,reason})}::jsonb)`;
+      return next;
     });
     if(!saved)return reply.code(403).send({error:"protected_account"});
-    return reply.send({permission});
+    return reply.send({permission:saved});
   });
 
   app.get("/admin/users/:id/detail", async (request, reply) => {

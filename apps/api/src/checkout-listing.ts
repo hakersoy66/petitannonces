@@ -6,7 +6,7 @@ import { z } from "zod";
 import { getShippingOptions } from "./carrier-providers.js";
 import { signShippingQuote } from "./shipping-quotes.js";
 import { getSellerPayoutReadiness } from "./marketplace-payout-provider.js";
-import { marketplaceQuote, type CommissionPayer } from "./marketplace-fees.js";
+import { marketplaceQuote, sellerCommissionPolicy, type CommissionPayer } from "./marketplace-fees.js";
 import { paypalCheckoutPublicConfig } from "./paypal-checkout.js";
 import { expireAcceptedOfferPaymentWindows } from "./offer-lifecycle.js";
 import { getSupplierProductForListing, supplierCheckoutShipping } from "./supplier-fulfillment.js";
@@ -58,7 +58,8 @@ export async function registerCheckoutListingRoutes(app:FastifyInstance){
   const buyerAddress=buyerAddresses[0]??null;
   const purchasePriceMinor=accepted?.amountMinor??listing.priceMinor;
   const commissionPayer:CommissionPayer=commerce.commissionPayer==="BUYER"?"BUYER":"SELLER";
-  const pricing=marketplaceQuote(purchasePriceMinor,0,commissionPayer);
+  const {rate}=await sellerCommissionPolicy(listing.sellerId);
+  const pricing=marketplaceQuote(purchasePriceMinor,0,commissionPayer,rate);
   return reply.send({supplierFulfilled,paymentDeferred:paymentState.deferred,paymentAvailabilityReason:paymentState.reason,paymentMethods:{card:true,paypal:paypal.enabled,paypalMode:paypal.mode,payLater4x:paypal.enabled&&listing.currency.toUpperCase()==="EUR"&&purchasePriceMinor>=2000&&purchasePriceMinor<=300000},pricing:{commissionPayer:pricing.commissionPayer,commissionRateBps:pricing.commissionRateBps,buyerServiceFeeMinor:pricing.buyerServiceFeeMinor,sellerNetMinor:pricing.sellerNetMinor},listing:{id:listing.id,title:listing.title,priceMinor:purchasePriceMinor,originalPriceMinor:listing.priceMinor,currency:listing.currency,coverUrl:cover[0]?.publicUrl??null,offerApplied:Boolean(query.data.offerId),offerId:query.data.offerId??null,offerExpiresAt:accepted?.expiresAt?.toISOString()??null},package:{weightG:supplierFulfilled?100:commerce.packageWeightG!,lengthCm:supplierFulfilled?null:commerce.packageLengthCm,widthCm:supplierFulfilled?null:commerce.packageWidthCm,heightCm:supplierFulfilled?null:commerce.packageHeightCm},buyer:{name:buyerAddress?.recipient??user.profile?.displayName??user.profile?.firstName??"",email:user.email,phone:user.profile?.phone??"",address1:buyerAddress?.line1??"",address2:buyerAddress?.line2??"",postalCode:buyerAddress?.postalCode??"",city:buyerAddress?.city??"",countryCode:buyerAddress?.countryCode??"FR"},addresses:buyerAddresses.map(a=>({id:a.id,label:a.label,recipient:a.recipient,line1:a.line1,line2:a.line2,postalCode:a.postalCode,city:a.city,countryCode:a.countryCode,isDefault:a.isDefault})),origin:supplierFulfilled?{postalCode:"",city:"Partenaire logistique",countryCode:supplierProduct?.warehouseCountryCode??"CN"}:{postalCode:origin!.postalCode,city:origin!.city,countryCode:origin!.countryCode}});
  });
 

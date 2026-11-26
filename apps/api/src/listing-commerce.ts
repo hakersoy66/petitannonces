@@ -3,7 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { requireListingUser } from "./listing-auth.js";
 import { getSellerPayoutReadiness } from "./marketplace-payout-provider.js";
-import { MARKETPLACE_COMMISSION_RATE_BPS, marketplaceQuote, type CommissionPayer } from "./marketplace-fees.js";
+import { sellerCommissionPolicy, marketplaceQuote, type CommissionPayer } from "./marketplace-fees.js";
 import { categoryBelongsToRootSlug } from "./category-attributes.js";
 
 const paramsSchema = z.object({ id: z.string().min(1) });
@@ -91,8 +91,9 @@ export async function registerListingCommerceRoutes(app: FastifyInstance) {
       importInfo = rows[0] ?? null;
     } catch {}
 
-    const feePreview=listing.priceMinor!=null&&listing.priceMinor>0?marketplaceQuote(listing.priceMinor,0,settings.commissionPayer):null;
-    return reply.send({ listing: { priceMinor: listing.priceMinor, currency: listing.currency, domain: listing.category.domain, categorySlug: listing.category.slug, transactionType: listing.property?.transactionType ?? null, isVacation }, settings, configured:Boolean(rows[0]), importInfo, sellerPaymentReady: await sellerPaymentReady(user.id), commission:{rateBps:MARKETPLACE_COMMISSION_RATE_BPS,ratePercent:MARKETPLACE_COMMISSION_RATE_BPS/100,preview:feePreview} });
+    const {rate}=await sellerCommissionPolicy(user.id);
+    const feePreview=listing.priceMinor!=null&&listing.priceMinor>0?marketplaceQuote(listing.priceMinor,0,settings.commissionPayer,rate):null;
+    return reply.send({ listing: { priceMinor: listing.priceMinor, currency: listing.currency, domain: listing.category.domain, categorySlug: listing.category.slug, transactionType: listing.property?.transactionType ?? null, isVacation }, settings, configured:Boolean(rows[0]), importInfo, sellerPaymentReady: await sellerPaymentReady(user.id), commission:{rateBps:rate,ratePercent:rate/100,preview:feePreview} });
   });
 
   app.get("/listings/:id/price-insight", async (request, reply) => {
