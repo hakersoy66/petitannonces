@@ -60,27 +60,41 @@ export default async function AdminHome(){
  ];
  const visibleQuick=quick.filter(([, ,href])=>allowedPaths.has(href));
  const visiblePriorities=d?priorities.filter(item=>allowedPaths.has(item.href)&&(item.href!=="/blocked-users"||Boolean(policy))):[];
- return <div className="admin-home-simple">
-  <div className="admin-page-head admin-home-head"><div><p>Pilotage</p><h1>Tableau de bord</h1><span className="subtitle">L’essentiel pour gérer Petit Annonces sans surcharge d’informations.</span></div><div className="admin-home-head-actions"><span className={`admin-badge ${d?"green":"orange"}`}><AdminIcon name={d?"check":"warning"}/>{d?"Données chargées":"Données indisponibles"}</span><a className="admin-btn" href={allowedPaths.has("/system")?"/system":"/analytics"}><AdminIcon name={allowedPaths.has("/system")?"server":"chart"}/>{allowedPaths.has("/system")?"État du système":"Analytics"}</a></div></div>
-
-  {!d&&<div className="admin-flash system-attention" role="status">Les données du tableau de bord ne sont pas disponibles. Les compteurs affichent « — » plutôt qu’un faux zéro. <a href="/">Réessayer</a></div>}
-  <div className="admin-grid admin-kpis admin-home-main-kpis">{kpis.slice(0,2).map(([icon,label,value,hint])=><article className="admin-card admin-kpi admin-home-kpi" key={label}><div className="admin-kpi-top"><small>{label}</small><span className="admin-kpi-icon"><AdminIcon name={icon}/></span></div><strong>{value}</strong><p>{hint}</p></article>)}{d?<DashboardUserKpi initialTotal={k.usersTotal} initialToday={k.usersToday}/>:<article className="admin-card admin-kpi admin-home-kpi"><small>Utilisateurs</small><strong>—</strong><p>Statistiques indisponibles</p></article>}{kpis.slice(2).map(([icon,label,value,hint])=><article className="admin-card admin-kpi admin-home-kpi" key={label}><div className="admin-kpi-top"><small>{label}</small><span className="admin-kpi-icon"><AdminIcon name={icon}/></span></div><strong>{value}</strong><p>{hint}</p></article>)}</div>
-
-  <LiveVisitorsPanel initialData={live}/>
-
-  {visiblePriorities.length>0&&<section className="admin-card admin-section admin-home-focus" style={{marginTop:16}}><div className="admin-section-head"><div><h2>À traiter en priorité</h2><p>Les actions qui demandent votre attention maintenant.</p></div></div><div className="admin-home-focus-grid">{visiblePriorities.map(item=><a href={item.href} key={item.label} className={(item.value>0?"needs-action "+item.tone:"is-clear")+(item.className?" "+item.className:"")}><span><AdminIcon name={item.icon}/></span><div><strong>{item.label}</strong><small>{item.detail}</small></div><b>{n(item.value)}</b><em>{item.value>0?"Ouvrir":"OK"}</em></a>)}</div></section>}
-
-  <UserAttentionPanel initialData={userAttention}/>
-
-  <div className="admin-grid admin-home-simple-grid">
-   <section className="admin-card admin-section"><div className="admin-section-head"><div><h2>Activité récente</h2><p>Comparaison rapide des 7 et 30 derniers jours.</p></div><a className="admin-btn" href="/analytics"><AdminIcon name="chart"/>Voir Analytics</a></div><div className="admin-home-period-table">
-    <div><span>Nouveaux utilisateurs</span><b>{a7?n(s7.newUsers):"—"}</b><small>7 j</small><strong>{a30?n(s30.newUsers):"—"}</strong><small>30 j</small></div>
-    <div><span>Annonces publiées</span><b>{a7?n(s7.publishedListings):"—"}</b><small>7 j</small><strong>{a30?n(s30.publishedListings):"—"}</strong><small>30 j</small></div>
-    <div><span>Commandes payées</span><b>{a7?n(s7.paidOrders):"—"}</b><small>7 j</small><strong>{a30?n(s30.paidOrders):"—"}</strong><small>30 j</small></div>
-    <div><span>GMV</span><b>{a7?eur(s7.gmvMinor):"—"}</b><small>7 j</small><strong>{a30?eur(s30.gmvMinor):"—"}</strong><small>30 j</small></div>
-   </div><div className="admin-home-period-footer"><span>Revenus plateforme · 30 j</span><strong>{a30?eur(s30.revenueMinor):"—"}</strong><span>Commandes créées · 30 j</span><strong>{a30?n(s30.orders):"—"}</strong></div></section>
-
-   <aside className="admin-card admin-section admin-home-shortcuts"><div className="admin-section-head"><div><h2>Accès rapide</h2><p>Les sections utilisées le plus souvent.</p></div></div><div className="admin-home-shortcut-grid">{visibleQuick.map(([icon,label,href])=><a href={href} key={href}><AdminIcon name={icon}/><span>{label}</span><b>›</b></a>)}</div></aside>
+ return <div className="admin-home-simple admin-workspace-home">
+  <header className="admin-workspace-hero">
+   <div><span className="admin-workspace-eyebrow">ESPACE DE GESTION</span><h1>Tableau de bord</h1><p>Retrouvez les actions du jour et les chiffres essentiels de votre marketplace.</p></div>
+   <div className="admin-workspace-hero-actions"><span className={`admin-badge ${d?"green":"orange"}`}>{d?"Données chargées":"Données indisponibles"}</span>{allowedPaths.has("/analytics")&&<a href="/analytics" className="admin-btn"><AdminIcon name="chart"/>Rapports</a>}</div>
+  </header>
+  {!d&&<div className="admin-flash system-attention" role="status">Les données sont indisponibles. <a href="/">Réessayer</a></div>}
+  <section className="admin-workspace-section">
+   <div className="admin-workspace-heading"><h2>Vue d’ensemble</h2><span>Activité de la marketplace</span></div>
+   <div className="admin-workspace-metrics">
+    {([["users","Utilisateurs",d?n(k.usersTotal):"—",d?`+${n(k.usersToday)} aujourd’hui`:"Données indisponibles","/users"],["list","Annonces publiées",d?n(k.listingsPublished):"—",d?`${n(k.listingsTotal)} annonces au total`:"Données indisponibles","/listings"],["chart","Visites aujourd’hui",aggregate?n(aggregate.today.estimatedEntries??0):"—","Entrées estimées","/analytics"],["wallet","Volume des ventes",d?eur(k.gmvMinor):"—",d?`${eur(k.platformCommissionMinor)} de commissions`:"Données indisponibles","/finance"]] as Array<[AdminIconName,string,string,string,string]>).map(([icon,label,value,hint,href])=><article className="admin-card admin-workspace-metric" key={label}><div><span>{label}</span><i><AdminIcon name={icon}/></i></div><strong>{value}</strong><small>{hint}</small>{allowedPaths.has(href)&&<a href={href}>Consulter <span>›</span></a>}</article>)}
+   </div>
+  </section>
+  <div className="admin-workspace-columns">
+   <section className="admin-card admin-workspace-panel">
+    <div className="admin-workspace-heading"><div><h2>À traiter</h2><span>Vos tâches prioritaires</span></div><span className="admin-badge orange">{visiblePriorities.filter(i=>i.value>0).length} rubrique(s)</span></div>
+    <div className="admin-task-list">{visiblePriorities.length?visiblePriorities.map(item=><a key={item.href} href={item.href}><i className={`admin-task-icon ${item.value>0?item.tone:"green"}`}><AdminIcon name={item.icon}/></i><div><strong>{item.label}</strong><small>{item.detail}</small></div><b>{n(item.value)}</b><span>›</span></a>):<p className="admin-empty">Aucune donnée disponible.</p>}</div>
+   </section>
+   <section className="admin-card admin-workspace-panel">
+    <div className="admin-workspace-heading"><div><h2>Accès rapide</h2><span>Ouvrir une rubrique</span></div></div>
+    <div className="admin-workspace-shortcuts">{visibleQuick.map(([icon,label,href])=><a href={href} key={href}><AdminIcon name={icon}/><span>{label}</span><b>›</b></a>)}</div>
+   </section>
   </div>
+  <div className="admin-workspace-columns">
+   <section className="admin-card admin-workspace-panel">
+    <div className="admin-workspace-heading"><div><h2>Activité récente</h2><span>Comparaison des périodes</span></div></div>
+    <div className="admin-workspace-period"><div className="admin-workspace-period-head"><span>Indicateur</span><span>7 jours</span><span>30 jours</span></div>
+    {([["Nouveaux utilisateurs",a7?n(s7.newUsers):"—",a30?n(s30.newUsers):"—"],["Annonces publiées",a7?n(s7.publishedListings):"—",a30?n(s30.publishedListings):"—"],["Commandes payées",a7?n(s7.paidOrders):"—",a30?n(s30.paidOrders):"—"],["Volume des ventes",a7?eur(s7.gmvMinor):"—",a30?eur(s30.gmvMinor):"—"]]).map(([label,v7,v30])=><div key={label}><span>{label}</span><b>{v7}</b><b>{v30}</b></div>)}</div>
+    {allowedPaths.has("/analytics")&&<a className="admin-workspace-link" href="/analytics">Voir toutes les statistiques ›</a>}
+   </section>
+   <section className="admin-card admin-workspace-panel">
+    <div className="admin-workspace-heading"><div><h2>En ce moment</h2><span>Activité et commandes</span></div></div>
+    <div className="admin-workspace-mini"><div><span>Visiteurs en ligne</span><strong>{d?n(k.onlineVisitors):"—"}</strong><small>{d?n(k.onlineMembers):"—"} membres connectés</small></div><div><span>Commandes actives</span><strong>{d?n(k.ordersActive):"—"}</strong><small>{d?n(k.ordersTotal):"—"} au total</small></div><div><span>Revenus sur 30 jours</span><strong>{a30?eur(s30.revenueMinor):"—"}</strong></div><div><span>Pages vues aujourd’hui</span><strong>{aggregate?n(aggregate.today.pageViews):"—"}</strong></div></div>
+   </section>
+  </div>
+  <details className="admin-card admin-home-details"><summary>Suivi des utilisateurs · détails</summary><UserAttentionPanel initialData={userAttention}/></details>
+  <details className="admin-card admin-home-details"><summary>Visiteurs en direct · détails</summary><LiveVisitorsPanel initialData={live}/></details>
  </div>;
 }

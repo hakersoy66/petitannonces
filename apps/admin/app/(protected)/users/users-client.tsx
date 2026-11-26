@@ -76,7 +76,7 @@ export default function UsersClient(){
 
  return <>
   <div className="admin-page-head">
-   <div><p>Comptes & accès</p><h1>Utilisateurs</h1><span className="subtitle">Pilotez les comptes, statuts, vérifications et accès administratifs depuis une vue plus compacte.</span></div>
+   <div><p>Comptes & accès</p><h1>Utilisateurs</h1><span className="subtitle">Recherchez et gérez les comptes et leurs accès.</span></div>
    <div className="admin-page-actions"><span className="admin-badge"><AdminIcon name="users"/>{rows.length} compte(s)</span></div>
   </div>
 
@@ -88,6 +88,7 @@ export default function UsersClient(){
     <button type="button" className="admin-btn primary" onClick={()=>void load()} disabled={busy}>{busy?"Recherche…":"Rechercher"}</button>
    </div>
 
+   <div className="admin-results-heading"><strong>Comptes</strong><span>{rows.length} résultat(s)</span></div>
    <div className="admin-table-wrap admin-table-modern-wrap">
     <table className="admin-table admin-table-modern admin-mobile-cards admin-users-table">
      <thead><tr><th>Utilisateur</th><th>Compte</th><th>Statut</th><th>Confiance</th><th>Rôles & accès</th><th></th></tr></thead>

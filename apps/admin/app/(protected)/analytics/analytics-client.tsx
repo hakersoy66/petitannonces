@@ -251,8 +251,9 @@ export default function AnalyticsClient() {
     </div>
     {error && <div className="admin-flash err admin-analytics-error"><strong>Données Analytics indisponibles.</strong><span>{error}</span><button type="button" className="admin-btn" onClick={() => setReloadKey((v) => v + 1)}>Réessayer</button></div>}
 
+    <nav className="admin-section-nav" aria-label="Rubriques Analytics"><a href="#traffic">Audience</a><a href="#growth">Croissance</a><a href="#daily-traffic">Trafic quotidien</a><a href="#ga4">GA4</a><a href="#organic">Google SEO</a><a href="#marketplace">Marketplace</a></nav>
     <section className="admin-card admin-section">
-      <div className="admin-section-head"><div><h2>Fréquentation globale agrégée</h2><p>Sans identifiant ni cookie de suivi. Inclus les visiteurs refusant la mesure facultative, sauf opposition spécifique. Ce ne sont pas des personnes uniques.</p></div><span className="admin-badge green">Source interne</span></div>
+      <div className="admin-section-head"><div><h2 id="traffic" className="admin-section-anchor">Fréquentation globale agrégée</h2><p>Sans identifiant ni cookie de suivi. Inclus les visiteurs refusant la mesure facultative, sauf opposition spécifique. Ce ne sont pas des personnes uniques.</p></div><span className="admin-badge green">Source interne</span></div>
       <div className="admin-grid admin-kpis">
        <article className="admin-card admin-kpi"><small>Entrées estimées · {days} jours</small><strong>{aggregate?n(aggregate.period.estimatedEntries):"—"}</strong><p>Chargements initiaux détectés depuis la mise en service</p></article>
        <article className="admin-card admin-kpi"><small>Pages vues · {days} jours</small><strong>{aggregate?n(aggregate.period.pageViews):"—"}</strong><p>Comptage agrégé, sans parcours individuel</p></article>
@@ -277,7 +278,7 @@ export default function AnalyticsClient() {
     </section>
 
     <section className="admin-card admin-section" style={{marginTop:16}}>
-      <div className="admin-section-head"><div><h2>Diagnostic croissance · deux semaines comparables</h2><p>Comparaison de deux périodes de 7 jours complets, à l'heure de Paris. Entrées anonymes et visiteurs consentants ne mesurent pas la même chose.</p></div><span className="admin-badge green">Base de données interne</span></div>
+      <div className="admin-section-head"><div><h2 id="growth" className="admin-section-anchor">Diagnostic croissance · deux semaines comparables</h2><p>Comparaison de deux périodes de 7 jours complets, à l'heure de Paris. Entrées anonymes et visiteurs consentants ne mesurent pas la même chose.</p></div><span className="admin-badge green">Base de données interne</span></div>
       {previousGrowth&&recentGrowth?<>
         <p style={{fontSize:12,color:"var(--muted)",marginBottom:12}}>Avant : {previousGrowth.startDate} → {previousGrowth.endDate} · Après : {recentGrowth.startDate} → {recentGrowth.endDate}</p>
         <div className="admin-grid admin-kpis">
@@ -313,7 +314,7 @@ export default function AnalyticsClient() {
 
     <section className="admin-card admin-section" style={{ marginTop: 16 }}>
       <div className="admin-section-head">
-        <div><h2>Tendance du trafic quotidien</h2><p>Entrées anonymes estimées sans cookies de suivi ni identification des personnes. Comparaison sur les journées complètes, distincte des visiteurs ayant accepté la mesure.</p></div>
+        <div><h2 id="daily-traffic" className="admin-section-anchor">Tendance du trafic quotidien</h2><p>Entrées anonymes estimées sans cookies de suivi ni identification des personnes. Comparaison sur les journées complètes, distincte des visiteurs ayant accepté la mesure.</p></div>
       </div>
       <div className="admin-grid admin-kpis">
         <article className="admin-card admin-kpi"><small>Entrées estimées aujourd’hui</small><strong>{aggregate?n(aggregate.today.estimatedEntries):"—"}</strong><p>signal anonyme, sans déduplication entre appareils</p></article>
@@ -357,7 +358,7 @@ export default function AnalyticsClient() {
     <section className="admin-card admin-section" style={{ marginTop: 16 }}>
       <div className="admin-section-head">
         <div>
-          <h2>Google Analytics 4</h2>
+          <h2 id="ga4" className="admin-section-anchor">Google Analytics 4</h2>
           <p>Collecte Google + lecture des rapports via GA4 Data API.</p>
         </div>
         <span className={`admin-badge ${data?.ga4?.reportingConnected ? "green" : "orange"}`}>{data?.ga4?.reportingConnected ? "Rapports connectés" : "Connexion à terminer"}</span>
@@ -397,7 +398,7 @@ export default function AnalyticsClient() {
     <section className="admin-card admin-section" style={{ marginTop: 16 }}>
       <div className="admin-section-head">
         <div>
-          <h2>Acquisition organique · Google</h2>
+          <h2 id="organic" className="admin-section-anchor">Acquisition organique · Google</h2>
           <p>Search Console pour la visibilité et les clics, GA4 pour les sessions et les conversions issues de la recherche organique.</p>
         </div>
         <span className={`admin-badge ${data?.organic?.gsc?.connected&&!gscSnapshotStale&&data?.organic?.ga4?.connected?"green":"orange"}`}>
@@ -468,7 +469,7 @@ export default function AnalyticsClient() {
       </div>
     </section>
 
-    <div className="admin-section-head" style={{ marginTop: 22 }}><div><h2>Activité marketplace</h2><p>Ces indicateurs proviennent directement de la base Petit Annonces.</p></div></div>
+    <div className="admin-section-head" style={{ marginTop: 22 }}><div><h2 id="marketplace" className="admin-section-anchor">Activité marketplace</h2><p>Ces indicateurs proviennent directement de la base Petit Annonces.</p></div></div>
     <div className="admin-grid admin-kpis">
       <article className="admin-card admin-kpi"><small>Nouveaux utilisateurs</small><strong>{loading ? "…" : data?.summary.newUsers ?? 0}</strong><p>sur {days} jours</p></article>
       <article className="admin-card admin-kpi"><small>Annonces publiées</small><strong>{loading ? "…" : data?.summary.publishedListings ?? 0}</strong><p>{data?.summary.newListings ?? 0} nouvelles annonces créées</p></article>

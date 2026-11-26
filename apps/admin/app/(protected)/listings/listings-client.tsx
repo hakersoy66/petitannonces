@@ -82,7 +82,7 @@ export default function ListingsClient(){
 
  return <>
   <div className="admin-page-head">
-   <div><p>Marketplace</p><h1>Annonces</h1><span className="subtitle">Une gestion plus claire du catalogue : contenu, statut, vendeur, localisation et actions sensibles au même endroit.</span></div>
+   <div><p>Marketplace</p><h1>Annonces</h1><span className="subtitle">Recherchez, consultez et gérez les annonces.</span></div>
    <div className="admin-page-actions"><a className="admin-btn primary" href="/moderation"><AdminIcon name="shield"/>File de modération</a></div>
   </div>
 
@@ -105,23 +105,22 @@ export default function ListingsClient(){
     </div>
    </div>}
 
+   <div className="admin-results-heading"><strong>Résultats</strong><span>{rows.length} annonce(s)</span></div>
    <div className="admin-table-wrap admin-table-modern-wrap">
     <table className="admin-table admin-table-modern admin-mobile-cards admin-listings-table">
-     <thead><tr><th><input type="checkbox" checked={rows.length>0&&selected.length===rows.length} onChange={e=>setSelected(e.target.checked?rows.map(x=>x.id):[])}/></th><th>Annonce</th><th>Prix</th><th>Statut</th><th>Catégorie</th><th>Vendeur</th><th>Localisation</th><th></th></tr></thead>
+     <thead><tr><th><input type="checkbox" checked={rows.length>0&&selected.length===rows.length} onChange={e=>setSelected(e.target.checked?rows.map(x=>x.id):[])}/></th><th>Annonce</th><th>Prix</th><th>Statut</th><th>Vendeur</th><th>Actions</th></tr></thead>
      <tbody>
       {rows.map(l=><tr key={l.id}>
        <td data-mobile-select><input type="checkbox" checked={selected.includes(l.id)} onChange={e=>setSelected(v=>e.target.checked?[...new Set([...v,l.id])]:v.filter(x=>x!==l.id))}/></td>
        <td data-label="Annonce" data-mobile-primary>
         <a className="admin-listing-cell" href={`/listings/${l.id}`}>
          {l.coverUrl?<img className="thumb" src={l.coverUrl} alt=""/>:<span className="thumb admin-thumb-empty"><AdminIcon name="list"/></span>}
-         <span><strong>{l.title||"Sans titre"}</strong><small>#{l.id.slice(-8).toUpperCase()} · {new Date(l.createdAt).toLocaleDateString("fr-FR")}</small></span>
+         <span><strong>{l.title||"Sans titre"}</strong><small>#{l.id.slice(-8).toUpperCase()} · {new Date(l.createdAt).toLocaleDateString("fr-FR")}</small><small>{l.category} · {l.city||"—"} {l.postalCode||""}</small></span>
         </a>
        </td>
        <td data-label="Prix"><strong className="admin-price-cell">{money(l.priceMinor,l.currency)}</strong></td>
        <td data-label="Statut"><span className={`admin-badge ${tone(l.status)}`}>{labels[l.status]??l.status}</span>{l.domain==="ANIMAL"&&l.categorySlug!=="animaux-perdus"&&<div style={{marginTop:6}}><span className={`admin-badge ${l.cda?.verified?"green":"orange"}`}>{l.cda?.verified?"Vérifié I-CAD":l.cda?.status==="FAILED"?"I-CAD : échec":l.cda?.status==="UNAVAILABLE"?"I-CAD : indisponible":"I-CAD : non vérifié"}</span></div>}</td>
-       <td data-label="Catégorie"><div className="admin-cell-stack"><strong>{l.category}</strong><small>{l.domain}</small></div></td>
        <td data-label="Vendeur"><div className="admin-cell-stack"><strong>{l.sellerName}</strong><small>{l.sellerEmail}</small></div></td>
-       <td data-label="Localisation"><div className="admin-location-cell"><strong>{l.city||"—"}</strong><small>{l.postalCode||l.region||""}</small></div></td>
        <td data-label="Actions" data-mobile-actions>
         <details className="admin-popover admin-action-popover">
          <summary className="admin-icon-button" aria-label="Actions annonce">•••</summary>
@@ -138,7 +137,7 @@ export default function ListingsClient(){
         </details>
        </td>
       </tr>)}
-      {!rows.length&&<tr><td colSpan={8}><div className="admin-empty">Aucune annonce trouvée.</div></td></tr>}
+      {!rows.length&&<tr><td colSpan={6}><div className="admin-empty">Aucune annonce trouvée.</div></td></tr>}
      </tbody>
     </table>
    </div>
