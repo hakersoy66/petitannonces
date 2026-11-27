@@ -14,6 +14,7 @@ type PublicationCheck = {
   phoneVerificationRequired?: boolean;
   manualModerationRequired?: boolean;
   renewalRequired?: boolean;
+  publicationCapacity?: {cap:number|null;used:number;planName:string;blocked:boolean}|null;
   renewal?: { expiresAt:string; freeRenewalAvailable:boolean; costMinor:number; currency:string } | null;
   duplicate?: { id:string; title:string|null; status:string; slug:string|null; actionUrl:string } | null;
   errors: string[];
@@ -106,7 +107,7 @@ export function ListingPublicationReview({ listingId, promotionCode="", promotio
   const [returnDays, setReturnDays] = useState("");
   const [returnException, setReturnException] = useState("");
 
-  async function refresh() {
+  async function refresh(preserveMessage=false) {
     if (!listingId) return;
     setLoading(true);
     try {
@@ -116,9 +117,9 @@ export function ListingPublicationReview({ listingId, promotionCode="", promotio
       setCheck(payload);
       const consumer=payload.compliance?.consumerDisclosure;
       setReturnMode(consumer?.withdrawalRightApplies===true?"yes":consumer?.withdrawalRightApplies===false?"no":"");setReturnDays(consumer?.withdrawalPeriodDays!=null?String(consumer.withdrawalPeriodDays):"");setReturnException(consumer?.withdrawalExceptionCode??"");
-      setMessage(payload.duplicate ? "Cette annonce existe déjà dans votre compte. Ouvrez l’annonce existante au lieu d’en publier une seconde." : payload.renewalRequired ? (payload.renewal?.freeRenewalAvailable ? "Cette annonce a expiré. Votre prolongation gratuite doit être activée avant la remise en ligne." : "Cette annonce a expiré. Une prolongation est nécessaire avant la remise en ligne.") : payload.ready ? (payload.manualModerationRequired ? "Votre annonce est prête. Elle sera contrôlée par un modérateur avant sa mise en ligne." : "Votre annonce est prête à être envoyée en modération.") : "Corrigez les points bloquants avant publication.");
+      if(!preserveMessage)setMessage(payload.publicationCapacity?.blocked ? `Limite de votre formule ${payload.publicationCapacity.planName} atteinte : ${payload.publicationCapacity.used} / ${payload.publicationCapacity.cap} annonces. Votre brouillon est conservé.` : payload.duplicate ? "Cette annonce existe déjà dans votre compte. Ouvrez l’annonce existante au lieu d’en publier une seconde." : payload.renewalRequired ? (payload.renewal?.freeRenewalAvailable ? "Cette annonce a expiré. Votre prolongation gratuite doit être activée avant la remise en ligne." : "Cette annonce a expiré. Une prolongation est nécessaire avant la remise en ligne.") : payload.ready ? (payload.manualModerationRequired ? "Votre annonce est prête. Elle sera contrôlée par un modérateur avant sa mise en ligne." : "Votre annonce est prête à être envoyée en modération.") : "Corrigez les points bloquants avant publication.");
     } catch {
-      setMessage("La vérification n’a pas pu être chargée pour le moment.");
+      if(!preserveMessage)setMessage("La vérification n’a pas pu être chargée pour le moment.");
     } finally {
       setLoading(false);
     }
@@ -177,7 +178,7 @@ export function ListingPublicationReview({ listingId, promotionCode="", promotio
           else if(payload.error==="promotion_checkout_edit_unsupported")setMessage("Enregistrez d’abord les modifications de l’annonce avant d’ajouter une option de visibilité.");
           else if(payload.error==="listing_not_ready"&&payload.errors?.length)setMessage(payload.errors.map(readable).join(" "));
           else setMessage("La mise en avant n’a pas pu être préparée. Vérifiez l’annonce puis réessayez.");
-          await refresh();return;
+          await refresh(true);return;
         }
         if(payload.url){window.location.assign(payload.url);return}
         if(payload.activated&&payload.submitted){
@@ -211,7 +212,7 @@ export function ListingPublicationReview({ listingId, promotionCode="", promotio
           else if(payload.error==="consumer_return_policy_required")setMessage(payload.message??"Renseignez la politique de retour applicable à cette annonce professionnelle.");
         else if (payload.errors?.length) setMessage(payload.errors.map(readable).join(" "));
         else setMessage("La publication a été refusée. Vérifiez l’annonce puis réessayez.");
-        await refresh();
+        await refresh(true);
         return;
       }
       void sendSiteAnalyticsEvent("LISTING_PUBLISH_SUCCEEDED",typeof window!=="undefined"?window.location.pathname:"/deposer-une-annonce");
@@ -250,10 +251,11 @@ export function ListingPublicationReview({ listingId, promotionCode="", promotio
 
           {check.duplicate&&<section className={`${styles.statusCard} ${styles.blocked}`} style={{marginBottom:16}}><div className={styles.statusTitle}><span><b>!</b></span><strong>Annonce déjà présente dans votre compte</strong></div><p>Une annonce identique « {check.duplicate.title??"Sans titre"} » existe déjà. Modifiez ou continuez cette annonce au lieu d’en créer une seconde.</p><a className={styles.fixButton} href={check.duplicate.actionUrl}>Ouvrir l’annonce existante</a></section>}
 
+          {check.publicationCapacity?.blocked&&<section className={`${styles.statusCard} ${styles.blocked}`} style={{marginBottom:16}}><div className={styles.statusTitle}><span><b>!</b></span><strong>Limite d’annonces atteinte</strong></div><p>Formule {check.publicationCapacity.planName} : {check.publicationCapacity.used} annonces actives ou en attente / {check.publicationCapacity.cap} autorisées. Votre brouillon est conservé. Libérez des places ou choisissez une formule adaptée.</p><div style={{display:"flex",gap:12,flexWrap:"wrap"}}><a className={styles.fixButton} href="/espace-pro/abonnement">Voir mon abonnement</a><a className={styles.fixButton} href="/mon-compte/annonces">Gérer mes annonces</a></div></section>}
           <div className={styles.statusGrid}>
-            <section className={`${styles.statusCard} ${(check.errors.length||check.renewalRequired||check.duplicate) ? styles.blocked : styles.ok}`}>
-              <div className={styles.statusTitle}><span>{check.errors.length||check.renewalRequired||check.duplicate ? <b>!</b> : <AppIcon name="circle-check"/>}</span><strong>{check.duplicate?"Doublon détecté":check.renewalRequired?"Prolongation requise":check.errors.length ? `${check.errors.length} point(s) à corriger` : check.manualModerationRequired?"Contrôle modérateur":"Aucun blocage"}</strong></div>
-              {check.duplicate?<p>La publication est bloquée afin d’éviter deux annonces identiques sur le même compte.</p>:check.renewalRequired?<><p>{check.renewal?.freeRenewalAvailable!==false?"La durée de 30 jours est terminée. Activez votre première prolongation gratuite avant de remettre l’annonce en ligne.":`La durée de 30 jours est terminée. Une prolongation de ${((check.renewal?.costMinor??99)/100).toFixed(2).replace(".",",")} € est nécessaire avant la remise en ligne.`}</p><a className={styles.fixButton} href="/mon-compte/annonces?status=DRAFT">Gérer la prolongation</a></>:check.errors.length ? <ul>{check.errors.map((error) => {const issue=check.issues?.errors.find(x=>x.code===error);return <li key={error}><span>{readable(error)}</span>{issue&&onFixStep&&<button type="button" className={styles.fixButton} onClick={()=>onFixStep(issue.step)}>Corriger</button>}</li>})}</ul> : check.manualModerationRequired?<p>Vous pouvez publier sans vérifier votre téléphone. L’annonce sera examinée par un modérateur avant sa mise en ligne.</p>:<p>Les contrôles obligatoires sont validés.</p>}
+            <section className={`${styles.statusCard} ${(check.errors.length||check.renewalRequired||check.duplicate||check.publicationCapacity?.blocked) ? styles.blocked : styles.ok}`}>
+              <div className={styles.statusTitle}><span>{check.errors.length||check.renewalRequired||check.duplicate||check.publicationCapacity?.blocked ? <b>!</b> : <AppIcon name="circle-check"/>}</span><strong>{check.publicationCapacity?.blocked?"Limite de formule atteinte":check.duplicate?"Doublon détecté":check.renewalRequired?"Prolongation requise":check.errors.length ? `${check.errors.length} point(s) à corriger` : check.manualModerationRequired?"Contrôle modérateur":"Aucun blocage"}</strong></div>
+              {check.publicationCapacity?.blocked?<p>Les informations sont conservées. La publication pourra reprendre lorsque votre compte disposera d’une place.</p>:check.duplicate?<p>La publication est bloquée afin d’éviter deux annonces identiques sur le même compte.</p>:check.renewalRequired?<><p>{check.renewal?.freeRenewalAvailable!==false?"La durée de 30 jours est terminée. Activez votre première prolongation gratuite avant de remettre l’annonce en ligne.":`La durée de 30 jours est terminée. Une prolongation de ${((check.renewal?.costMinor??99)/100).toFixed(2).replace(".",",")} € est nécessaire avant la remise en ligne.`}</p><a className={styles.fixButton} href="/mon-compte/annonces?status=DRAFT">Gérer la prolongation</a></>:check.errors.length ? <ul>{check.errors.map((error) => {const issue=check.issues?.errors.find(x=>x.code===error);return <li key={error}><span>{readable(error)}</span>{issue&&onFixStep&&<button type="button" className={styles.fixButton} onClick={()=>onFixStep(issue.step)}>Corriger</button>}</li>})}</ul> : check.manualModerationRequired?<p>Vous pouvez publier sans vérifier votre téléphone. L’annonce sera examinée par un modérateur avant sa mise en ligne.</p>:<p>Les contrôles obligatoires sont validés.</p>}
             </section>
 
             <section className={`${styles.statusCard} ${styles.warning}`}>
@@ -279,7 +281,7 @@ export function ListingPublicationReview({ listingId, promotionCode="", promotio
 
       {check?.ready&&!allConsents&&<div className={styles.publishHint}><AppIcon name="info"/><div><strong>Dernière étape avant publication</strong><span>Pour activer « Publier mon annonce », cochez les 4 confirmations ci-dessus.</span></div></div>}
       <div className={styles.footer}>
-        <div><strong>{check?.duplicate?"Annonce déjà existante":check?.renewalRequired?"Prolongation requise":check?.ready ? (promotionCode?"Prêt pour visibilité & modération":"Prêt pour modération") : "Vérification nécessaire"}</strong><span>{message}</span></div>
+        <div><strong>{check?.publicationCapacity?.blocked?"Limite d’annonces atteinte":check?.duplicate?"Annonce déjà existante":check?.renewalRequired?"Prolongation requise":check?.ready ? (promotionCode?"Prêt pour visibilité & modération":"Prêt pour modération") : "Vérification nécessaire"}</strong><span>{message}</span></div>
         <div className={styles.buttons}>
           <button type="button" className={styles.secondary} onClick={() => void refresh()} disabled={!listingId || loading}>Revérifier</button>
           <button type="button" className={styles.primary} disabled={!canPublish} onClick={() => void publish()}>{publishing ? (promotionCode?"Préparation du paiement…":"Publication…") : promotionCode?"Confirmer la visibilité et publier":"Publier mon annonce"}</button>

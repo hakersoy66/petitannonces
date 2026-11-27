@@ -225,6 +225,22 @@ export async function evaluateListing(listingId: string, userId: string) {
   };
 }
 
+// Match the database plan-limit trigger, without changing any subscription or quota.
+async function professionalPublicationCapacity(userId:string,targetId:string){
+  const [plans,occupied,target]=await Promise.all([
+    prisma.$queryRaw<Array<{cap:number|null;name:string}>>`SELECT p."maxActiveListings" AS cap,p."name" FROM "ProfessionalSubscription" s JOIN "ProfessionalPlan" p ON p."id"=s."planId" WHERE s."userId"=${userId} AND ((s."status"='TRIALING' AND s."trialEndsAt">CURRENT_TIMESTAMP) OR (s."status"='ACTIVE' AND (s."currentPeriodEnd" IS NULL OR s."currentPeriodEnd">CURRENT_TIMESTAMP))) ORDER BY p."maxActiveListings" DESC NULLS FIRST,s."createdAt" DESC LIMIT 1`,
+    prisma.listing.count({where:{sellerId:userId,id:{not:targetId},status:{in:["PENDING","PUBLISHED"]}}}),
+    prisma.listing.findUnique({where:{id:targetId},select:{status:true}}),
+  ]);
+  const cap=plans[0]?plans[0].cap:10;
+  const alreadyOccupied=target?.status==="PENDING"||target?.status==="PUBLISHED";
+  const used=occupied+(alreadyOccupied?1:0);
+  return {cap,used,planName:plans[0]?.name??"Sans abonnement",blocked:!alreadyOccupied&&cap!==null&&occupied>=cap};
+}
+function capacityMessage(capacity:Awaited<ReturnType<typeof professionalPublicationCapacity>>){
+  return `Limite de votre formule ${capacity.planName} atteinte : ${capacity.used} annonces actives ou en attente pour ${capacity.cap} autorisées. Libérez une place ou choisissez une formule adaptée. Votre brouillon est conservé.`;
+}
+
 export async function registerPublicationRoutes(app: FastifyInstance) {
   await ensureListingQualitySnapshotSchema();
   await ensurePublicationReceiptSchema();
@@ -248,7 +264,8 @@ export async function registerPublicationRoutes(app: FastifyInstance) {
     const lifecycle=(await getListingLifecycles([lifecycleId]))[0]??null;
     const renewalRequired=Boolean(lifecycle&&lifecycle.isExpired);
     const issues=issueDetails(result.errors,result.warnings);
-    return reply.send({ ready: result.ready&&!renewalRequired&&!duplicate, phoneVerified, phoneVerificationRequired:false, manualModerationRequired:!phoneVerified||result.listing.category.domain==="ANIMAL", sellerKind:user.kind, compliance:{productSafety:safetyRows[0]??null,consumerDisclosure:disclosureRows[0]??null}, errors: result.errors, warnings: result.warnings, issues, quality: result.quality, summary: result.summary, duplicate:duplicate?duplicatePayload(duplicate):null, renewalRequired, renewal:lifecycle?{expiresAt:lifecycle.expiresAt,freeRenewalAvailable:!lifecycle.freeRenewalUsed,costMinor:lifecycle.freeRenewalUsed?LISTING_RENEWAL_COST_MINOR:0,currency:LISTING_RENEWAL_CURRENCY}:null, edit:editSession?{isolated:true,originalListingId:editSession.originalListingId,previousStatus:editSession.previousStatus}:null });
+    const publicationCapacity=user.kind==="PROFESSIONNEL"?await professionalPublicationCapacity(user.id,lifecycleId):null;
+    return reply.send({ ready: result.ready&&!renewalRequired&&!duplicate&&!publicationCapacity?.blocked, publicationCapacity, phoneVerified, phoneVerificationRequired:false, manualModerationRequired:!phoneVerified||result.listing.category.domain==="ANIMAL", sellerKind:user.kind, compliance:{productSafety:safetyRows[0]??null,consumerDisclosure:disclosureRows[0]??null}, errors: result.errors, warnings: result.warnings, issues, quality: result.quality, summary: result.summary, duplicate:duplicate?duplicatePayload(duplicate):null, renewalRequired, renewal:lifecycle?{expiresAt:lifecycle.expiresAt,freeRenewalAvailable:!lifecycle.freeRenewalUsed,costMinor:lifecycle.freeRenewalUsed?LISTING_RENEWAL_COST_MINOR:0,currency:LISTING_RENEWAL_CURRENCY}:null, edit:editSession?{isolated:true,originalListingId:editSession.originalListingId,previousStatus:editSession.previousStatus}:null });
   });
 
   app.post("/listings/:id/publish", async (request, reply) => {
@@ -272,6 +289,8 @@ export async function registerPublicationRoutes(app: FastifyInstance) {
     if (!result.ready) return reply.code(422).send({ ready: false, errors: result.errors, warnings: result.warnings, issues:issueDetails(result.errors,result.warnings) });
     const duplicate=await findDuplicateListing(result.listing as unknown as DuplicateSource,user.id,[params.data.id,...(editSession?[editSession.originalListingId]:[])]);
     if(duplicate)return reply.code(409).send({error:"duplicate_listing_exists",message:"Cette annonce existe déjà dans votre compte.",duplicate:duplicatePayload(duplicate)});
+    const publicationCapacity=user.kind==="PROFESSIONNEL"?await professionalPublicationCapacity(user.id,editSession?.originalListingId??params.data.id):null;
+    if(publicationCapacity?.blocked)return reply.code(409).send({error:"professional_plan_listing_limit",message:capacityMessage(publicationCapacity),publicationCapacity});
     const merchantProduct=Boolean(!result.summary.isVacation&&result.listing.priceMinor!==null&&!(["JOB","SERVICE","REAL_ESTATE","VEHICLE"] as string[]).includes(result.listing.category.domain));
     if(user.kind==="PROFESSIONNEL"&&merchantProduct){
       const fallbackComplianceId=editSession?.originalListingId??params.data.id;
