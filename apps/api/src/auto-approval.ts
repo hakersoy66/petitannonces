@@ -17,13 +17,11 @@ import { queueAdminRoleEmail } from "./transactional-email.js";
 
 const SETTINGS_KEY="moderation.autoApproval";
 const ADMIN_ROLES=["SUPER_ADMIN","ADMIN"] as const;
-const DEFAULT_SETTINGS={enabled:true,minDelaySeconds:60,maxDelaySeconds:60,minTrustScore:75,maxRiskScore:20,requireReliableSeller:true,requireEmailVerified:true};
-const MIN_CLEAN_MANUAL_APPROVALS=3;
+const DEFAULT_SETTINGS={enabled:true,minDelaySeconds:60,maxDelaySeconds:120,minTrustScore:75,maxRiskScore:20,requireReliableSeller:true,requireEmailVerified:true};
 const HISTORY_VIOLATION_DAYS=180;
 
-// A seller with a proven history of three human-approved, incident-free ads
-// can be trusted even without marketplace sales/reviews. Keep this separate
-// from the marketplace reputation badge (which requires completed sales).
+// Listing history contributes to the recorded trust score for moderation diagnostics.
+// An individual administrator grant, not the score, determines authorization.
 export function listingHistoryTrustScore(manualApprovals:number,accountAgeDays:number){
  return Math.min(90,50+(accountAgeDays>=7?10:0)+Math.min(6,Math.max(0,manualApprovals))*5);
 }
@@ -111,17 +109,12 @@ export async function evaluateAutoApprovalEligibility(sellerId:string,settings?:
   const base={trustScore,riskScore:risk.score,phoneVerified:Boolean(rep.metrics.phoneVerified),manualApprovals};
   const verifiedProWithDocuments=professionalDocumentsVerified[0]?.eligible===true;
   if((cfg.requireEmailVerified||verifiedProWithDocuments)&&!user.emailVerifiedAt)return{eligible:false as const,reason:"email_not_verified",...base};
-  // Verified documentary identity replaces the tenure, phone and 3-manual-ads prerequisites.
-  // Keep email verification, abuse history, low-risk scoring and moderation checks.
-  if(!verifiedProWithDocuments&&!base.phoneVerified)return{eligible:false as const,reason:"phone_not_verified",...base};
-  if(!verifiedProWithDocuments&&ageDays<7)return{eligible:false as const,reason:"account_too_recent",...base};
-  if(!verifiedProWithDocuments&&manualApprovals<MIN_CLEAN_MANUAL_APPROVALS)return{eligible:false as const,reason:"insufficient_manually_approved_history",...base};
+  // An explicit individual administrator grant replaces the automatic trust prerequisites.
+  // Account status, email verification, abuse history and risk checks still apply.
   if((history[0]?.violations??0)>0||activeHold.length||activeReports.length)return{eligible:false as const,reason:"moderation_history_or_report",...base};
   if(risk.level!=="LOW"||risk.reviewRequired||risk.commerceReviewRequired||risk.messagingRestricted||risk.offerRestricted||risk.score>cfg.maxRiskScore)return{eligible:false as const,reason:"risk_review_required",...base};
   if(openCase.length)return{eligible:false as const,reason:"open_user_moderation_case",...base};
-  if(!verifiedProWithDocuments&&cfg.requireReliableSeller&&!(rep.trust.reliableSeller||manualApprovals>=MIN_CLEAN_MANUAL_APPROVALS))return{eligible:false as const,reason:"not_reliable",...base};
-  if(!verifiedProWithDocuments&&trustScore<cfg.minTrustScore)return{eligible:false as const,reason:"trust_score_below_threshold",...base};
-  return{eligible:true as const,reason:verifiedProWithDocuments?"professional_documents_verified":"trusted_clean_listing_history",...base};
+  return{eligible:true as const,reason:verifiedProWithDocuments?"professional_documents_verified":"individual_admin_permission",...base};
 }
 
 export async function scheduleTrustedListingAutoApproval(listingId:string,sellerId:string){
@@ -129,8 +122,9 @@ export async function scheduleTrustedListingAutoApproval(listingId:string,seller
   const cfg=await getAutoApprovalSettings();
   const eligibility=await evaluateAutoApprovalEligibility(sellerId,cfg);
   if(!eligibility.eligible)return{scheduled:false as const,...eligibility};
-  const delaySeconds=eligibility.reason==="professional_documents_verified"?60:
-    cfg.minDelaySeconds===cfg.maxDelaySeconds?cfg.minDelaySeconds:randomInt(cfg.minDelaySeconds,cfg.maxDelaySeconds+1);
+  // Reserve 15 seconds for worker polling/processing inside the configured window.
+  const latestSchedule=Math.max(cfg.minDelaySeconds,cfg.maxDelaySeconds-15);
+  const delaySeconds=randomInt(cfg.minDelaySeconds,latestSchedule+1);
   // Use the database clock for both scheduling and worker comparisons. The app host
   // and PostgreSQL may have different timezone/clock configuration; mixing clocks
   // can make a future approval look immediately due.
@@ -181,13 +175,13 @@ async function approveOne(listingId:string){
     if(queue[0]?.status!=="PROCESSING")return false;
     const preference=await tx.$queryRaw<Array<{mode:string|null;manual:string|null}>>`SELECT "metadata"->>'mode' AS mode,"metadata"->>'manualListingReview' AS manual FROM "AdminAuditEvent" WHERE "entityType"='USER' AND "entityId"=${listing.sellerId} AND "action"='USER_LISTING_REVIEW_PREFERENCE_UPDATED' ORDER BY "createdAt" DESC,"id" DESC LIMIT 1`;
     if(!(preference[0]?.mode==="ENABLED"||(!preference[0]?.mode&&preference[0]?.manual==="false")))return false;
-    const u=await tx.listing.updateMany({where:{id:listing.id,status:"PENDING",seller:{manualListingReview:false}},data:{status:"PUBLISHED",publishedAt}});
+    const u=await tx.listing.updateMany({where:{id:listing.id,status:"PENDING",seller:{manualListingReview:false,status:"ACTIVE"}},data:{status:"PUBLISHED",publishedAt}});
     if(!u.count)return false;
     const professionalDocumentPath=eligibility.reason==="professional_documents_verified";
     const approvalReason=professionalDocumentPath?"AUTO_APPROVED_VERIFIED_PRO":"AUTO_APPROVED_TRUSTED";
     const approvalStatement=professionalDocumentPath
-      ?"Annonce professionnelle publiée après 60 secondes : entreprise et représentant vérifiés sur justificatifs par un administrateur ; contrôles de contenu, modération, fraude et images réussis."
-      :"Annonce approuvée après délai de sécurité : contacts vérifiés, trois annonces validées manuellement, score de confiance suffisant et contrôles anti-fraude réussis.";
+      ?"Annonce professionnelle publiée après le délai de sécurité : entreprise et représentant vérifiés sur justificatifs par un administrateur ; contrôles de contenu, modération, fraude et images réussis."
+      :"Annonce approuvée après délai de sécurité : autorisation individuelle accordée par un administrateur et contrôles de contenu, modération, fraude et images réussis.";
     const caseUpdated=await tx.$executeRawUnsafe(`UPDATE "ModerationCase" SET "status"='RESOLVED',"automatedDecision"=TRUE,"decisionAction"='NONE'::"ModerationActionType","decisionReasonCode"=$2,"decisionStatement"=$3,"decidedAt"=CURRENT_TIMESTAMP,"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$1 AND "status"='OPEN' AND "riskScore"<=$4`,c.id,approvalReason,approvalStatement,cfg.maxRiskScore);
     if(caseUpdated!==1)throw new Error("moderation_case_changed_before_auto_approval");
     await tx.$executeRawUnsafe(`UPDATE "ListingAutoApprovalQueue" SET "status"='APPROVED',"reason"=$2,"processedAt"=CURRENT_TIMESTAMP,"updatedAt"=CURRENT_TIMESTAMP WHERE "listingId"=$1`,listing.id,"auto_approved_trusted");
@@ -227,7 +221,7 @@ export function registerAutoApprovalAdminRoutes(app:FastifyInstance){
 }
 
 export function startAutoApprovalWorker(log?:{info:(value:unknown,message?:string)=>void;error:(value:unknown,message?:string)=>void}){
-  const intervalMs=Math.max(Number(process.env.AUTO_APPROVAL_WORKER_INTERVAL_MS??15_000),10_000);let running=false;
+  const intervalMs=Math.max(Number(process.env.AUTO_APPROVAL_WORKER_INTERVAL_MS??10_000),5_000);let running=false;
   const tick=async()=>{if(running)return;running=true;try{const result=await processDueAutoApprovals();if(result.approved)log?.info(result,"trusted listings auto-approved")}catch(error){log?.error(error,"listing auto-approval worker failed")}finally{running=false}};
   void tick();const timer=setInterval(()=>void tick(),intervalMs);timer.unref();return timer;
 }
