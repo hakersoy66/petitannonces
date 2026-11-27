@@ -90,7 +90,7 @@ export function ListingWizard({initialListingId,initialResumeStep,initialCategor
    setValues(restored);
    try{
     const checkRes=await fetch(`${api()}/listings/${encodeURIComponent(effectiveId)}/publication-check`,{credentials:"include",cache:"no-store"});
-    if(checkRes.ok){const check=await checkRes.json() as {ready?:boolean;publicationCapacity?:{blocked:boolean};issues?:{errors?:Array<{step?:number}>}};const errorSteps=(check.issues?.errors??[]).map(x=>Number(x.step)).filter(x=>Number.isInteger(x)&&x>=0&&x<=5);const requested=Number(initialResumeStep);setStep(Number.isInteger(requested)&&requested>=0&&requested<=5?requested:(check.ready||check.publicationCapacity?.blocked?4:(errorSteps.length?Math.min(...errorSteps):2)));}
+    if(checkRes.ok){const check=await checkRes.json() as {ready?:boolean;publicationCapacity?:{blocked:boolean};issues?:{errors?:Array<{step?:number}>}};const errorSteps=(check.issues?.errors??[]).map(x=>Number(x.step)).filter(x=>Number.isInteger(x)&&x>=0&&x<=5);const requested=Number(initialResumeStep);setStep(Number.isInteger(requested)&&requested>=0&&requested<=5?requested:(check.publicationCapacity?.blocked?5:check.ready?4:(errorSteps.length?Math.min(...errorSteps):2)));}
    }catch{}
    setHydrated(true);
   } else setHydrated(true);

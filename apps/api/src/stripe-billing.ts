@@ -14,6 +14,13 @@ import { nativeExternalDigitalBillingEnabled, nativeExternalProBillingEnabled } 
 import { notifyListingIndexNow } from "./indexnow.js";
 import { notifyProCancellationScheduled, notifyProPaymentFailed, notifyProPaymentRecovered, notifyProPlanChanged, notifyProPlanChangeCancelled, notifyProPlanChangeScheduled, notifyProReactivated } from "./pro-subscription-notifications.js";
 
+import { evaluateListing, professionalPublicationCapacity, findDuplicateListing } from "./publication.js";
+import { requireListingUser } from "./listing-auth.js";
+import { getAdminUserPermissions } from "./admin-user-permissions.js";
+import { scanListingContent } from "./listing-content-policy.js";
+import { editSessionByWorkingId } from "./listing-edit-session.js";
+
+const EXTRA_LISTING_PRICE=99;
 const TOLERANCE_SECONDS = 300;
 
 const SESSION_COOKIE = "pa_session";
@@ -263,6 +270,22 @@ async function handleListingRenewalCheckoutCompleted(session:StripeObject){
   return true;
 }
 
+function validExtraPayment(session:StripeObject,listingId:string,userId:string){
+  const m=session.metadata as Record<string,unknown>|undefined;
+  return m?.pa_extra_listing==="true"&&m.pa_listing_id===listingId&&m.pa_user_id===userId&&session.client_reference_id===userId&&session.mode==="payment"&&session.currency==="eur"&&session.amount_total===EXTRA_LISTING_PRICE&&session.payment_status==="paid";
+}
+async function handleExtraListingCheckoutEvent(eventType:string,session:StripeObject){
+  const m=session.metadata as Record<string,unknown>|undefined;
+  if(m?.pa_extra_listing!=="true")return false;
+  if(!["checkout.session.completed","checkout.session.async_payment_succeeded"].includes(eventType))return true;
+  if(session.payment_status!=="paid")return true;
+  const listingId=String(m.pa_listing_id??""),userId=String(m.pa_user_id??"");
+  if(!listingId||!userId||typeof session.id!=="string"||!validExtraPayment(session,listingId,userId))throw new Error("extra_listing_payment_mismatch");
+  const count=await prisma.$executeRaw`UPDATE "ListingExtraPublication" SET "paidAt"=COALESCE("paidAt",CURRENT_TIMESTAMP),"updatedAt"=CURRENT_TIMESTAMP WHERE "listingId"=${listingId} AND "userId"=${userId} AND "checkoutSessionId"=${session.id}`;
+  if(count!==1)throw new Error("extra_listing_checkout_not_recorded");
+  return true;
+}
+
 async function ensureWebhookAuditSchema(){
   await prisma.$executeRawUnsafe(`ALTER TABLE "PaymentWebhookEvent" ADD COLUMN IF NOT EXISTS "attemptCount" INTEGER NOT NULL DEFAULT 0`);
   await prisma.$executeRawUnsafe(`ALTER TABLE "PaymentWebhookEvent" ADD COLUMN IF NOT EXISTS "lastAttemptAt" TIMESTAMP(3)`);
@@ -292,6 +315,71 @@ export async function registerStripeBillingRoutes(app: FastifyInstance) {
       const url=typeof checkout.payload.url==="string"?checkout.payload.url:null;if(!url)return reply.code(502).send({error:"stripe_checkout_url_missing"});
       return reply.send({url,package:{id:pack.id,name:pack.name,creditMinor:pack.creditMinor,priceMinor:pack.priceMinor,currency:pack.currency}});
     }catch(error){request.log.error({error,packageId:body.data.packageId},"site credit checkout failed");return reply.code(503).send({error:"stripe_site_credit_checkout_unavailable"})}
+  });
+
+  app.post("/billing/stripe/extra-listing/checkout",async(request,reply)=>{
+    const user=await requireListingUser(request,reply);if(!user)return;
+    const body=z.object({listingId:z.string().min(1),native:z.boolean().optional().default(false)}).safeParse(request.body);
+    if(!body.success)return reply.code(400).send({error:"invalid_request"});
+    if((body.data.native||/PetitAnnoncesNative/i.test(String(request.headers["user-agent"]??"")))&&!nativeExternalDigitalBillingEnabled())return reply.code(403).send({error:"native_external_digital_billing_disabled"});
+    const listingId=body.data.listingId;
+    if(user.kind!=="PROFESSIONNEL")return reply.code(403).send({error:"professional_account_required"});
+    const draft=await evaluateListing(listingId,user.id);
+    if(!draft?.ready)return reply.code(422).send({error:"listing_not_ready"});
+    if(await editSessionByWorkingId(listingId,user.id))return reply.code(409).send({error:"edit_checkout_unsupported"});
+    if((await scanListingContent(draft.listing.title,draft.listing.description)).blocked)return reply.code(422).send({error:"listing_content_policy_violation"});
+    if(await findDuplicateListing(draft.listing as Parameters<typeof findDuplicateListing>[0],user.id,[listingId]))return reply.code(409).send({error:"duplicate_listing_exists"});
+    const lifecycle=(await getListingLifecycles([listingId]))[0];
+    if(lifecycle?.isExpired)return reply.code(409).send({error:"listing_renewal_required"});
+    const permissions=await getAdminUserPermissions(user.id);
+    const total=await prisma.listing.count({where:{sellerId:user.id,status:{in:["PENDING","PUBLISHED"]}}});
+    if(permissions.publicationBlocked||(permissions.listingCap!==null&&total>=permissions.listingCap))return reply.code(403).send({error:"admin_user_permission_restricted"});
+    const capacity=await professionalPublicationCapacity(user.id,listingId);
+    if(!capacity.blocked)return reply.send({paid:capacity.extraPaid,notRequired:true});
+    const merchantProduct=Boolean(!draft.summary.isVacation&&draft.listing.priceMinor!==null&&!["JOB","SERVICE","REAL_ESTATE","VEHICLE"].includes(draft.listing.category.domain));
+    if(merchantProduct){
+      const rows=await prisma.$queryRaw<Array<{valid:boolean}>>`SELECT EXISTS(SELECT 1 FROM "TraderConsumerDisclosure" WHERE "listingId"=${listingId} AND "sellerIsTrader" AND (("withdrawalRightApplies"=TRUE AND "withdrawalPeriodDays">0) OR ("withdrawalRightApplies"=FALSE AND length(trim(COALESCE("withdrawalExceptionCode",'')))>0))) AS valid`;
+      if(!rows[0]?.valid)return reply.code(422).send({error:"consumer_return_policy_required"});
+    }
+    await prisma.$executeRaw`INSERT INTO "ListingExtraPublication" ("listingId","userId") VALUES (${listingId},${user.id}) ON CONFLICT ("listingId") DO NOTHING`;
+    try{
+      const result=await prisma.$transaction(async tx=>{
+        const rows=await tx.$queryRaw<Array<{checkoutSessionId:string|null;paidAt:Date|null}>>`SELECT "checkoutSessionId","paidAt" FROM "ListingExtraPublication" WHERE "listingId"=${listingId} AND "userId"=${user.id} FOR UPDATE`;
+        const row=rows[0];if(!row)throw new Error("extra_listing_owner_mismatch");
+        if(row.paidAt)return {paid:true};
+        if(row.checkoutSessionId){
+          const existing=(await stripeRequest("/v1/checkout/sessions/"+encodeURIComponent(row.checkoutSessionId))).payload;
+          if(validExtraPayment(existing,listingId,user.id)){
+            await tx.$executeRaw`UPDATE "ListingExtraPublication" SET "paidAt"=CURRENT_TIMESTAMP,"updatedAt"=CURRENT_TIMESTAMP WHERE "listingId"=${listingId}`;
+            return {paid:true};
+          }
+          if(existing.status==="open"&&typeof existing.url==="string")return {url:existing.url};
+          if(existing.status!=="expired")throw new Error("extra_listing_payment_pending");
+        }
+        const returnUrl="https://petitannonces.fr/deposer-une-annonce?listingId="+encodeURIComponent(listingId)+"&resumeStep=5";
+        const params=new URLSearchParams({"mode":"payment","payment_method_types[0]":"card","client_reference_id":user.id,"customer_email":user.email,"success_url":returnUrl+"&extraPayment=success","cancel_url":returnUrl+"&extraPayment=cancelled","line_items[0][quantity]":"1","line_items[0][price_data][currency]":"eur","line_items[0][price_data][unit_amount]":String(EXTRA_LISTING_PRICE),"line_items[0][price_data][product_data][name]":"Publication d’une annonce supplémentaire","metadata[pa_extra_listing]":"true","metadata[pa_listing_id]":listingId,"metadata[pa_user_id]":user.id});
+        const session=(await stripeRequest("/v1/checkout/sessions",{method:"POST",body:params.toString(),headers:{"idempotency-key":"pa-extra-"+listingId+"-"+(row.checkoutSessionId??"initial")}})).payload;
+        if(typeof session.id!=="string"||typeof session.url!=="string")throw new Error("stripe_checkout_url_missing");
+        await tx.$executeRaw`UPDATE "ListingExtraPublication" SET "checkoutSessionId"=${session.id},"updatedAt"=CURRENT_TIMESTAMP WHERE "listingId"=${listingId} AND "userId"=${user.id}`;
+        return {url:session.url};
+      },{timeout:30000});
+      return reply.send(result);
+    }catch(error){request.log.error({error},"extra listing checkout failed");return reply.code(503).send({error:"extra_listing_checkout_unavailable"});}
+  });
+
+  // Recovery if the buyer returns before Stripe's signed webhook arrives.
+  app.post("/billing/stripe/extra-listing/confirm",async(request,reply)=>{
+    const user=await requireUser(request,reply);if(!user)return;
+    const body=z.object({listingId:z.string().min(1)}).safeParse(request.body);if(!body.success)return reply.code(400).send({error:"invalid_request"});
+    const listingId=body.data.listingId;
+    const rows=await prisma.$queryRaw<Array<{checkoutSessionId:string|null;paidAt:Date|null}>>`SELECT "checkoutSessionId","paidAt" FROM "ListingExtraPublication" WHERE "listingId"=${listingId} AND "userId"=${user.id}`;
+    const row=rows[0];if(row?.paidAt)return reply.send({paid:true});if(!row?.checkoutSessionId)return reply.send({paid:false});
+    try{
+      const session=(await stripeRequest("/v1/checkout/sessions/"+encodeURIComponent(row.checkoutSessionId))).payload;
+      if(!validExtraPayment(session,listingId,user.id))return reply.send({paid:false});
+      await handleExtraListingCheckoutEvent("checkout.session.completed",session);
+      return reply.send({paid:true});
+    }catch(error){request.log.warn({error},"extra listing confirmation failed");return reply.code(503).send({error:"extra_listing_confirmation_unavailable"});}
   });
 
   app.post("/billing/stripe/listing-renewal/checkout",async(request,reply)=>{
@@ -738,7 +826,8 @@ export async function registerStripeBillingRoutes(app: FastifyInstance) {
       const marketplaceEvent=vacationEvent?false:await handleMarketplaceStripeEvent(event.type,obj,event.id,event.account);
       const promotionCheckoutEvent=["checkout.session.completed","checkout.session.async_payment_succeeded","checkout.session.expired","checkout.session.async_payment_failed"].includes(event.type);
       if (!vacationEvent && !marketplaceEvent && promotionCheckoutEvent) {
-        const handledPromotion=await handlePromotionStripeEvent(event.type,obj);
+        const handledExtra=await handleExtraListingCheckoutEvent(event.type,obj);
+        const handledPromotion=handledExtra||await handlePromotionStripeEvent(event.type,obj);
         if(!handledPromotion){const handledCredit=await handleSiteCreditCheckoutEvent(event.type,obj);if(!handledCredit){
           const handledProBF=await handleProBlackFridayCheckoutEvent(event.type,obj);
           if(!handledProBF&&(event.type==="checkout.session.completed"||event.type==="checkout.session.async_payment_succeeded")){

@@ -66,7 +66,7 @@ type DuplicateSource={
   property:{transactionType:string|null;propertyType:string|null;surfaceM2:number|null;rooms:number|null}|null;
 };
 
-async function findDuplicateListing(source:DuplicateSource,userId:string,excludeIds:string[]){
+export async function findDuplicateListing(source:DuplicateSource,userId:string,excludeIds:string[]){
   const sourceTitle=normalizeDuplicateText(source.title);if(sourceTitle.length<5)return null;
   const candidates=await prisma.listing.findMany({
     where:{sellerId:userId,id:{notIn:excludeIds},categoryId:source.categoryId,status:{in:["DRAFT","PENDING","PUBLISHED","SUSPENDED"]},OR:[{status:{not:"DRAFT"}},{draftSavedAt:{not:null}}],priceMinor:source.priceMinor},
@@ -226,16 +226,19 @@ export async function evaluateListing(listingId: string, userId: string) {
 }
 
 // Match the database plan-limit trigger, without changing any subscription or quota.
-async function professionalPublicationCapacity(userId:string,targetId:string){
-  const [plans,occupied,target]=await Promise.all([
+export async function professionalPublicationCapacity(userId:string,targetId:string){
+  const [plans,occupiedRows,target,paidRows]=await Promise.all([
     prisma.$queryRaw<Array<{cap:number|null;name:string}>>`SELECT p."maxActiveListings" AS cap,p."name" FROM "ProfessionalSubscription" s JOIN "ProfessionalPlan" p ON p."id"=s."planId" WHERE s."userId"=${userId} AND ((s."status"='TRIALING' AND s."trialEndsAt">CURRENT_TIMESTAMP) OR (s."status"='ACTIVE' AND (s."currentPeriodEnd" IS NULL OR s."currentPeriodEnd">CURRENT_TIMESTAMP))) ORDER BY p."maxActiveListings" DESC NULLS FIRST,s."createdAt" DESC LIMIT 1`,
-    prisma.listing.count({where:{sellerId:userId,id:{not:targetId},status:{in:["PENDING","PUBLISHED"]}}}),
+    prisma.$queryRaw<Array<{count:number}>>`SELECT COUNT(*)::int AS count FROM "Listing" l WHERE l."sellerId"=${userId} AND l."id"<>${targetId} AND l."status" IN ('PENDING','PUBLISHED') AND NOT EXISTS (SELECT 1 FROM "ListingExtraPublication" e WHERE e."listingId"=l."id" AND e."userId"=l."sellerId" AND e."paidAt" IS NOT NULL)`,
     prisma.listing.findUnique({where:{id:targetId},select:{status:true}}),
+    prisma.$queryRaw<Array<{paidAt:Date|null}>>`SELECT "paidAt" FROM "ListingExtraPublication" WHERE "listingId"=${targetId} AND "userId"=${userId}`,
   ]);
   const cap=plans[0]?plans[0].cap:10;
   const alreadyOccupied=target?.status==="PENDING"||target?.status==="PUBLISHED";
-  const used=occupied+(alreadyOccupied?1:0);
-  return {cap,used,planName:plans[0]?.name??"Sans abonnement",blocked:!alreadyOccupied&&cap!==null&&occupied>=cap};
+  const occupied=occupiedRows[0]?.count??0;
+  const extraPaid=Boolean(paidRows[0]?.paidAt);
+  const used=occupied+(alreadyOccupied&&!extraPaid?1:0);
+  return {cap,used,planName:plans[0]?.name??"Sans abonnement",blocked:!alreadyOccupied&&!extraPaid&&cap!==null&&occupied>=cap,extraPaid,extraPriceMinor:99};
 }
 function capacityMessage(capacity:Awaited<ReturnType<typeof professionalPublicationCapacity>>){
   return `Limite de votre formule ${capacity.planName} atteinte : ${capacity.used} annonces actives ou en attente pour ${capacity.cap} autorisées. Libérez une place ou choisissez une formule adaptée. Votre brouillon est conservé.`;
@@ -306,14 +309,6 @@ export async function registerPublicationRoutes(app: FastifyInstance) {
     const originalForEdit=editSession?await prisma.listing.findFirst({where:{id:editSession.originalListingId,sellerId:user.id},select:{id:true,slug:true,publishedAt:true}}):null;
     if(editSession&&!originalForEdit)return reply.code(404).send({error:"edit_original_missing"});
     const targetId=editSession?.originalListingId??result.listing.id;
-    if(user.kind==="PROFESSIONNEL"){
-      const [subscription,occupied,target]=await Promise.all([
-        prisma.professionalSubscription.findFirst({where:{userId:user.id,OR:[{status:"ACTIVE",OR:[{currentPeriodEnd:null},{currentPeriodEnd:{gt:new Date()}}]},{status:"TRIALING",trialEndsAt:{gt:new Date()}}]},select:{id:true}}),
-        prisma.listing.count({where:{sellerId:user.id,id:{not:targetId},status:{in:["PENDING","PUBLISHED"]}}}),
-        prisma.listing.findUnique({where:{id:targetId},select:{status:true}})
-      ]);
-      if(!subscription&&occupied>=10&&target?.status!=="PUBLISHED")return reply.code(409).send({error:"professional_free_listing_limit",limit:10,occupied,message:"Votre compte professionnel sans abonnement est limité à 10 annonces actives ou en attente de validation. Libérez une place ou choisissez un abonnement."});
-    }
     const slug = originalForEdit?.slug ?? result.listing.slug ?? `${slugify(result.listing.title!)}-${randomBytes(4).toString("hex")}`;
     const consentId = randomUUID();
     const userAgent = String(request.headers["user-agent"] ?? "").slice(0, 500) || null;
